@@ -1,0 +1,78 @@
+import { Head, Link, useForm } from '@inertiajs/react'
+
+export default function Register() {
+    const { data, setData, post, processing, errors } = useForm({
+        username: '',
+        display_name: '',
+        email: '',
+        password: '',
+        password_confirmation: '',
+    })
+
+    const submit = () => post('/register')
+
+    const field = (
+        key: keyof typeof data,
+        label: string,
+        type = 'text',
+        hint?: string,
+    ) => (
+        <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1.5">
+                {label}
+            </label>
+            <input
+                type={type}
+                value={data[key] as string}
+                onChange={(e) => setData(key, e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submit()}
+                className="w-full bg-surface-800 border border-surface-400 rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+            />
+            {hint && !errors[key] && (
+                <p className="text-[11px] text-text-muted mt-1">{hint}</p>
+            )}
+            {errors[key] && (
+                <p className="text-xs text-danger mt-1">{errors[key]}</p>
+            )}
+        </div>
+    )
+
+    return (
+        <>
+            <Head title="Register" />
+
+            <div className="min-h-screen grid place-items-center bg-surface-900 px-4 py-12">
+                <div className="w-full max-w-md">
+                    <div className="text-center mb-8">
+                        <h1 className="text-3xl font-bold text-text-primary">Create an account</h1>
+                    </div>
+
+                    <div className="bg-surface-700 rounded-lg p-8 shadow-2xl">
+                        <div className="space-y-4">
+                            {field('username', 'Username', 'text', 'Lowercase letters, numbers, _ and . only')}
+                            {field('display_name', 'Display Name')}
+                            {field('email', 'Email', 'email')}
+                            {field('password', 'Password', 'password', 'At least 8 characters')}
+                            {field('password_confirmation', 'Confirm Password', 'password')}
+
+                            <button
+                                onClick={submit}
+                                disabled={processing}
+                                className="w-full px-4 py-2 rounded bg-brand hover:bg-brand-hover text-white text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {processing ? 'Creating…' : 'Continue'}
+                            </button>
+                        </div>
+
+                        <p className="text-sm text-text-muted mt-6">
+                            Already have an account?{' '}
+                            <Link href="/login" className="text-text-link hover:underline">
+                                Log in
+                            </Link>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </>
+    )
+}

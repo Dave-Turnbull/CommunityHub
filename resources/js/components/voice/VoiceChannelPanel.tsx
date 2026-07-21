@@ -1,0 +1,65 @@
+import { Avatar } from '@/components/ui/Avatar'
+import { useVoiceChannel } from '@/hooks/useVoiceChannel'
+import type { Channel, User } from '@/types'
+
+interface Props {
+    channel: Channel
+    currentUser: User
+}
+
+/** A room voice channel's entire main-pane content — no text chat here, see MessageController's guard. */
+export function VoiceChannelPanel({ channel, currentUser }: Props) {
+    const { participants, selfMuted, connectionState, isActive, join, leave, toggleMute } =
+        useVoiceChannel('channel', channel.id, currentUser, channel.voice_mode)
+
+    return (
+        <div className="flex-1 flex flex-col items-center justify-center gap-8 p-8">
+            <div className="flex flex-wrap justify-center gap-6">
+                {isActive && (
+                    <div className="flex flex-col items-center gap-2 w-20">
+                        <Avatar user={currentUser} size="lg" />
+                        <span className="text-sm text-text-secondary truncate max-w-full">
+                            {currentUser.display_name} (you){selfMuted ? ' 🔇' : ''}
+                        </span>
+                    </div>
+                )}
+
+                {participants.map((p) => (
+                    <div key={p.userId} className="flex flex-col items-center gap-2 w-20">
+                        <Avatar
+                            user={{ id: p.userId, display_name: p.displayName, avatar_url: p.avatarUrl, username: p.userId, status: 'online' }}
+                            size="lg"
+                        />
+                        <span className="text-sm text-text-secondary truncate max-w-full">
+                            {p.displayName}{p.muted ? ' 🔇' : ''}
+                        </span>
+                    </div>
+                ))}
+            </div>
+
+            {isActive ? (
+                <div className="flex gap-3">
+                    <button
+                        onClick={toggleMute}
+                        className="rounded bg-surface-500 hover:bg-surface-400 px-4 py-2 text-sm font-medium text-text-primary transition-colors duration-100"
+                    >
+                        {selfMuted ? 'Unmute' : 'Mute'}
+                    </button>
+                    <button
+                        onClick={leave}
+                        className="rounded bg-danger hover:opacity-90 px-4 py-2 text-sm font-medium text-white transition-opacity duration-100"
+                    >
+                        Leave Voice
+                    </button>
+                </div>
+            ) : (
+                <button
+                    onClick={join}
+                    className="rounded bg-brand hover:bg-brand-hover px-6 py-2 text-sm font-medium text-white transition-colors duration-100"
+                >
+                    {connectionState === 'connecting' ? 'Joining…' : 'Join Voice'}
+                </button>
+            )}
+        </div>
+    )
+}
