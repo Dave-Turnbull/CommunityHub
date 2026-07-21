@@ -1,0 +1,47 @@
+{
+    "name": "app/communityhub",
+    "type": "project",
+    "description": "A stripped-down Discord clone",
+    "require": {
+        "php": "^8.3",
+        "inertiajs/inertia-laravel": "^2.0",
+        "laravel/framework": "^13.0",
+        "laravel/reverb": "^1.0",
+        "laravel/sanctum": "^4.0",
+        "league/flysystem-aws-s3-v3": "^3.0"
+    },
+    "require-dev": {
+        "fakerphp/faker": "^1.23",
+        "laravel/pint": "^1.0",
+        "mockery/mockery": "^1.6",
+        "nunomaduro/collision": "^8.1",
+        "phpunit/phpunit": "^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/",
+            "Database\\Factories\\": "database/factories/",
+            "Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "post-autoload-dump": [
+            "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+            "@php artisan package:discover --ansi"
+        ],
+        "test": "@php artisan test"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true,
+        "allow-plugins": { "php-http/discovery": true }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
