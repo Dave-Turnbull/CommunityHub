@@ -1,6 +1,6 @@
 # CommunityHub
 
-A stripped-down Discord clone. Laravel 13 + React 18 + Inertia + Postgres + Redis + Reverb, fully Dockerised.
+A self-hostable chat room server with multiple rooms and channels supported including voice via WebRTC and text chat. Laravel 13 + React 18 + Inertia + Postgres + Redis + Reverb, fully Dockerised.
 
 ## Requirements
 
