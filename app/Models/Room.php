@@ -27,9 +27,36 @@ class Room extends Model
     public function members(): HasMany        { return $this->hasMany(RoomMember::class); }
     public function customEmojis(): HasMany   { return $this->hasMany(CustomEmoji::class); }
     public function invites(): HasMany        { return $this->hasMany(RoomInvite::class); }
+    public function roles(): HasMany          { return $this->hasMany(Role::class)->orderByDesc('position'); }
 
     public function hasMember(string $userId): bool
     {
         return $this->members()->where('user_id', $userId)->exists();
+    }
+
+    /**
+     * Joins $user to this room (idempotent — see RoomMember::firstOrCreate
+     * below, preserving RoomJoinTest's "joining twice doesn't duplicate
+     * membership" guarantee) and assigns the appropriate role: Owner for the
+     * room's creator, otherwise this room's default ("Member") role. The one
+     * place a room membership is ever created — see RoomController::store/
+     * join, RoomInvite::accept.
+     */
+    public function addMember(User $user, bool $asOwner = false): RoomMember
+    {
+        $member = RoomMember::firstOrCreate(
+            ['room_id' => $this->id, 'user_id' => $user->id],
+            ['joined_at' => now()],
+        );
+
+        $role = $asOwner
+            ? $this->roles()->where('is_system', true)->where('is_default', false)->first()
+            : $this->roles()->where('is_default', true)->first();
+
+        if ($role) {
+            RoleAssignment::firstOrCreate(['role_id' => $role->id, 'user_id' => $user->id]);
+        }
+
+        return $member;
     }
 }

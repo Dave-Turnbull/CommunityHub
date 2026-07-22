@@ -50,7 +50,7 @@ docker compose exec vite npx tsc --noEmit     # typecheck the frontend
 App: http://localhost:8000 · Vite: :5173 · Reverb: :8080 · Postgres: :5432 · Redis: :6379
 
 DB boots **empty by design**. Seed only when asked. Seeded logins:
-`alice@example.com` / `password`, `bob@example.com` / `password`.
+`dave@example.com` / `password`, `bove@example.com` / `password`, `peve@example.com` / `password`.
 
 ## Request lifecycle
 
@@ -81,7 +81,12 @@ app/
                                and growing conversations, see Conventions; VoiceIceServersController
                                issues ephemeral STUN/TURN credentials (no resource to authorize
                                beyond auth, see Conventions); VoiceDevicePreferenceController is
-                               index/update keyed on (user, client_id), not just user
+                               index/update keyed on (user, client_id), not just user;
+                               ChannelController (distinct from Web\ChannelController) is
+                               store/update/destroy/reorder — channel CRUD, gated by
+                               ChannelPolicy, see Conventions "Roles & permissions"; RoleController
+                               (distinct from Web\RoleController) is store/update/destroy/
+                               addMember/removeMember for room roles, gated by RolePolicy
     Controller.php            empty abstract base — Laravel ships none by default, keep it
   Http/Middleware/
     HandleInertiaRequests.php shares auth.user, rooms, conversations, flash
@@ -93,18 +98,35 @@ app/
                                in_app override table (only rows that override a default
                                are stored — see Conventions); VoiceDevicePreference is the
                                per-(user, client_id) mic/speaker override table — see
-                               Conventions, "Voice"
+                               Conventions, "Voice"; Role/RolePermission/RoleAssignment are
+                               the RBAC tables — a Role's room_id is nullable (null = global/
+                               instance-wide, applies in every room) — see Conventions
+                               "Roles & permissions"
   Policies/                   authorization seams beyond simple membership checks
                                (RoomPolicy::invite — see Conventions; ConversationPolicy::
                                addParticipants gates the one conversation action with an
                                existing resource to authorize — creation itself has none,
-                               so it's inline validation instead, see Conventions)
+                               so it's inline validation instead, see Conventions;
+                               ChannelPolicy::create/manage and RolePolicy::create/manage
+                               both delegate to PermissionChecker — see Conventions
+                               "Roles & permissions")
+  Providers/
+    ChannelTypeServiceProvider.php  registers every built-in ChannelType against
+                               ChannelTypeRegistry — see Conventions "Channel types"
   Support/                    ChannelFocus — cache-backed "is this user looking at this
                                channel right now" tracker (see Conventions), not a model
-                               (nothing here is persisted to a table, no queue involved)
+                               (nothing here is persisted to a table, no queue involved);
+                               Permission — the enum of grantable permission keys (see
+                               Conventions "Roles & permissions"); PermissionChecker —
+                               resolves "does user X have permission Y in room Z," unioning
+                               room-scoped + global role grants; ChannelTypes/ — the
+                               ChannelType contract + ChannelTypeRegistry + built-in
+                               Text/Voice/AnnouncementChannelType — see Conventions
+                               "Channel types"
 bootstrap/
   app.php                     THE wiring file — routing, middleware groups
-  providers.php               provider list (App\Providers\AppServiceProvider only)
+  providers.php               provider list (App\Providers\AppServiceProvider,
+                               App\Providers\ChannelTypeServiceProvider)
 config/                       hand-written; app.php has NO 'providers' key (see traps).
                                mail.php/services.php only override specific keys — the
                                rest is silently merged from framework defaults (trap #19);
@@ -127,12 +149,19 @@ resources/
   js/
     app.tsx                   Inertia bootstrap + QueryClientProvider
     pages/                    one file per Inertia page (Auth, Channels, DM, Rooms,
-                               Settings, Invite — the invite-accept landing page)
+                               Settings, Invite — the invite-accept landing page);
+                               Rooms/Roles.tsx is the minimal room role-management page
+                               (`GET /rooms/{room}/roles`, gated by can_manage_roles) —
+                               see Conventions "Roles & permissions"
     components/
       chat/                   MessageList, MessageRow, MessageInput
       layout/                 RoomRail (renders the unread badge on the Messages icon —
                                see below; no notification bell/popover anymore),
-                               ChannelSidebar, DMSidebar, MemberList, UserPanel, InviteModal
+                               ChannelSidebar (also renders the "+ Add Channel"/"🛡 Roles"
+                               affordances when can_manage_channels/can_manage_roles are
+                               true), DMSidebar, MemberList, UserPanel, InviteModal,
+                               CreateChannelModal (channel-type picker sourced from
+                               services/channelTypes.tsx's KNOWN_CHANNEL_TYPES)
       messages/               NotificationFeed — the category-filterable notification list
                                that replaced the notification bell, renders inside
                                DM/Index.tsx (the "Messages" hub) below the conversation list;
@@ -170,7 +199,9 @@ resources/
                                — also observes its roster, so participants show up before you
                                join), useVoiceChannelRoster (read-only "who's in this call,"
                                used by ChannelSidebar; see Conventions "Voice")
-    services/                 api.ts (axios), echo.ts (Reverb subscriptions — also
+    services/                 api.ts (axios), channelTypes.tsx (the frontend channel-type
+                               registry — mirrors App\Support\ChannelTypes on the backend;
+                               see Conventions "Channel types"), echo.ts (Reverb subscriptions — also
                                joinVoiceChannel(), see Conventions "Voice"),
                                voicePresence.ts (ref-counted shared subscription to a voice
                                scope's presence roster — the thing both
@@ -185,7 +216,10 @@ resources/
                                connection — never RTCPeerConnection/MediaStream objects,
                                those live in webrtc.ts), useVoiceRoster (shared, anyone-can-
                                read "who's in this scope's call" — see Conventions "Voice")
-    types/                    all shared interfaces + Inertia page-prop types
+    types/                    all shared interfaces + Inertia page-prop types; `ChannelType`
+                               is `string` (open-ended, not a closed union — see Conventions
+                               "Channel types"); `PermissionKey`/`Role` mirror the backend
+                               RBAC types, see Conventions "Roles & permissions"
     test/setup.ts             Vitest setup — @testing-library/jest-dom matchers
     **/*.test.ts(x)           co-located next to the file under test
 routes/
@@ -198,10 +232,11 @@ routes/
 tests/
   Feature/                    one folder per feature area (Auth, Rooms, Channels,
                                Messages, Conversations, Reactions, Uploads, Settings,
-                               Broadcasting, Invites, Notifications, Voice) — routes through
-                               the real HTTP kernel
+                               Broadcasting, Invites, Notifications, Voice, Roles) — routes
+                               through the real HTTP kernel
   Unit/Models/                pure model logic (reactionSummary, hasMember, sharesRoomWith, ...)
-  Unit/Support/               ChannelFocus cache-logic tests — no HTTP, no RefreshDatabase
+  Unit/Support/               ChannelFocus cache-logic tests — no HTTP, no RefreshDatabase;
+                               PermissionCheckerTest — pure Role/RoleAssignment logic
 phpunit.xml                   sqlite :memory:, null broadcaster, sync queue — see Testing
 vitest.config.ts              jsdom env, '@' alias, loads resources/js/test/setup.ts;
                                pool: 'threads' — see trap #25
@@ -346,14 +381,218 @@ vitest.config.ts              jsdom env, '@' alias, loads resources/js/test/setu
   the two independently re-fetch/re-subscribe on every page (matches the existing
   presence-subscription pattern's redundancy, e.g. `subscribePresence()` — not worth
   deduplicating given how cheap this is).
-- **`RoomPolicy::invite` is the one seam for "who can act on a room" beyond plain
-  membership.** There's no roles/permissions system yet — it currently just checks
-  `Room::hasMember`, same as everything else — but it exists specifically so a
-  future roles system only has to change this one method instead of every
-  controller that currently does `abort_unless($room->hasMember(...), 403)`
-  inline. If you add another action that should eventually be role-gated (kick,
-  ban, manage channels, ...), add it here as a new policy method rather than an
-  inline membership check.
+- **`RoomPolicy::invite` predates the RBAC system below and still checks plain
+  `Room::hasMember`, not `PermissionChecker`.** It was originally documented as
+  "the one seam a future roles system replaces" — that roles system now exists
+  (see "Roles & permissions"), but migrating `invite` onto it (e.g. gating on a
+  new `Permission::ManageMembers` grant instead of bare membership) wasn't part
+  of the change that introduced RBAC and is a reasonable, self-contained
+  follow-up rather than something to do as a drive-by. `ChannelPolicy::create`/
+  `manage` and `RolePolicy::create`/`manage` are what actually route through
+  `PermissionChecker` today — see below. If you add another action that should
+  be permission-gated, add a policy method that calls `PermissionChecker::can()`
+  (see `ChannelPolicy` for the shape) rather than an inline `Room::hasMember`
+  check.
+- **Roles & permissions.** `Role` (`roles` table) is scoped by a nullable
+  `room_id` — a room-scoped role (`room_id` set) only grants inside that one
+  room; a **global/instance-wide** role (`room_id` null) grants in every room.
+  Both scopes share the same table/model — there's no separate "global role"
+  class. `RolePermission` (`role_permissions`) is a flat `(role_id,
+  permission)` pivot, `permission` a `Permission` enum value stored as a plain
+  string (no DB enum — same shape as `channels.type`, trap #3/#30's pattern).
+  `RoleAssignment` (`role_assignments`) is `(role_id, user_id)` — a user can
+  hold multiple roles, room-scoped and global at once, and their effective
+  permissions are the union of all of them. `App\Support\Permission` is the
+  closed enum of grantable keys (`Administrator`, `ManageRoom`, `ManageRoles`,
+  `ManageChannels`, `ManageMembers`, `BanMembers`, `ManageMessages`,
+  `ManageEmojis`) — **adding a case here does not make it do anything**, same
+  trap as a `NotificationPreference` category with no producer (trap #24): only
+  `Administrator` (implies every permission, checked first) and
+  `ManageChannels`/`ManageRoles` have a real enforcement site today
+  (`ChannelPolicy`/`RolePolicy`). `ManageMembers`/`BanMembers`/`ManageMessages`/
+  `ManageEmojis` are declared for a future milestone's schema stability but are
+  currently inert — don't assume granting one does anything without checking
+  for an actual `PermissionChecker::can()` call site first.
+  `App\Support\PermissionChecker::can(User $user, Permission $permission, ?Room
+  $room = null)` is the one place this union is computed: it loads every role
+  assigned to `$user` that is either global or (when `$room` is passed)
+  scoped to that room, and returns true if any of them has `Administrator` or
+  the requested permission. Passing no `$room` deliberately excludes
+  room-scoped roles entirely — a "global-only" check means instance-wide
+  staff, not "staff of no particular room." Every room gets two `is_system:
+  true` roles, seeded together by `Role::seedDefaultsForRoom(Room $room)`:
+  **Owner** (`Administrator`, assigned to the room's creator, entirely
+  read-only — no name/position/permission edit, undeletable) and **Member**
+  (`is_default: true`, auto-assigned to every other joiner; its name/position
+  are fixed, but — unlike Owner — its **permissions are editable per room**,
+  e.g. granting it `manage_messages` so every member gets that permission by
+  default, and a user *can* now be removed from it via `Api\RoleController::
+  removeMember`, subject to the "every user needs ≥1 role" rule below;
+  `administrator` is the one permission it can never hold, see the hierarchy
+  bullet below). **Roles are freely combinable — Owner holding Member too
+  (or any other role) is valid, not a bug** — nothing enforces exclusivity,
+  and `PermissionChecker::can()`'s union means holding a "lesser" role
+  alongside a "greater" one never downgrades anything. Only the *starting*
+  assignment is exclusive-by-construction: `Room::addMember(User $user, bool $asOwner = false):
+  RoomMember` is now the **one place** a room membership is ever created —
+  it's idempotent (`RoomMember::firstOrCreate`, preserving `RoomJoinTest`'s
+  "joining twice doesn't duplicate" guarantee) and also assigns the Owner or
+  default role in the same call. `RoomController::store`/`join` and
+  `RoomInvite::accept()` all call it instead of constructing a `RoomMember`
+  directly — don't reintroduce a raw `RoomMember::create()` at a new
+  room-joining call site, it would skip role assignment entirely.
+  `RoomFactory::configure()` seeds the two roles (not membership) via
+  `afterCreating`, matching the factory's pre-existing "structure only" shape.
+  A one-way data migration (`2024_01_01_000017_backfill_room_roles.php`) gave
+  every room that existed before this system landed the same Owner/Member
+  roles, using raw `DB::table(...)` rather than Eloquent models (see trap #34
+  for why this needed a manual `php artisan migrate` against the dev DB the
+  first time). **Channel and role management are the two things actually
+  gated today:** `ChannelPolicy::create(User, Room)` / `manage(User, Channel)`
+  and `RolePolicy::create(User, Room)` / `manage(User, Role)` all delegate to
+  `PermissionChecker::can()` (`ManageChannels`/`ManageRoles` respectively).
+  `Api\ChannelController` (store/update/destroy/reorder, under
+  `/api/rooms/{room}/channels` and `/api/channels/{channel}`) and
+  `Api\RoleController` (store/update/destroy/addMember/removeMember, under
+  `/api/rooms/{room}/roles` and `/api/roles/{role}`) are the enforcement
+  points. `Web\ChannelController::show` computes `can_manage_channels`/
+  `can_manage_roles` via `Gate::allows(...)` and passes them as
+  `ChannelPageProps` booleans — `ChannelSidebar`'s "+ Add Channel"/"🛡 Roles"
+  affordances are purely driven by these two props, there's no separate
+  frontend permission check. `Web\RoleController::index`
+  (`GET /rooms/{room}/roles`) is the minimal room role-management page
+  (`Rooms/Roles.tsx`) — create a role, toggle its permissions, assign/remove
+  members; there is **no UI for global/instance-wide roles yet** (see
+  `## Planned work`) even though the backend fully supports them — a global
+  role can only be created via `tinker`/a seeder today.
+- **Roles are ranked in a per-room hierarchy — Owner top, custom roles by
+  `position` in the middle, Member bottom — and a role can only manage
+  another role strictly below its own rank.** `Role::rank(): float`
+  (`app/Models/Role.php`) is the single source of truth: Owner (`is_system &&
+  !is_default`) always returns `INF`, Member (`is_default`) always returns
+  `-INF`, regardless of their stored `position` — only custom roles rank by
+  their actual `position` value. This pinning is deliberate: Owner/Member
+  never need renumbering as custom roles are added, deleted, or reordered
+  around them, and a pile of custom roles can never numerically "overtake"
+  Owner by accident. `Role::outranks(Role $other): bool` is `$this->rank() >
+  $other->rank()` — **strict**, so a role can never manage a role at its own
+  rank, including itself (this is what stops a custom role with
+  `ManageRoles` from self-escalating by editing its own permission set).
+  `Role::highestRoleFor(User $user, Room $room): ?Role` finds the
+  highest-ranked room-scoped role a user holds there (a user can hold
+  multiple; only the max counts) — this only considers room-scoped roles, a
+  global role's rank in this per-room hierarchy is deliberately undefined
+  for now (see below). `RolePolicy::manage` is where this actually gates
+  something: beyond the base `ManageRoles` permission check, the actor's
+  `highestRoleFor()` must `outranks()` the target role — so `ManageRoles`
+  alone is necessary but not sufficient. This is why granting `ManageRoles`
+  to Member doesn't let every member manage every role: their highest role
+  (Member, `-INF`) never outranks anything, not even another Member holder
+  acting on Member itself (equal rank). `Api\RoleController::reorder`
+  (`PATCH /api/rooms/{room}/roles/reorder`) is the one deliberate exception —
+  it requires the *complete* set of a room's custom role ids (so positions
+  never collide with a role left out), which necessarily includes the
+  actor's own role, so it checks `Role::outranksOrEquals()` (`>=`, not `>`)
+  instead of `RolePolicy::manage`'s `outranks()`. Repositioning a role
+  relative to itself or a tied peer doesn't grant it anything the way
+  editing its permissions would, so the looser comparison is safe there and
+  nowhere else — don't reuse `outranksOrEquals()` for anything that changes
+  a role's capabilities.
+  **`administrator` can only ever be granted to Owner** — `Api\RoleController
+  ::update` rejects (422) any `permissions` payload containing it for every
+  other role, custom or Member; `Rooms/Roles.tsx` mirrors this by rendering
+  the Administrator checkbox `disabled` (and force-unchecked) everywhere
+  except Owner's fully-read-only card. This isn't a permission the hierarchy
+  could otherwise gate — a second role holding `Administrator` would create
+  an ambiguous second "top" of the hierarchy, which `Role::rank()`'s design
+  doesn't allow for.
+  **Adding or removing a user from a role is gated by a *second*, separate
+  hierarchy comparison — actor vs. the *target user*, not actor vs. the
+  role.** `RolePolicy::manage(User $user, Role $role, ?User $target = null)`
+  takes an optional third argument for exactly this: `Api\RoleController::
+  addMember`/`removeMember` call `Gate::authorize('manage', [$role,
+  $target])` (Laravel's "extra context" array form — resolves `RolePolicy`
+  from `$role`, calls `manage($user, $role, $target)`), while `update`/
+  `destroy` still call it with just `$role` (`$target` stays null, skipping
+  this check). When `$target` is given, `$user`'s `highestRoleFor()` must
+  also `outranks()` — strict `>`, same as the role-vs-actor check — *the
+  target's* `highestRoleFor()`. Both checks must pass: outranking the role
+  isn't enough if the target user themselves outranks (or ties) the actor.
+  **Exempted when `$target` is the actor themselves** (`$target->isNot($user)`
+  guards it) — without this, nobody could ever act on their own membership in
+  any role, since a user's highest role always ties with itself; the
+  exemption only skips the target-vs-actor comparison, not the (still
+  strict) role-vs-actor one, so a user still can't remove themselves from
+  their own *highest* role (that read as "managing a role at your own
+  rank," blocked the same as anyone else's, see `## Planned work` if a
+  self-demotion feature is ever wanted) — they *can* remove themselves from
+  a lower secondary role they also hold.
+  **Every user needs at least one role in a room, but the enforcement isn't
+  symmetric — losing your last *custom* role falls back to Member
+  automatically; losing Member while it's your last role is still a hard
+  block.** `Api\RoleController::removeMember` checks whether the target
+  holds any other room-scoped role; if not, `$role->is_default` decides what
+  happens next — `true` (removing Member itself) aborts 422 ("Member is
+  their last one"), `false` (removing a custom role) instead
+  `RoleAssignment::firstOrCreate`s them onto the room's default role before
+  proceeding with the removal, so the request still succeeds (200) and they
+  land on Member rather than being deleted out of the room's role structure
+  entirely. `destroy` (deleting a custom role outright — Owner/Member can
+  never be deleted, that's the pre-existing `is_system` check) applies the
+  same fallback to *every* assignee who'd otherwise be orphaned, before the
+  role itself is deleted (`role_assignments` cascade-deletes with it, so
+  this has to run first). Both use `RoleAssignment::firstOrCreate`
+  specifically (not `create`) so a user who already holds Member alongside
+  the role being removed/deleted doesn't get a duplicate row. **This
+  replaced an earlier, blunter version of this rule** that blocked *any*
+  removal that would leave someone role-less, Member included — see
+  `Rooms/Roles.tsx`'s intro paragraph for the current, user-facing framing.
+  On the frontend, `RoleCard`'s `removeMember`, the page's `removeRole`
+  (role deletion), *and* `moveCustomRole` (reorder) all follow their
+  optimistic local update with `router.reload({ only: ['room'] })` (the same
+  pattern `AddParticipantsModal` uses) — the component's `roles` state is
+  otherwise seeded once from the `room` prop and won't see server-side
+  side effects otherwise; a `useEffect` re-syncs `roles` from `room.roles`
+  whenever that prop changes for exactly this reason. Reorder needs the same
+  treatment for a different reason than remove/delete: shifting positions
+  can change which roles the viewer outranks (and therefore `can_manage`)
+  even for roles that weren't directly touched, and the optimistic update
+  only patches `position`, not that derived comparison.
+  **`can_manage` has to be computed and returned by *every* endpoint whose
+  response the frontend trusts for it, not just `Web\RoleController::index`'s
+  initial page load — a real bug, not just a hypothetical.**
+  `Api\RoleController::store` originally returned the newly created role
+  without it at all; `RoleCard` reads `role.can_manage ?? false`, so a
+  role you'd just created rendered as fully unmanageable (no add-member UI,
+  no save-permissions button) until a full page refresh re-fetched it
+  correctly from `index`. Fixed by computing `Gate::allows('manage', $role)`
+  in `store` too, the same way `index` does per role. If a future endpoint
+  starts returning `Role` JSON the frontend renders without going through
+  `index` first, it needs this same treatment — grep for
+  `setAttribute('can_manage'` before assuming a `Role` response has it.
+  **Known, unfixed edge case:** `store`'s new-role `position` is always
+  "current max custom position + 1," with no regard for the creator's own
+  rank — a custom-role holder ranked below some other existing custom role
+  can create a role that ends up outranking themselves, and `can_manage`
+  (correctly) reports `false` on their own new role. `RoleManagementTest::
+  test_a_low_ranked_creator_may_not_be_able_to_manage_the_role_they_just_created`
+  documents this as current behavior rather than silently leaving it
+  undiscovered — fixing it means deciding what should happen instead (cap
+  the position below the creator's rank? place it just under their highest
+  role instead of the global max? what if their `ManageRoles` grant comes
+  from a role with no finite rank, e.g. Member?), which wants an explicit
+  product decision, not an improvised fix.
+  **This hierarchy is intentionally more than role-management needs today —
+  it's also the seam a future per-user moderation feature (kick, ban, ...)
+  hooks into, and its comparison semantics will differ from *both* checks
+  above.** Once built, a moderation action like kick/ban should compare the
+  actor's `highestRoleFor()` against the target user's using `rank() >=`
+  (not `outranks()`'s strict `>`, and not the same as `addMember`/
+  `removeMember`'s target-user check either) — a Member with a granted
+  `ban_members` permission acting on another Member (same rank) should
+  succeed; only acting on someone in a *strictly higher* role should be
+  blocked. Don't reuse `RolePolicy::manage`'s exact shape for it — see
+  `## Planned work`.
 - **`InviteModal` surfaces two independent invite mechanisms** — don't conflate
   them:
   - A **shareable link** built from `Room.invite_code` (pre-existing;
@@ -409,37 +648,82 @@ vitest.config.ts              jsdom env, '@' alias, loads resources/js/test/setu
   newly-added users — `DirectMessageNotificationData.message_id` is nullable for
   exactly this case (an "added to group" notification has no associated message).
 
+### Channel types
+
+- **Every channel type — built-in or future-plugin — implements the
+  `App\Support\ChannelTypes\ChannelType` contract and is registered against
+  `ChannelTypeRegistry`; nothing in the app hardcodes `'voice'`/`'text'`
+  string checks anymore.** `channels.type` is still a free string with no DB
+  enum (trap #3/#30's shape unchanged), but capability now comes from the
+  registry instead of an array constant. The contract:
+  `key()`/`label()`/`icon()`/`order()`/`isTextCapable()`/`isVoiceCapable()`/
+  `defaultSettings()`. Built-ins (`TextChannelType`, `VoiceChannelType`,
+  `AnnouncementChannelType`, `app/Support/ChannelTypes/`) are registered in
+  `App\Providers\ChannelTypeServiceProvider::boot()` — a **dedicated**
+  provider (not folded into `AppServiceProvider`) specifically so a future
+  runtime-installed channel-type plugin has an established pattern to
+  imitate: register its own `ChannelType` implementation from its own
+  provider, and nothing else in the app needs to change. `Channel::
+  isTextCapable()` now reads `ChannelTypeRegistry::for($this->type)?->
+  isTextCapable() ?? false` — an unregistered type (a future plugin type
+  before its provider has booted, or a genuinely unknown one) is
+  text-incapable by default, same guarantee as before, still what
+  `MessageController::indexChannel`/`storeChannel` (422 if not) and
+  `ChannelController::show` (`messages` prop `null`, not an empty paginator)
+  check. `routes/channels.php`'s `voice.channel.{id}` broadcast-auth gate
+  checks `ChannelTypeRegistry::for($channel->type)?->isVoiceCapable()`
+  instead of a literal `$channel->type !== 'voice'` string comparison.
+  `RoomController::show`/`join` land on the room's first *text-capable*
+  channel via `ChannelTypeRegistry::textCapableTypeKeys()` rather than a
+  hardcoded `where('type', 'text')` — a subtle behavior widening now that
+  channels are deletable: an `announcement` channel can become "the room's
+  landing channel" if `general` is later deleted, where only `text` counted
+  before.
+  **Frontend mirror:** `resources/js/services/channelTypes.tsx` is the single
+  registry replacing the old scattered `TEXT_CAPABLE_CHANNEL_TYPES`/
+  `CHANNEL_TYPE_ICONS`/`CHANNEL_TYPE_ORDER`/`CHANNEL_TYPE_LABELS` exports and
+  `Channels/Show.tsx`'s local `CUSTOM_CHANNEL_PANELS` map — one
+  `ChannelTypeDescriptor` per type (`key/label/icon/order/isTextCapable`,
+  plus optional `Panel` and `SidebarItem` components). `Channels/Show.tsx`
+  looks up `channelTypeDescriptor(channel.type).Panel` to swap in a type's
+  entire main-pane content (today: `voice → VoiceChannelPanel`);
+  `ChannelSidebar` looks up `.SidebarItem` per channel instead of a hardcoded
+  `c.type === 'voice' ? <VoiceChannelSidebarItem/> : <Link/>` ternary — both
+  fall back to the default (chat UI / plain link) when a type has no
+  descriptor entry, and **any type still renders**, appended after known
+  ones with an auto-generated label (`"drawing"` → `"Drawing Channels"`),
+  the same non-vanishing guarantee as before. `ChannelType` (`types/index.ts`)
+  is `string`, not a closed union — a closed union would contradict the
+  extensibility goal; the registry, not the type system, is where a type's
+  existence is declared. `KNOWN_CHANNEL_TYPES` (the static, hand-mirrored
+  list backing `CreateChannelModal`'s type picker) has **no backend
+  round-trip** this milestone — see "Channel management" below.
+- **Channel management: room admins can create/update/delete/reorder
+  channels of any registered type, gated by the `manage_channels` permission
+  — see "Roles & permissions."** `Api\ChannelController` (`POST /api/rooms/
+  {room}/channels`, `PATCH`/`DELETE /api/channels/{channel}`, `PATCH
+  /api/rooms/{room}/channels/reorder`) validates `type` against
+  `ChannelTypeRegistry::registeredTypeKeys()` and seeds `channels.settings`
+  (a nullable JSON column, `array`-cast on `Channel`) from the type's
+  `defaultSettings()` when none is supplied. `channels.settings` is
+  deliberately a flexible JSON bucket rather than a new column per type —
+  the plugin-forward seam for type-specific config (e.g. a future drawing
+  channel's canvas size) without a migration every time a type is added; all
+  built-ins return `[]` today, this is a no-op proving the seam exists. A
+  channel's `type` is immutable after creation (not accepted by `update`) —
+  sidesteps "what happens to existing messages if a text channel becomes
+  voice" entirely rather than half-solving it. `ChannelSidebar`'s "+ Add
+  Channel" button (opens `CreateChannelModal`) and `RoomController::store`'s
+  two hardcoded `Channel::create()` calls (still the only way a room's
+  *default* `general`/`Voice Chat` channels come into existence) now
+  coexist: default scaffolding at room creation, ad-hoc creation after.
+  `RoomController::show`/`join`'s "first channel" lookup is covered above.
+
 ### Voice
 
-- **Room channel types are open-ended by design — `channel.type` is a free string
-  (no DB enum), and text-capability is an allow-list, not a per-type special case.**
-  `Channel::TEXT_CAPABLE_TYPES` (currently `['text', 'announcement']`) is the single
-  source of truth for "does this channel type have a message thread"; a type not
-  listed there — `voice` today, and any future custom type (a drawing channel, a
-  music channel, ...) — gets no text chat *by default*, with no code change needed
-  when a new type is introduced. `Channel::isTextCapable()` is what
-  `MessageController::indexChannel`/`storeChannel` check (422 if not) and what
-  `ChannelController::show` checks before querying messages at all (`messages` prop is
-  `null`, not an empty paginator, for a non-text-capable channel —
-  `ChannelPageProps.messages: PaginatedMessages | null` on the frontend, mirrored by
-  `isTextCapableChannelType()`/`TEXT_CAPABLE_CHANNEL_TYPES` in `types/index.ts`).
-  `Channels/Show.tsx` dispatches its main-pane content through a small
-  `CUSTOM_CHANNEL_PANELS: Partial<Record<ChannelType, Component>>` registry keyed by
-  type (today: `voice → VoiceChannelPanel`) rather than an `if (isVoice)` branch — a
-  new non-text-capable type adds one entry there instead of another special case.
-  `ChannelSidebar` groups channels by type using `CHANNEL_TYPE_ORDER`/
-  `channelTypeLabel()`/`channelIcon()` (`types/index.ts`): known types get their
-  preferred order/label/icon, and **any other type present still renders**, appended
-  after the known ones with an auto-generated label (`"Drawing" → "Drawing
-  Channels"`) — a channel of an unlisted type used to simply vanish from the sidebar
-  before this, which would have been a bad failure mode for a scalable type system.
-  `RoomController::store` creates both a `general` (text) and a `Voice Chat` (voice)
-  channel for every new room — there's still no general "create an additional
-  channel" endpoint/UI (that's deferred, same as before this feature), so this is the
-  only way a voice channel comes into existence today; a future custom-type channel
-  would need the same kind of seeding, or the deferred create-channel UI, to exist at
-  all. **Conversations (dm/group) are explicitly not part of this — they stay the one
-  hybrid text+voice type, see the next bullet.**
+- **Conversations (dm/group) are explicitly not part of the channel-type
+  system above — they stay the one hybrid text+voice type, see the next
+  bullet.**
 - **Every dm/group `Conversation` always has voice available — it's a first-class,
   always-on capability, not an optional add-on and not a separate entity.** "Hybrid
   channel" (text + voice together) describes every `Conversation`, not a new model —
@@ -887,8 +1171,8 @@ of proving a change works and needs nothing installed:
     same shape as trap #3/#22's "looks safe by convention, isn't actually enforced."
     Before voice channels existed, nothing stopped `MessageController` from accepting
     a message against any channel regardless of type. Fixed as an allow-list, not a
-    per-type special case — see `Channel::TEXT_CAPABLE_TYPES`/`isTextCapable()` in
-    Conventions "Voice" — specifically so the *next* new channel type (a drawing
+    per-type special case — see `Channel::isTextCapable()`/`ChannelTypeRegistry` in
+    Conventions "Channel types" — specifically so the *next* new channel type (a drawing
     channel, a music channel, ...) is text-incapable by default too, without anyone
     needing to remember to add another `abort_if($channel->type === '...')` check for
     it. Any new message-adjacent or channel-adjacent endpoint should still assume
@@ -943,6 +1227,59 @@ of proving a change works and needs nothing installed:
     watching), it must key off `useVoiceRoster` (populated only by `call-state`) or
     `useVoice.selfParticipant` (this client's own status) — never off a presence
     channel's raw member list.
+34. **New migration files don't apply themselves to the already-running dev
+    Postgres volume.** `docker/app/entrypoint.sh` runs `php artisan migrate`
+    once, at container boot — adding a migration to the repo afterward (the
+    normal case while iterating) does nothing to the live `app` container
+    until something explicitly re-runs it. This bit while adding the RBAC
+    tables (`roles`/`role_permissions`/`role_assignments`): the backend test
+    suite never noticed (`RefreshDatabase` runs every migration fresh against
+    sqlite `:memory:` on every test run), but a manual-curl verification
+    session against the real dev stack 500'd with `SQLSTATE[42P01]: Undefined
+    table: relation "roles" does not exist` until `docker compose exec app php
+    artisan migrate --force` was run by hand. If a change adds migrations and
+    manual/live verification (see `## Testing`) is part of proving it works,
+    run `docker compose exec app php artisan migrate --force` first — don't
+    assume the dev DB is already current just because the test suite passes.
+35. **`Rule::exists(...)->where($column, false)` silently never matches —
+    pass `0`, not `false`.** Laravel's `Exists`/`Unique` validation rules
+    aren't a query builder call; `where()` just appends to an array that
+    later gets serialized into the classic `exists:table,column,field,"value"`
+    string form via `DatabaseRule::formatWheres()`, which runs each value
+    through `str_replace('"', '""', $value)` — and PHP's `str_replace`
+    coerces a `bool` subject to a *string* first, so `false` becomes `''`
+    (empty string) before it ever reaches SQL. The rule silently compiles to
+    `is_system,""` instead of `is_system,"0"`, which matches nothing, so
+    every id "fails" the exists check with a generic "is invalid" validation
+    error — no exception, no hint the `where()` clause itself is the problem.
+    Hit this in `Api\RoleController::reorder`'s `Rule::exists('roles',
+    'id')->where('is_system', false)`, which rejected every valid custom
+    role id. Fixed by passing `0` instead of `false`. If a `Rule::exists()`/
+    `Rule::unique()` `->where()` clause targets a boolean column, use `0`/`1`
+    — never a literal `false`/`true` — and if a `Rule::exists()` check is
+    unexpectedly failing for rows that plainly satisfy every condition,
+    suspect a boolean `where()` value before suspecting the data.
+36. **`app.tsx`'s Inertia page resolver eagerly globs every `.tsx` file under
+    `pages/`, including test files, and executes them all in the browser at
+    startup.** `resolve: (name) => import.meta.glob('./pages/**/*.tsx', {
+    eager: true })` — `eager: true` means Vite doesn't just register these
+    modules, it *runs* them immediately as part of the app bundle. A
+    `*.test.tsx` file co-located inside `pages/` (this repo's own convention
+    — see `## Testing`) matches the same glob and gets bundled and executed
+    in the real browser, not just in Vitest. Its `vi.mock(...)` calls throw
+    `Error: Vitest mocker was not initialized in this environment` at page
+    load, because Vitest's mocking runtime doesn't exist outside the test
+    runner — this broke every page in the browser (not just the page the
+    test file was for) the moment `pages/Rooms/Roles.test.tsx` was added,
+    since the glob (and the crash) runs once for the whole app, not per-page.
+    Fixed with a second, negated glob pattern: `import.meta.glob(['./pages/
+    **/*.tsx', '!./pages/**/*.test.tsx'], { eager: true })` — Vite's
+    `import.meta.glob` treats a `!`-prefixed pattern in the array as an
+    exclusion. This bug was latent from the start (nothing under `pages/`
+    happened to be named `*.test.tsx` before), so if a future `.test.tsx`
+    file needs to live somewhere this exclusion doesn't cover — a subfolder
+    glob pattern changes, for instance — re-verify this still holds rather
+    than assuming it does.
 
 ## Adding things — quick recipes
 
@@ -959,10 +1296,30 @@ of proving a change works and needs nothing installed:
 - **New feature, either side:** add the Feature/Vitest test alongside it (see
   `## Testing`), then update the relevant section of this file — directory
   map, conventions, or traps — in the same change.
-- **New action that should eventually be role-gated:** add a method to the
-  relevant model's `app/Policies/*Policy.php` (see `RoomPolicy::invite`) rather
-  than an inline `abort_unless($room->hasMember(...))` — gives a future roles
-  system one place to change instead of every controller.
+- **New permission-gated action:** if the action needs a genuinely new
+  permission, add a case to `App\Support\Permission` (and know that adding
+  the case alone does nothing — see the "Roles & permissions" trap-#24-shaped
+  warning in Conventions). Add a policy method (`create`/`manage`, or a new
+  ability name) that calls `PermissionChecker::can($user, Permission::Whatever,
+  $room)` — see `ChannelPolicy`/`RolePolicy` for the shape — rather than an
+  inline `abort_unless($room->hasMember(...))`. Call it via `Gate::authorize(...)`
+  in the controller. If the frontend needs to conditionally show the
+  affordance (a button, a menu item), compute a `can_xxx` boolean server-side
+  with `Gate::allows(...)` and thread it through as an Inertia prop — see
+  `ChannelPageProps.can_manage_channels`/`can_manage_roles` — don't
+  re-implement the permission check in JS.
+- **New built-in channel type:** implement `App\Support\ChannelTypes\ChannelType`
+  (see `TextChannelType`/`VoiceChannelType`/`AnnouncementChannelType` for the
+  shape) and register it in `ChannelTypeServiceProvider::boot()`. If it's
+  text-incapable and/or voice-capable, that's just the interface methods —
+  no separate allow-list to update. On the frontend, add a matching entry to
+  `services/channelTypes.tsx`'s `REGISTRY` (icon/label/order, plus `Panel`/
+  `SidebarItem` components if it needs custom main-pane/sidebar rendering —
+  omit either to fall back to the default chat UI / plain link) and to
+  `KNOWN_CHANNEL_TYPES`'s ordering falls out automatically. This is the
+  code-level extensibility mechanism available today — see `## Planned work`
+  for the larger, not-yet-built runtime-installable plugin version of this
+  same idea, and don't start building that without an explicit go-ahead.
 - **New outbound email:** add a `Mailable` in `app/Mail/` (`implements
   ShouldQueue` so it goes through the `worker` container, not the request), a
   plain Blade view in `resources/views/emails/`, send via
@@ -1048,6 +1405,56 @@ mechanism this app doesn't have yet) and deserves its own explicit go-ahead.
   channel-scoped, so it should check `App\Support\ChannelFocus::isFocused()` before
   notifying, the same way `room_message` does; see the Conventions bullet on
   `ChannelFocus` and the "New notification category" recipe.
+- **Instance-wide (global) role management UI.** The `Role`/`RolePermission`/
+  `RoleAssignment` schema and `PermissionChecker` (see Conventions "Roles &
+  permissions") already fully support a `room_id: null` global role that
+  grants a permission in every room — this was built deliberately, not as a
+  stub — but there is no UI to create or assign one yet, nor a concept of who
+  is allowed to create one (an instance-admin/superuser notion this app
+  doesn't have at all today). Needs: a "who can manage global roles" seam
+  (almost certainly *not* `PermissionChecker` itself, since that would be
+  circular — a global role granting the permission to create global roles),
+  a settings surface outside any single room's context, and a decision on
+  bootstrapping the very first instance admin (env var? first registered
+  user? a console command?).
+- **More `Permission` cases getting real enforcement, and the user-hierarchy
+  comparison they need.** `ManageMembers` (kick), `BanMembers`,
+  `ManageMessages` (delete/pin others' messages), and `ManageEmojis` are
+  declared in `App\Support\Permission` but have no `PermissionChecker::can()`
+  call site anywhere yet — see the Conventions warning on this being the
+  same shape of trap as an inert notification category (trap #24). Each
+  needs the actual moderation feature built (a kick endpoint, a ban list,
+  etc.), not just a permission check — the enum case existing is not
+  evidence the feature exists. When one of these lands, it should gate on
+  the *target user's* highest role, not just a bare permission check: an
+  actor's `Role::highestRoleFor()` compared against the target user's via
+  `rank() >=` (equal ranks allowed — a Member with `ban_members` can act on
+  another Member — only a *strictly higher*-ranked target is protected).
+  This is intentionally a different comparison than either existing use of
+  `RolePolicy::manage`'s `outranks()` — the role-vs-actor check (strict `>`,
+  blocks self/equal) and the `addMember`/`removeMember` target-user check
+  (also strict `>`, but exempts the actor acting on themselves) — see the
+  Conventions "Roles & permissions" bullet for all three side by side before
+  building a fourth. Don't reuse `RolePolicy::manage`'s shape for this
+  without picking the right one deliberately.
+- **Runtime-installable channel-type plugins.** `App\Support\ChannelTypes\
+  ChannelType` + `ChannelTypeRegistry` (see Conventions "Channel types") is
+  deliberately built as a **code-level** extension point — a new type ships
+  in a normal deploy via its own service provider, no code in this app needs
+  to change. Making that installable by a room owner *without* a deploy is a
+  much bigger, security-sensitive undertaking that this milestone explicitly
+  did not attempt: executing arbitrary third-party PHP inside the main
+  Laravel process for every request touching that room is a serious
+  multi-tenancy/RCE risk, and a frontend plugin bundle needs a real sandbox
+  (a restricted-API iframe + postMessage bridge, not a raw dynamic
+  `import()`) rather than trusting arbitrary JS with full DOM/network access.
+  If this is ever built, look hard at an out-of-process contract instead of
+  in-process code execution — e.g. the plugin author runs their own backend
+  and CommunityHub calls declared webhook-style endpoints for
+  server-side logic (similar to a Slack/Discord bot), while the frontend
+  half loads in a sandboxed iframe with a typed SDK object instead of raw
+  page access. This needs its own explicit design discussion before any code
+  — don't start it as a side effect of touching `ChannelTypeRegistry`.
 
 ## Env vars that matter
 

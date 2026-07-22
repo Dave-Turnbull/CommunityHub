@@ -1,43 +1,10 @@
 export type UserStatus  = 'online' | 'idle' | 'dnd' | 'offline'
-export type ChannelType = 'text' | 'voice' | 'announcement'
 
-// Mirrors Channel::TEXT_CAPABLE_TYPES on the backend — an allow-list, not a
-// "voice has no chat" special case, so a future custom channel type (e.g. a
-// drawing or music channel) is text-incapable by default until explicitly
-// added here and to the backend const together.
-export const TEXT_CAPABLE_CHANNEL_TYPES: ChannelType[] = ['text', 'announcement']
-
-export function isTextCapableChannelType(type: ChannelType): boolean {
-    return TEXT_CAPABLE_CHANNEL_TYPES.includes(type)
-}
-
-// Single place to add a new channel type's sidebar/header glyph — falls back
-// to '#' for a type not listed here yet, rather than every call site needing
-// its own default.
-const CHANNEL_TYPE_ICONS: Partial<Record<ChannelType, string>> = {
-    voice: '🔊',
-    announcement: '📢',
-}
-
-export function channelIcon(type: ChannelType): string {
-    return CHANNEL_TYPE_ICONS[type] ?? '#'
-}
-
-// Preferred display order + label for known types. A type not listed here
-// (a future custom type) still renders in ChannelSidebar — it's appended
-// after the known ones with an auto-generated label — rather than silently
-// disappearing because nobody added it to a fixed groups list.
-export const CHANNEL_TYPE_ORDER: ChannelType[] = ['announcement', 'text', 'voice']
-
-const CHANNEL_TYPE_LABELS: Partial<Record<ChannelType, string>> = {
-    announcement: 'Announcements',
-    text: 'Text Channels',
-    voice: 'Voice Channels',
-}
-
-export function channelTypeLabel(type: ChannelType): string {
-    return CHANNEL_TYPE_LABELS[type] ?? `${type.charAt(0).toUpperCase()}${type.slice(1)} Channels`
-}
+// Open-ended on purpose — runtime types come from the channel-type registry
+// (services/channelTypes.tsx), which mirrors App\Support\ChannelTypes on the
+// backend. A closed union here would contradict the goal of channel types
+// being pluggable without a frontend code change to widen it.
+export type ChannelType = string
 
 // auto: prefer P2P, fall back to TURN relay per-pair when direct fails (just
 // normal ICE candidate priority given both STUN+TURN servers are supplied).
@@ -77,6 +44,50 @@ export interface RoomMember {
     user?: User
 }
 
+// Mirrors App\Support\Permission on the backend — see PermissionChecker.
+// Administrator implies every other permission in whatever scope the role
+// applies (room-scoped, or global/instance-wide when role.room_id is null).
+export type PermissionKey =
+    | 'administrator'
+    | 'manage_room'
+    | 'manage_roles'
+    | 'manage_channels'
+    | 'manage_members'
+    | 'ban_members'
+    | 'manage_messages'
+    | 'manage_emojis'
+
+export const PERMISSION_LABELS: Record<PermissionKey, string> = {
+    administrator: 'Administrator',
+    manage_room: 'Manage Room',
+    manage_roles: 'Manage Roles',
+    manage_channels: 'Manage Channels',
+    manage_members: 'Manage Members',
+    ban_members: 'Ban Members',
+    manage_messages: 'Manage Messages',
+    manage_emojis: 'Manage Emojis',
+}
+
+export interface RolePermission {
+    id: string
+    permission: PermissionKey
+}
+
+export interface Role {
+    id: string
+    room_id: string | null
+    name: string
+    position: number
+    is_default: boolean
+    is_system: boolean
+    role_permissions?: RolePermission[]
+    users?: User[]
+    // Gate::allows('manage', $role) for the current viewer — hierarchy-aware
+    // (Role::outranks), not just "has manage_roles somewhere" — see
+    // RolePolicy::manage. Only present on Rooms/Roles.tsx's room.roles.
+    can_manage?: boolean
+}
+
 export interface Channel {
     id: string
     room_id: string
@@ -85,6 +96,7 @@ export interface Channel {
     topic: string | null
     position: number
     voice_mode: VoiceConnectionMode
+    settings: Record<string, unknown> | null
 }
 
 export interface Attachment {
@@ -266,9 +278,17 @@ export interface ChannelPageProps extends SharedProps {
     // null for a voice channel — see ChannelController::show, MessageController's
     // matching guard against posting/listing text into a voice channel.
     messages: PaginatedMessages | null
+    // Gate::allows('create', [Channel::class, $room]) / [Role::class, $room] —
+    // drives ChannelSidebar's "+ Add Channel" button and "Roles" link.
+    can_manage_channels: boolean
+    can_manage_roles: boolean
 }
 
 export interface DMPageProps extends SharedProps {
     conversation: Conversation
     messages: PaginatedMessages
+}
+
+export interface RoomRolesPageProps extends SharedProps {
+    room: Room & { roles: Role[]; members: RoomMember[] }
 }

@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Models\Channel;
+use App\Models\Role;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -48,11 +50,13 @@ class ChannelController extends Controller
         }
 
         return Inertia::render('Channels/Show', [
-            'room'          => $room,
-            'channel'       => $channel,
-            'members'       => $members,
-            'custom_emojis' => $room->customEmojis,
-            'messages'      => $messages,
+            'room'                 => $room,
+            'channel'              => $channel,
+            'members'              => $members,
+            'custom_emojis'        => $room->customEmojis,
+            'messages'             => $messages,
+            'can_manage_channels'  => Gate::allows('create', [Channel::class, $room]),
+            'can_manage_roles'     => Gate::allows('create', [Role::class, $room]),
         ]);
     }
 }

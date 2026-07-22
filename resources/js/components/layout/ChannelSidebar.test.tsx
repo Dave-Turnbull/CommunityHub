@@ -7,8 +7,10 @@ import { useVoiceRoster } from '@/stores'
 import type { Channel, Room, User } from '@/types'
 
 vi.mock('@inertiajs/react', () => ({
-    Link: forwardRef<HTMLAnchorElement, { href: string; className?: string; children: ReactNode }>(
-        ({ href, className, children }, ref) => <a href={href} className={className} ref={ref}>{children}</a>
+    Link: forwardRef<HTMLAnchorElement, { href: string; className?: string; title?: string; children: ReactNode }>(
+        ({ href, className, title, children }, ref) => (
+            <a href={href} className={className} title={title} ref={ref}>{children}</a>
+        )
     ),
 }))
 
@@ -27,7 +29,7 @@ const user: User = {
 
 const channel = (overrides: Partial<Channel>): Channel => ({
     id: 'chan-1', room_id: 'room-1', name: 'general', type: 'text', topic: null, position: 0,
-    voice_mode: 'auto', ...overrides,
+    voice_mode: 'auto', settings: null, ...overrides,
 })
 
 describe('ChannelSidebar', () => {
@@ -91,5 +93,28 @@ describe('ChannelSidebar', () => {
         render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-voice" currentUser={user} />)
 
         expect(screen.queryByLabelText('Muted')).not.toBeInTheDocument()
+    })
+
+    it('hides the add-channel button and roles link by default', () => {
+        render(<ChannelSidebar room={room} channels={[]} activeChannelId="" currentUser={user} />)
+
+        expect(screen.queryByTitle('Add channel')).not.toBeInTheDocument()
+        expect(screen.queryByTitle('Manage roles')).not.toBeInTheDocument()
+    })
+
+    it('shows the add-channel button when canManageChannels is true', () => {
+        render(
+            <ChannelSidebar room={room} channels={[]} activeChannelId="" currentUser={user} canManageChannels />
+        )
+
+        expect(screen.getByTitle('Add channel')).toBeInTheDocument()
+    })
+
+    it('shows a roles link to /rooms/{id}/roles when canManageRoles is true', () => {
+        render(
+            <ChannelSidebar room={room} channels={[]} activeChannelId="" currentUser={user} canManageRoles />
+        )
+
+        expect(screen.getByTitle('Manage roles')).toHaveAttribute('href', '/rooms/room-1/roles')
     })
 })

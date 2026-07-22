@@ -6,8 +6,8 @@ use App\Models\Channel;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\Message;
+use App\Models\Role;
 use App\Models\Room;
-use App\Models\RoomMember;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -18,20 +18,28 @@ class DatabaseSeeder extends Seeder
     {
         // ── Users ────────────────────────────────────────────────────────
         $alice = User::create([
-            'username'     => 'alice',
-            'display_name' => 'Alice',
-            'email'        => 'alice@example.com',
+            'username'     => 'dave',
+            'display_name' => 'Dave',
+            'email'        => 'dave@example.com',
             'password'     => Hash::make('password'),
             'status'       => 'online',
             'bio'          => 'Building cool things',
         ]);
 
         $bob = User::create([
-            'username'     => 'bob',
-            'display_name' => 'Bob',
-            'email'        => 'bob@example.com',
+            'username'     => 'bove',
+            'display_name' => 'Bove',
+            'email'        => 'bove@example.com',
             'password'     => Hash::make('password'),
             'status'       => 'idle',
+        ]);
+
+        $peve = User::create([
+            'username'     => 'peve',
+            'display_name' => 'Peve',
+            'email'        => 'peve@example.com',
+            'password'     => Hash::make('password'),
+            'status'       => 'offline',
         ]);
 
         // ── Room ─────────────────────────────────────────────────────────
@@ -41,13 +49,10 @@ class DatabaseSeeder extends Seeder
             'invite_code' => 'demo1234',
         ]);
 
-        foreach ([$alice, $bob] as $user) {
-            RoomMember::create([
-                'room_id'   => $room->id,
-                'user_id'   => $user->id,
-                'joined_at' => now(),
-            ]);
-        }
+        Role::seedDefaultsForRoom($room);
+        $room->addMember($alice, asOwner: true);
+        $room->addMember($bob);
+        $room->addMember($peve);
 
         // ── Channels ─────────────────────────────────────────────────────
         $general = Channel::create([

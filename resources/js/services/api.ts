@@ -2,11 +2,14 @@ import axios from 'axios'
 import type {
     AppNotification,
     Attachment,
+    Channel,
     Conversation,
     IceServer,
     Message,
     NotificationPreference,
     PaginatedMessages,
+    PermissionKey,
+    Role,
     RoomInvite,
     User,
     VoiceDevicePreference,
@@ -98,6 +101,63 @@ export async function uploadFile(file: File): Promise<Attachment> {
         headers: { 'Content-Type': 'multipart/form-data' },
     })
     return data
+}
+
+// ── Channels ─────────────────────────────────────────────────────────────
+
+export async function createChannel(
+    roomId: string,
+    payload: { name: string; type: string; topic?: string }
+): Promise<Channel> {
+    const { data } = await axios.post(`/api/rooms/${roomId}/channels`, payload)
+    return data
+}
+
+export async function updateChannel(
+    channelId: string,
+    payload: Partial<{ name: string; topic: string | null; is_nsfw: boolean; slow_mode_seconds: number }>
+): Promise<Channel> {
+    const { data } = await axios.patch(`/api/channels/${channelId}`, payload)
+    return data
+}
+
+export async function deleteChannel(channelId: string): Promise<void> {
+    await axios.delete(`/api/channels/${channelId}`)
+}
+
+export async function reorderChannels(roomId: string, channelIds: string[]): Promise<void> {
+    await axios.patch(`/api/rooms/${roomId}/channels/reorder`, { channel_ids: channelIds })
+}
+
+// ── Roles ────────────────────────────────────────────────────────────────
+
+export async function createRole(roomId: string, name: string): Promise<Role> {
+    const { data } = await axios.post(`/api/rooms/${roomId}/roles`, { name })
+    return data
+}
+
+export async function updateRole(
+    roleId: string,
+    payload: Partial<{ name: string; position: number; permissions: PermissionKey[] }>
+): Promise<Role> {
+    const { data } = await axios.patch(`/api/roles/${roleId}`, payload)
+    return data
+}
+
+export async function deleteRole(roleId: string): Promise<void> {
+    await axios.delete(`/api/roles/${roleId}`)
+}
+
+export async function reorderRoles(roomId: string, roleIds: string[]): Promise<void> {
+    await axios.patch(`/api/rooms/${roomId}/roles/reorder`, { role_ids: roleIds })
+}
+
+export async function addRoleMember(roleId: string, userId: string): Promise<void> {
+    await axios.post(`/api/roles/${roleId}/members`, { user_id: userId })
+}
+
+export async function removeRoleMember(roleId: string, userId: string): Promise<void> {
+    await axios.delete(`/api/roles/${roleId}/members/${userId}`)
 }
 
 // ── Room invites ─────────────────────────────────────────────────────────

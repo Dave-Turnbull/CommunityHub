@@ -1,11 +1,13 @@
 <?php
 
+use App\Http\Controllers\Api\ChannelController;
 use App\Http\Controllers\Api\ChannelFocusController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\NotificationPreferenceController;
 use App\Http\Controllers\Api\ReactionController;
+use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\RoomInviteController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\VoiceDevicePreferenceController;
@@ -22,6 +24,20 @@ Route::middleware('auth')->group(function () {
     // Channel focus — see App\Support\ChannelFocus
     Route::post('/channels/{channel}/focus', [ChannelFocusController::class, 'focus']);
     Route::post('/channels/{channel}/blur',  [ChannelFocusController::class, 'blur']);
+
+    // Channel CRUD — gated by ChannelPolicy (manage_channels permission), see PermissionChecker
+    Route::post('/rooms/{room}/channels',           [ChannelController::class, 'store']);
+    Route::patch('/channels/{channel}',              [ChannelController::class, 'update']);
+    Route::delete('/channels/{channel}',             [ChannelController::class, 'destroy']);
+    Route::patch('/rooms/{room}/channels/reorder',  [ChannelController::class, 'reorder']);
+
+    // Roles — gated by RolePolicy (manage_roles permission + hierarchy, see PermissionChecker/Role::outranks)
+    Route::post('/rooms/{room}/roles',                       [RoleController::class, 'store']);
+    Route::patch('/rooms/{room}/roles/reorder',              [RoleController::class, 'reorder']);
+    Route::patch('/roles/{role}',                             [RoleController::class, 'update']);
+    Route::delete('/roles/{role}',                            [RoleController::class, 'destroy']);
+    Route::post('/roles/{role}/members',                      [RoleController::class, 'addMember']);
+    Route::delete('/roles/{role}/members/{user}',             [RoleController::class, 'removeMember']);
 
     Route::get('/conversations/{conversation}/messages',  [MessageController::class, 'indexConversation']);
     Route::post('/conversations/{conversation}/messages', [MessageController::class, 'storeConversation']);

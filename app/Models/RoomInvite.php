@@ -39,10 +39,7 @@ class RoomInvite extends Model
     /** Joins $user to the invited room, marking this invite accepted. */
     public function accept(User $user): Room
     {
-        RoomMember::firstOrCreate(
-            ['room_id' => $this->room_id, 'user_id' => $user->id],
-            ['joined_at' => now()],
-        );
+        $this->room->addMember($user);
 
         $this->update(['accepted_at' => now()]);
 

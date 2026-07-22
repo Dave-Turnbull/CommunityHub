@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ChannelTypes\ChannelTypeRegistry;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,19 +14,9 @@ class Channel extends Model
     use HasFactory, HasUuids;
 
     protected $fillable = [
-        'room_id', 'name', 'type', 'topic',
+        'room_id', 'name', 'type', 'topic', 'settings',
         'position', 'is_nsfw', 'slow_mode_seconds', 'last_message_id', 'voice_mode',
     ];
-
-    /**
-     * `type` has no DB-level enum constraint (see CLAUDE.md trap #3/#30's
-     * shape) — this is the allow-list of types that carry a text chat.
-     * Everything else (voice today; future custom types like a drawing or
-     * music channel) is text-incapable by default, so a new type never
-     * silently gets a message endpoint just because nobody thought to add a
-     * guard for it — see MessageController/ChannelController.
-     */
-    public const TEXT_CAPABLE_TYPES = ['text', 'announcement'];
 
     protected function casts(): array
     {
@@ -33,14 +24,24 @@ class Channel extends Model
             'is_nsfw'           => 'boolean',
             'position'          => 'integer',
             'slow_mode_seconds' => 'integer',
+            'settings'          => 'array',
         ];
     }
 
     public function room(): BelongsTo      { return $this->belongsTo(Room::class); }
     public function messages(): HasMany   { return $this->hasMany(Message::class); }
 
+    /**
+     * `type` has no DB-level enum constraint (see CLAUDE.md trap #3/#30's
+     * shape) — capability now comes from ChannelTypeRegistry (see
+     * app/Support/ChannelTypes), not a hardcoded array here. A type with no
+     * registered descriptor (an unrecognized/future-plugin type before its
+     * provider has registered it) is text-incapable by default, so it never
+     * silently gets a message endpoint just because nobody thought to add a
+     * guard for it — see MessageController/ChannelController.
+     */
     public function isTextCapable(): bool
     {
-        return in_array($this->type, self::TEXT_CAPABLE_TYPES, true);
+        return ChannelTypeRegistry::for($this->type)?->isTextCapable() ?? false;
     }
 }

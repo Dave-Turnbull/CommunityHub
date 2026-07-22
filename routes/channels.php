@@ -2,6 +2,7 @@
 
 use App\Models\Channel;
 use App\Models\Conversation;
+use App\Support\ChannelTypes\ChannelTypeRegistry;
 use Illuminate\Support\Facades\Broadcast;
 
 // Room text channel — presence channel so we get a member list for free.
@@ -34,7 +35,8 @@ Broadcast::channel('conversation.{conversationId}', function ($user, string $con
 // reach PHP, so there's no separate signal-sending route to authorize here.
 Broadcast::channel('voice.channel.{channelId}', function ($user, string $channelId) {
     $channel = Channel::find($channelId);
-    if (! $channel || $channel->type !== 'voice' || ! $channel->room->hasMember($user->id)) {
+    $isVoiceCapable = $channel && (ChannelTypeRegistry::for($channel->type)?->isVoiceCapable() ?? false);
+    if (! $channel || ! $isVoiceCapable || ! $channel->room->hasMember($user->id)) {
         return false;
     }
 

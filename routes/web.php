@@ -4,6 +4,7 @@ use App\Http\Controllers\Web\AuthController;
 use App\Http\Controllers\Web\ChannelController;
 use App\Http\Controllers\Web\ConversationController;
 use App\Http\Controllers\Web\InviteController;
+use App\Http\Controllers\Web\RoleController;
 use App\Http\Controllers\Web\RoomController;
 use App\Http\Controllers\Web\SettingsController;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +29,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/rooms/create', [RoomController::class, 'create']);
     Route::post('/rooms',       [RoomController::class, 'store']);
     Route::get('/rooms/{room}', [RoomController::class, 'show']);
+    Route::get('/rooms/{room}/roles', [RoleController::class, 'index']);
     Route::get('/join/{code}', [RoomController::class, 'join']);
 
     Route::get('/channels/{channel}',           [ChannelController::class, 'show']);
