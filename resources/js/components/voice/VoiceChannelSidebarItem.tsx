@@ -2,7 +2,6 @@ import { Link } from '@inertiajs/react'
 import { clsx } from 'clsx'
 import { Avatar } from '@/components/ui/Avatar'
 import { useVoiceChannelRoster } from '@/hooks/useVoiceChannelRoster'
-import { channelIcon } from '@/types'
 import type { Channel } from '@/types'
 
 interface Props {
@@ -25,7 +24,7 @@ export function VoiceChannelSidebarItem({ channel, active }: Props) {
                         : 'text-text-secondary hover:text-text-primary hover:bg-surface-500',
                 )}
             >
-                <span className="text-text-muted">{channelIcon(channel.type)}</span>
+                <span className="text-text-muted">🔊</span>
                 <span className="truncate">{channel.name}</span>
             </Link>
 

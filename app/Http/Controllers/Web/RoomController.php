@@ -4,8 +4,9 @@ namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Models\Channel;
+use App\Models\Role;
 use App\Models\Room;
-use App\Models\RoomMember;
+use App\Support\ChannelTypes\ChannelTypeRegistry;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -13,12 +14,12 @@ use Inertia\Response;
 
 class RoomController extends Controller
 {
-    /** Redirect straight to the room's first text channel. */
+    /** Redirect straight to the room's first text-capable channel. */
     public function show(Request $request, Room $room): RedirectResponse
     {
         abort_unless($room->hasMember($request->user()->id), 403);
 
-        $first = $room->channels()->where('type', 'text')->first();
+        $first = $room->channels()->whereIn('type', ChannelTypeRegistry::textCapableTypeKeys())->first();
 
         return $first
             ? redirect("/channels/{$first->id}")
@@ -42,11 +43,8 @@ class RoomController extends Controller
             'owner_id' => $request->user()->id,
         ]);
 
-        RoomMember::create([
-            'room_id'   => $room->id,
-            'user_id'   => $request->user()->id,
-            'joined_at' => now(),
-        ]);
+        Role::seedDefaultsForRoom($room);
+        $room->addMember($request->user(), asOwner: true);
 
         // Every new room gets a #general text channel and a default voice channel
         $channel = Channel::create([
@@ -70,15 +68,9 @@ class RoomController extends Controller
     {
         $room = Room::where('invite_code', $code)->firstOrFail();
 
-        if (! $room->hasMember($request->user()->id)) {
-            RoomMember::create([
-                'room_id'   => $room->id,
-                'user_id'   => $request->user()->id,
-                'joined_at' => now(),
-            ]);
-        }
+        $room->addMember($request->user());
 
-        $first = $room->channels()->where('type', 'text')->first();
+        $first = $room->channels()->whereIn('type', ChannelTypeRegistry::textCapableTypeKeys())->first();
 
         return redirect($first ? "/channels/{$first->id}" : '/');
     }

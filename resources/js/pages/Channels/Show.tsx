@@ -1,33 +1,24 @@
 import { useEffect, useState } from 'react'
-import type { ComponentType } from 'react'
 import { Head } from '@inertiajs/react'
 import { RoomRail } from '@/components/layout/RoomRail'
 import { ChannelSidebar } from '@/components/layout/ChannelSidebar'
 import { MemberList } from '@/components/layout/MemberList'
 import { MessageList } from '@/components/chat/MessageList'
 import { MessageInput } from '@/components/chat/MessageInput'
-import { VoiceChannelPanel } from '@/components/voice/VoiceChannelPanel'
 import { useChat } from '@/hooks/useChat'
 import { useChannelFocus } from '@/hooks/useChannelFocus'
 import { useUI } from '@/stores'
 import { subscribePresence } from '@/services/echo'
-import { channelIcon, isTextCapableChannelType } from '@/types'
-import type { Channel, ChannelPageProps, ChannelType, Message, User } from '@/types'
-
-// Non-text-capable channel types render their own main-pane content instead
-// of the chat UI — add a new type's panel here (and to
-// Channel::TEXT_CAPABLE_TYPES on the backend if it should stay text-incapable
-// too); nothing else in this file needs to change.
-const CUSTOM_CHANNEL_PANELS: Partial<Record<ChannelType, ComponentType<{ channel: Channel; currentUser: User }>>> = {
-    voice: VoiceChannelPanel,
-}
+import { channelTypeDescriptor, isTextCapableChannelType } from '@/services/channelTypes'
+import type { ChannelPageProps, Message } from '@/types'
 
 export default function ChannelShow({
-    auth, rooms, room, channel, members, messages: initial,
+    auth, rooms, room, channel, members, messages: initial, can_manage_channels, can_manage_roles,
 }: ChannelPageProps) {
     const [replyTo, setReplyTo] = useState<Message | null>(null)
     const isTextCapable = isTextCapableChannelType(channel.type)
-    const CustomPanel = CUSTOM_CHANNEL_PANELS[channel.type]
+    const descriptor = channelTypeDescriptor(channel.type)
+    const CustomPanel = descriptor.Panel
 
     const { memberListOpen, toggleMemberList } = useUI()
 
@@ -47,7 +38,7 @@ export default function ChannelShow({
 
     return (
         <>
-            <Head title={`${channelIcon(channel.type)} ${channel.name}`} />
+            <Head title={`${descriptor.icon} ${channel.name}`} />
 
             <div className="flex flex-col h-screen">
                 <RoomRail rooms={rooms} currentUserId={auth.user.id} activeRoomId={room.id} />
@@ -58,11 +49,13 @@ export default function ChannelShow({
                         channels={room.channels ?? []}
                         activeChannelId={channel.id}
                         currentUser={auth.user}
+                        canManageChannels={can_manage_channels}
+                        canManageRoles={can_manage_roles}
                     />
 
                     <main className="flex-1 flex flex-col bg-surface-600 min-w-0">
                         <header className="h-12 px-4 flex items-center gap-3 border-b border-surface-800 flex-shrink-0">
-                            <span className="text-text-muted font-bold text-lg">{channelIcon(channel.type)}</span>
+                            <span className="text-text-muted font-bold text-lg">{descriptor.icon}</span>
                             <span className="font-semibold text-text-primary">{channel.name}</span>
 
                             {channel.topic && (

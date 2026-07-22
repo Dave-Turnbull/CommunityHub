@@ -8,8 +8,9 @@ use App\Models\User;
 class RoomPolicy
 {
     /**
-     * Whether $user can invite people into $room. Membership-only for now;
-     * this is the single seam a future roles/permissions system replaces.
+     * Whether $user can invite people into $room. Still membership-only —
+     * predates PermissionChecker/Role (see CLAUDE.md's "Roles & permissions"
+     * convention) and hasn't been migrated onto it yet.
      */
     public function invite(User $user, Room $room): bool
     {
