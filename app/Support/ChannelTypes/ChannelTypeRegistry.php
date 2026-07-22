@@ -2,13 +2,15 @@
 
 namespace App\Support\ChannelTypes;
 
+use App\Support\Capabilities\FeatureRegistry;
+
 /**
- * Single source of truth for "what channel types exist and what can they
- * do" — replaces the old Channel::TEXT_CAPABLE_TYPES array constant and the
- * literal `$channel->type !== 'voice'` check in routes/channels.php. Built-in
- * types are registered in ChannelTypeServiceProvider::boot(); a future
- * runtime-installed plugin would call register() from its own provider the
- * same way.
+ * Single source of truth for "what channel types exist and what capabilities
+ * do they request" — replaces the old Channel::TEXT_CAPABLE_TYPES array
+ * constant and the literal `$channel->type !== 'voice'` check in
+ * routes/channels.php. Built-in types are registered in
+ * ChannelTypeServiceProvider::boot(); a future runtime-installed plugin
+ * would call register() from its own provider the same way.
  */
 class ChannelTypeRegistry
 {
@@ -37,16 +39,38 @@ class ChannelTypeRegistry
         return array_keys(static::$types);
     }
 
-    /** @return string[] */
-    public static function textCapableTypeKeys(): array
+    /**
+     * The flat, resolved set of atomic capability keys a type grants — e.g.
+     * ['text.read', 'text.send_text', ...] for a type that requested
+     * ['text.all']. Empty for an unregistered type or one with no requested
+     * capabilities — never throws, unlike FeatureRegistry::resolveGrants()
+     * itself (a type's own capabilities() list is expected to be valid by
+     * the time it's registered; see the boot-time validation test).
+     *
+     * @return string[]
+     */
+    public static function capabilitiesFor(string $typeKey): array
     {
-        return array_keys(array_filter(static::$types, fn (ChannelType $t) => $t->isTextCapable()));
+        $type = static::for($typeKey);
+        if (! $type) {
+            return [];
+        }
+
+        return FeatureRegistry::resolveGrants($type->capabilities());
     }
 
-    /** @return string[] */
-    public static function voiceCapableTypeKeys(): array
+    public static function hasCapability(string $typeKey, string $capability): bool
     {
-        return array_keys(array_filter(static::$types, fn (ChannelType $t) => $t->isVoiceCapable()));
+        return in_array($capability, static::capabilitiesFor($typeKey), true);
+    }
+
+    /** Every registered type key that's been granted $capability — e.g. every type with 'text.read'. */
+    public static function typeKeysWithCapability(string $capability): array
+    {
+        return array_keys(array_filter(
+            static::$types,
+            fn (ChannelType $t) => static::hasCapability($t->key(), $capability)
+        ));
     }
 
     /** Test-only: clears the registry so a test can register a throwaway type without leaking into others. */

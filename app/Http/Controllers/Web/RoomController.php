@@ -19,7 +19,7 @@ class RoomController extends Controller
     {
         abort_unless($room->hasMember($request->user()->id), 403);
 
-        $first = $room->channels()->whereIn('type', ChannelTypeRegistry::textCapableTypeKeys())->first();
+        $first = $room->channels()->whereIn('type', ChannelTypeRegistry::typeKeysWithCapability('text.read'))->first();
 
         return $first
             ? redirect("/channels/{$first->id}")
@@ -70,7 +70,7 @@ class RoomController extends Controller
 
         $room->addMember($request->user());
 
-        $first = $room->channels()->whereIn('type', ChannelTypeRegistry::textCapableTypeKeys())->first();
+        $first = $room->channels()->whereIn('type', ChannelTypeRegistry::typeKeysWithCapability('text.read'))->first();
 
         return redirect($first ? "/channels/{$first->id}" : '/');
     }

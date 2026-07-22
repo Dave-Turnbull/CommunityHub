@@ -22,12 +22,12 @@ class ChannelTypeRegistryTest extends TestCase
 
     public function test_built_in_types_report_the_expected_capabilities(): void
     {
-        $this->assertTrue(ChannelTypeRegistry::for('text')->isTextCapable());
-        $this->assertTrue(ChannelTypeRegistry::for('announcement')->isTextCapable());
-        $this->assertFalse(ChannelTypeRegistry::for('voice')->isTextCapable());
+        $this->assertTrue(ChannelTypeRegistry::hasCapability('text', 'text.read'));
+        $this->assertTrue(ChannelTypeRegistry::hasCapability('announcement', 'text.read'));
+        $this->assertFalse(ChannelTypeRegistry::hasCapability('voice', 'text.read'));
 
-        $this->assertTrue(ChannelTypeRegistry::for('voice')->isVoiceCapable());
-        $this->assertFalse(ChannelTypeRegistry::for('text')->isVoiceCapable());
+        $this->assertTrue(ChannelTypeRegistry::hasCapability('voice', 'voice.join'));
+        $this->assertFalse(ChannelTypeRegistry::hasCapability('text', 'voice.join'));
     }
 
     public function test_an_unregistered_type_is_not_text_capable(): void

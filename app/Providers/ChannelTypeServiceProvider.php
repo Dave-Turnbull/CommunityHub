@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Support\ChannelTypes\AnnouncementChannelType;
 use App\Support\ChannelTypes\ChannelTypeRegistry;
+use App\Support\ChannelTypes\HybridConversationType;
 use App\Support\ChannelTypes\TextChannelType;
 use App\Support\ChannelTypes\VoiceChannelType;
 use Illuminate\Support\ServiceProvider;
@@ -22,5 +23,6 @@ class ChannelTypeServiceProvider extends ServiceProvider
         ChannelTypeRegistry::register(new TextChannelType());
         ChannelTypeRegistry::register(new VoiceChannelType());
         ChannelTypeRegistry::register(new AnnouncementChannelType());
+        ChannelTypeRegistry::register(new HybridConversationType());
     }
 }
