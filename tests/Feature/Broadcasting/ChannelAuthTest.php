@@ -93,6 +93,33 @@ class ChannelAuthTest extends TestCase
         $response->assertForbidden();
     }
 
+    public function test_a_room_member_can_authorize_the_room_private_channel(): void
+    {
+        $room = Room::factory()->create();
+        $user = User::factory()->create();
+        RoomMember::factory()->for($room)->for($user)->create();
+
+        $response = $this->actingAs($user)->postJson('/broadcasting/auth', [
+            'channel_name' => "private-room.{$room->id}",
+            'socket_id'    => '1234.5678',
+        ]);
+
+        $response->assertOk();
+    }
+
+    public function test_a_non_member_cannot_authorize_the_room_private_channel(): void
+    {
+        $room = Room::factory()->create();
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->postJson('/broadcasting/auth', [
+            'channel_name' => "private-room.{$room->id}",
+            'socket_id'    => '1234.5678',
+        ]);
+
+        $response->assertForbidden();
+    }
+
     public function test_a_user_can_authorize_their_own_private_channel(): void
     {
         $user = User::factory()->create();

@@ -71,7 +71,8 @@ axios. There is no REST layer for page navigation — don't add one.
 ```
 app/
   Events/                     ShouldBroadcast events (Message*, ReactionChanged,
-                               NotificationCreated)
+                               NotificationCreated, Channel* — Created/Updated/Deleted, see
+                               Conventions "Channel management")
   Http/Controllers/
     Web/                      Inertia page controllers (return Inertia::render)
     Api/                      JSON controllers (axios targets) — ChannelFocusController
@@ -222,10 +223,13 @@ resources/
                                state, not a Zustand store, see Conventions "Voice"),
                                clientId.ts (localStorage-persisted per-browser-install id)
     stores/                   Zustand: useMessages, usePresence, useUI, useNotifications,
-                               useVoice (the current user's own call state — scope, mute,
-                               connection — never RTCPeerConnection/MediaStream objects,
-                               those live in webrtc.ts), useVoiceRoster (shared, anyone-can-
-                               read "who's in this scope's call" — see Conventions "Voice")
+                               useChannels (a room's channel list, keyed by roomId — kept live
+                               by ChannelCreated/Updated/Deleted broadcasts, see Conventions
+                               "Channel management"), useVoice (the current user's own call
+                               state — scope, mute, connection — never RTCPeerConnection/
+                               MediaStream objects, those live in webrtc.ts), useVoiceRoster
+                               (shared, anyone-can-read "who's in this scope's call" — see
+                               Conventions "Voice")
     types/                    all shared interfaces + Inertia page-prop types; `ChannelType`
                                is `string` (open-ended, not a closed union — see Conventions
                                "Channel types"); `PermissionKey`/`Role` mirror the backend
@@ -236,6 +240,8 @@ routes/
   web.php                     guest + auth Inertia routes
   api.php                     /api/* under auth (session), axios targets
   channels.php                broadcast auth: channel.{id} presence, conversation.{id} private,
+                               room.{id} private (channel create/update/delete broadcasts, no
+                               roster — see Conventions "Channel management"),
                                voice.channel.{id}/voice.conversation.{id} presence (roster +
                                signaling transport for calls — see Conventions "Voice")
   console.php
@@ -808,6 +814,57 @@ vitest.config.ts              jsdom env, '@' alias, loads resources/js/test/setu
   *default* `general`/`Voice Chat` channels come into existence) now
   coexist: default scaffolding at room creation, ad-hoc creation after.
   `RoomController::show`/`join`'s "first channel" lookup is covered above.
+  **The full click-to-visible path, file by file**: `Web\ChannelController::
+  show` (`app/Http/Controllers/Web/ChannelController.php`) computes
+  `can_manage_channels` (via `Gate::allows('create', [Channel::class,
+  $room])`) and passes it as an Inertia prop → `ChannelSidebar`
+  (`resources/js/components/layout/ChannelSidebar.tsx`) only renders the "+"
+  button when that prop is true (a UI convenience — the same `Gate::
+  authorize` call re-runs server-side regardless) and opens
+  `CreateChannelModal` (`resources/js/components/layout/
+  CreateChannelModal.tsx`) → the modal calls `createChannel()`
+  (`resources/js/services/api.ts`, the one place a component is allowed to
+  call axios directly — see the "New /api endpoint" recipe) → `POST /api/
+  rooms/{room}/channels` (routed in `routes/api.php` to `Api\
+  ChannelController::store`, `app/Http/Controllers/Api/ChannelController.php`)
+  re-checks authorization, validates `type` against `ChannelTypeRegistry::
+  registeredTypeKeys()` (rejects a hand-crafted request with a bogus type
+  even if the button was never shown — `app/Support/ChannelTypes/
+  ChannelTypeRegistry.php`), creates the row (`position` = current max + 1,
+  `settings` seeded from the type's `defaultSettings()`), and broadcasts
+  `ChannelCreated` (`app/Events/ChannelCreated.php`) on the room's private
+  channel (see below) → the HTTP response is what makes the channel appear
+  in the *creator's own* tab (`CreateChannelModal`'s `onCreated` callback
+  calls `addChannel()` on the shared `useChannels` Zustand store, `resources/
+  js/stores/index.ts`) — there's no Inertia reload involved — while every
+  *other* room member's tab picks it up from the broadcast instead (next
+  paragraph).
+- **Channel create/update/delete broadcast to the whole room in real time —
+  `room.{roomId}`, a new private channel distinct from `channel.{id}`
+  (per-channel presence) and `voice.channel.{id}` (per-channel voice
+  roster).** `routes/channels.php` gates it on `Room::hasMember`; it carries
+  no roster payload (unlike the presence channels), just the three CRUD
+  events. `Api\ChannelController::store`/`update`/`destroy` each dispatch
+  `ChannelCreated`/`ChannelUpdated`/`ChannelDeleted` (`app/Events/`) with
+  `->toOthers()`, matching the message/reaction broadcasting convention.
+  `ChannelUpdated`/`ChannelDeleted` exist and broadcast even though no
+  frontend UI currently triggers `update`/`destroy` (`updateChannel()`/
+  `deleteChannel()` in `services/api.ts` have no caller yet, same tier as
+  `voice_mode`'s missing edit UI) — the backend endpoints are real and
+  policy-gated, so the realtime propagation needed to be too, not deferred
+  until an edit/delete UI exists. Frontend: `services/echo.ts`'s
+  `subscribeRoomChannels(roomId)` joins `room.{roomId}` and dispatches all
+  three events into `useChannels` (`stores/index.ts`, keyed by `roomId`,
+  same reducer-style shape as `useMessages`, with the same id-based
+  dup-guard on `addChannel`). `ChannelSidebar` seeds `useChannels` from its
+  `channels` prop on mount/room-change (always fresh at that instant — every
+  navigation reloads the page's Inertia props) and calls
+  `subscribeRoomChannels()` alongside it, then reads its channel list from
+  the store instead of local component state — this is what makes another
+  member's sidebar update live instead of only on next navigation, and it
+  replaced `ChannelSidebar`'s old local-optimistic-state hack for the
+  creator's own tab too (the store update from `onCreated`'s `addChannel()`
+  call does the same job, just shared instead of component-local).
 - **What frontend capability-checking can't do — read before adding data to
   a Feature and assuming the frontend guards it.** The backend is the only
   real enforcement boundary. There's currently no frontend equivalent of

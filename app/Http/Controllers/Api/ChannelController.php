@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\ChannelCreated;
+use App\Events\ChannelDeleted;
+use App\Events\ChannelUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\Channel;
 use App\Models\Room;
@@ -34,6 +37,8 @@ class ChannelController extends Controller
             'settings' => $channelType?->defaultSettings() ?? [],
         ]);
 
+        broadcast(new ChannelCreated($channel))->toOthers();
+
         return response()->json($channel, 201);
     }
 
@@ -50,6 +55,8 @@ class ChannelController extends Controller
 
         $channel->update($validated);
 
+        broadcast(new ChannelUpdated($channel))->toOthers();
+
         return response()->json($channel);
     }
 
@@ -57,7 +64,12 @@ class ChannelController extends Controller
     {
         Gate::authorize('manage', $channel);
 
+        $channelId = $channel->id;
+        $roomId = $channel->room_id;
+
         $channel->delete();
+
+        broadcast(new ChannelDeleted($channelId, $roomId))->toOthers();
 
         return response()->json(['deleted' => true]);
     }

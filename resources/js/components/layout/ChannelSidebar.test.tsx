@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { forwardRef } from 'react'
 import type { ReactNode } from 'react'
 import { ChannelSidebar } from '@/components/layout/ChannelSidebar'
-import { useVoiceRoster } from '@/stores'
+import { useChannels, useVoiceRoster } from '@/stores'
 import type { Channel, Room, User } from '@/types'
+
+vi.mock('@/services/echo', () => ({
+    subscribeRoomChannels: vi.fn(() => vi.fn()),
+}))
 
 vi.mock('@inertiajs/react', () => ({
     Link: forwardRef<HTMLAnchorElement, { href: string; className?: string; title?: string; children: ReactNode }>(
@@ -35,6 +39,7 @@ const channel = (overrides: Partial<Channel>): Channel => ({
 describe('ChannelSidebar', () => {
     beforeEach(() => {
         useVoiceRoster.setState({ rosters: {} })
+        useChannels.setState({ channels: {} })
     })
 
     afterEach(() => {
@@ -116,5 +121,29 @@ describe('ChannelSidebar', () => {
         )
 
         expect(screen.getByTitle('Manage roles')).toHaveAttribute('href', '/rooms/room-1/roles')
+    })
+
+    it('reflects a channel added to the shared store by another tab/user (e.g. via ChannelCreated)', () => {
+        const channels: Channel[] = [channel({ id: 'c-text', name: 'general', type: 'text' })]
+
+        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-text" currentUser={user} />)
+
+        act(() => {
+            useChannels.getState().addChannel('room-1', channel({ id: 'c-new', name: 'new-room-channel', type: 'text' }))
+        })
+
+        expect(screen.getByText('new-room-channel')).toBeInTheDocument()
+    })
+
+    it('reflects a channel removed from the shared store by another tab/user (e.g. via ChannelDeleted)', () => {
+        const channels: Channel[] = [channel({ id: 'c-text', name: 'general', type: 'text' })]
+
+        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-text" currentUser={user} />)
+
+        act(() => {
+            useChannels.getState().removeChannel('room-1', 'c-text')
+        })
+
+        expect(screen.queryByText('general')).not.toBeInTheDocument()
     })
 })
