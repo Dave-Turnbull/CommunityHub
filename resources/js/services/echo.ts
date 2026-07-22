@@ -1,7 +1,7 @@
 import Echo from 'laravel-echo'
 import Pusher from 'pusher-js'
-import { useMessages, useNotifications, usePresence } from '@/stores'
-import type { AppNotification, Message, ReactionSummary, UserStatus } from '@/types'
+import { useChannels, useMessages, useNotifications, usePresence } from '@/stores'
+import type { AppNotification, Channel, Message, ReactionSummary, UserStatus } from '@/types'
 
 declare global {
     interface Window { Pusher: typeof Pusher; Echo: Echo<'reverb'> }
@@ -80,6 +80,25 @@ export function joinVoiceChannel(scopeType: 'channel' | 'conversation', scopeId:
     const name = `voice.${scopeType}.${scopeId}`
 
     return { channel: e.join(name), leave: () => e.leave(name) }
+}
+
+/**
+ * Subscribe to a room's channel list — ChannelCreated/ChannelUpdated/
+ * ChannelDeleted, so every room member's sidebar stays live without a page
+ * reload. Private, not presence — nothing here needs a member roster.
+ * Returns a cleanup function.
+ */
+export function subscribeRoomChannels(roomId: string): () => void {
+    const e = getEcho()
+    const store = useChannels.getState()
+    const name = `room.${roomId}`
+
+    e.private(name)
+        .listen('.ChannelCreated', (ev: { channel: Channel }) => store.addChannel(roomId, ev.channel))
+        .listen('.ChannelUpdated', (ev: { channel: Channel }) => store.updateChannel(roomId, ev.channel))
+        .listen('.ChannelDeleted', (ev: { channel_id: string }) => store.removeChannel(roomId, ev.channel_id))
+
+    return () => e.leave(name)
 }
 
 /**

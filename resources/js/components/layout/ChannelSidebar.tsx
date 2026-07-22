@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
 import { Link } from '@inertiajs/react'
 import { InviteModal } from './InviteModal'
 import { UserPanel } from './UserPanel'
 import { CreateChannelModal } from './CreateChannelModal'
 import { channelTypeDescriptor, orderedTypesIn } from '@/services/channelTypes'
+import { subscribeRoomChannels } from '@/services/echo'
+import { useChannels } from '@/stores'
 import type { Channel, Room, User } from '@/types'
 
 interface Props {
@@ -40,9 +42,17 @@ export function ChannelSidebar({
 }: Props) {
     const [inviting, setInviting] = useState(false)
     const [creatingChannel, setCreatingChannel] = useState(false)
-    const [localChannels, setLocalChannels] = useState<Channel[] | null>(null)
 
-    const list = localChannels ?? channels
+    const list = useChannels((s) => s.channels[room.id] ?? channels)
+    const { setChannels, addChannel } = useChannels()
+
+    // Re-seed from the page's fresh `channels` prop on every navigation to
+    // this room, then let subscribeRoomChannels() keep it live from there.
+    useEffect(() => {
+        setChannels(room.id, channels)
+    }, [room.id])
+
+    useEffect(() => subscribeRoomChannels(room.id), [room.id])
 
     return (
         <div className="w-sidebar-channel bg-surface-700 flex flex-col flex-shrink-0">
@@ -84,7 +94,7 @@ export function ChannelSidebar({
                 <CreateChannelModal
                     room={room}
                     onClose={() => setCreatingChannel(false)}
-                    onCreated={(channel) => setLocalChannels([...list, channel])}
+                    onCreated={(channel) => addChannel(room.id, channel)}
                 />
             )}
 

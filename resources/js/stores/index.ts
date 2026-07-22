@@ -1,5 +1,53 @@
 import { create } from 'zustand'
-import type { AppNotification, Message, ReactionSummary, UserStatus, VoiceParticipant } from '@/types'
+import type { AppNotification, Channel, Message, ReactionSummary, UserStatus, VoiceParticipant } from '@/types'
+
+// ── Channels ─────────────────────────────────────────────────────────────
+// Keyed by roomId, mirroring useMessages' scopeId-keyed shape. Seeded from
+// the Inertia page's `room.channels` prop on every page load (always fresh
+// at that moment), then kept live by ChannelCreated/ChannelUpdated/
+// ChannelDeleted broadcasts on the room.{roomId} private channel — see
+// services/echo.ts's subscribeRoomChannels(). The creating/editing/deleting
+// user's own tab updates this store directly from the HTTP response (the
+// broadcast uses ->toOthers(), same convention as useMessages).
+
+interface ChannelStore {
+    channels: Record<string, Channel[]>
+
+    setChannels: (roomId: string, channels: Channel[]) => void
+    addChannel: (roomId: string, channel: Channel) => void
+    updateChannel: (roomId: string, channel: Channel) => void
+    removeChannel: (roomId: string, channelId: string) => void
+}
+
+export const useChannels = create<ChannelStore>((set) => ({
+    channels: {},
+
+    setChannels: (roomId, channels) =>
+        set((s) => ({ channels: { ...s.channels, [roomId]: channels } })),
+
+    addChannel: (roomId, channel) =>
+        set((s) => {
+            const existing = s.channels[roomId] ?? []
+            if (existing.some((c) => c.id === channel.id)) return s
+            return { channels: { ...s.channels, [roomId]: [...existing, channel] } }
+        }),
+
+    updateChannel: (roomId, channel) =>
+        set((s) => ({
+            channels: {
+                ...s.channels,
+                [roomId]: (s.channels[roomId] ?? []).map((c) => (c.id === channel.id ? channel : c)),
+            },
+        })),
+
+    removeChannel: (roomId, channelId) =>
+        set((s) => ({
+            channels: {
+                ...s.channels,
+                [roomId]: (s.channels[roomId] ?? []).filter((c) => c.id !== channelId),
+            },
+        })),
+}))
 
 // ── Messages ─────────────────────────────────────────────────────────────
 // Keyed by scopeId (channelId or conversationId) so multiple chats can

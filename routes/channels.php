@@ -2,6 +2,7 @@
 
 use App\Models\Channel;
 use App\Models\Conversation;
+use App\Models\Room;
 use Illuminate\Support\Facades\Broadcast;
 
 // Room text channel — presence channel so we get a member list for free.
@@ -16,6 +17,16 @@ Broadcast::channel('channel.{channelId}', function ($user, string $channelId) {
         'display_name' => $user->display_name,
         'avatar_url'   => $user->avatar_url,
     ];
+});
+
+// Room-wide channel list — private channel (no roster needed, just create/
+// update/delete broadcasts so every room member's sidebar stays in sync
+// without a page reload). Not presence — unlike channel.{id}, nothing here
+// consumes a member list.
+Broadcast::channel('room.{roomId}', function ($user, string $roomId) {
+    $room = Room::find($roomId);
+
+    return $room && $room->hasMember($user->id);
 });
 
 // DM / group conversation — private channel.

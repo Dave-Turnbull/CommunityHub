@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useMessages, useNotifications, usePresence } from '@/stores'
+import { useChannels, useMessages, useNotifications, usePresence } from '@/stores'
 
 const listeners: Record<string, (event: unknown) => void> = {}
 const hereCallbacks: ((users: unknown[]) => void)[] = []
@@ -48,6 +48,7 @@ describe('echo service', () => {
         useMessages.setState({ messages: {}, typing: {} })
         usePresence.setState({ statuses: {} })
         useNotifications.setState({ notifications: [] })
+        useChannels.setState({ channels: {} })
         for (const key of Object.keys(listeners)) delete listeners[key]
         hereCallbacks.length = 0
         joiningCallbacks.length = 0
@@ -136,5 +137,52 @@ describe('echo service', () => {
         cleanup()
 
         expect(echoInstance.leave).toHaveBeenCalledWith('App.Models.User.user-1')
+    })
+
+    it('subscribeRoomChannels joins the private room channel', async () => {
+        const { subscribeRoomChannels } = await import('@/services/echo')
+
+        subscribeRoomChannels('room-1')
+
+        expect(echoInstance.private).toHaveBeenCalledWith('room.room-1')
+    })
+
+    it('dispatches ChannelCreated into the channel store', async () => {
+        const { subscribeRoomChannels } = await import('@/services/echo')
+        subscribeRoomChannels('room-1')
+
+        const newChannel = { id: 'chan-1', name: 'general' }
+        listeners['.ChannelCreated']({ channel: newChannel })
+
+        expect(useChannels.getState().channels['room-1']).toEqual([newChannel])
+    })
+
+    it('dispatches ChannelUpdated by replacing the channel in the store', async () => {
+        const { subscribeRoomChannels } = await import('@/services/echo')
+        useChannels.getState().setChannels('room-1', [{ id: 'chan-1', name: 'old' } as never])
+        subscribeRoomChannels('room-1')
+
+        listeners['.ChannelUpdated']({ channel: { id: 'chan-1', name: 'new' } })
+
+        expect(useChannels.getState().channels['room-1']).toEqual([{ id: 'chan-1', name: 'new' }])
+    })
+
+    it('dispatches ChannelDeleted by removing the channel from the store', async () => {
+        const { subscribeRoomChannels } = await import('@/services/echo')
+        useChannels.getState().setChannels('room-1', [{ id: 'chan-1', name: 'general' } as never])
+        subscribeRoomChannels('room-1')
+
+        listeners['.ChannelDeleted']({ channel_id: 'chan-1' })
+
+        expect(useChannels.getState().channels['room-1']).toEqual([])
+    })
+
+    it('subscribeRoomChannels returns a cleanup function that leaves the channel', async () => {
+        const { subscribeRoomChannels } = await import('@/services/echo')
+
+        const cleanup = subscribeRoomChannels('room-1')
+        cleanup()
+
+        expect(echoInstance.leave).toHaveBeenCalledWith('room.room-1')
     })
 })

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useMessages, useNotifications, usePresence, useUI, useVoice, useVoiceRoster } from '@/stores'
-import type { AppNotification, Message, VoiceParticipant } from '@/types'
+import { useChannels, useMessages, useNotifications, usePresence, useUI, useVoice, useVoiceRoster } from '@/stores'
+import type { AppNotification, Channel, Message, VoiceParticipant } from '@/types'
 
 const makeMessage = (overrides: Partial<Message> = {}): Message => ({
     id: 'msg-1',
@@ -271,5 +271,54 @@ describe('useVoiceRoster', () => {
         useVoiceRoster.getState().clearRoster('channel.chan-1')
 
         expect(useVoiceRoster.getState().rosters['channel.chan-1']).toBeUndefined()
+    })
+})
+
+const makeChannel = (overrides: Partial<Channel> = {}): Channel => ({
+    id: 'chan-1', room_id: 'room-1', name: 'general', type: 'text', topic: null, position: 0,
+    voice_mode: 'auto', settings: null, ...overrides,
+})
+
+describe('useChannels', () => {
+    beforeEach(() => {
+        useChannels.setState({ channels: {} })
+    })
+
+    it('setChannels seeds the channel list for a room', () => {
+        useChannels.getState().setChannels('room-1', [makeChannel()])
+
+        expect(useChannels.getState().channels['room-1']).toEqual([makeChannel()])
+    })
+
+    it('addChannel appends without touching other rooms', () => {
+        useChannels.getState().setChannels('room-9', [makeChannel({ id: 'other-room-chan' })])
+        useChannels.getState().addChannel('room-1', makeChannel({ id: 'chan-2' }))
+
+        expect(useChannels.getState().channels['room-1']).toEqual([makeChannel({ id: 'chan-2' })])
+        expect(useChannels.getState().channels['room-9']).toEqual([makeChannel({ id: 'other-room-chan' })])
+    })
+
+    it('addChannel is a no-op if the id already exists (dup-guard, matches useMessages.add)', () => {
+        useChannels.getState().setChannels('room-1', [makeChannel({ id: 'chan-1' })])
+        useChannels.getState().addChannel('room-1', makeChannel({ id: 'chan-1', name: 'renamed' }))
+
+        expect(useChannels.getState().channels['room-1']).toEqual([makeChannel({ id: 'chan-1' })])
+    })
+
+    it('updateChannel replaces the matching channel in place', () => {
+        useChannels.getState().setChannels('room-1', [makeChannel({ id: 'chan-1', name: 'old' })])
+        useChannels.getState().updateChannel('room-1', makeChannel({ id: 'chan-1', name: 'new' }))
+
+        expect(useChannels.getState().channels['room-1']).toEqual([makeChannel({ id: 'chan-1', name: 'new' })])
+    })
+
+    it('removeChannel deletes only the matching channel', () => {
+        useChannels.getState().setChannels('room-1', [
+            makeChannel({ id: 'chan-1' }),
+            makeChannel({ id: 'chan-2' }),
+        ])
+        useChannels.getState().removeChannel('room-1', 'chan-1')
+
+        expect(useChannels.getState().channels['room-1']).toEqual([makeChannel({ id: 'chan-2' })])
     })
 })

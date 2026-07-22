@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Channels;
 
+use App\Events\ChannelCreated;
+use App\Events\ChannelDeleted;
+use App\Events\ChannelUpdated;
 use App\Models\Channel;
 use App\Models\Role;
 use App\Models\RoleAssignment;
@@ -10,6 +13,7 @@ use App\Models\RoomMember;
 use App\Models\User;
 use App\Support\Permission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class ChannelCrudTest extends TestCase
@@ -44,6 +48,8 @@ class ChannelCrudTest extends TestCase
 
     public function test_a_user_with_manage_channels_can_create_a_channel(): void
     {
+        Event::fake([ChannelCreated::class]);
+
         $room = Room::factory()->create();
         $user = $this->memberWithManageChannels($room);
 
@@ -54,6 +60,7 @@ class ChannelCrudTest extends TestCase
 
         $response->assertCreated();
         $this->assertDatabaseHas('channels', ['room_id' => $room->id, 'name' => 'new-channel', 'type' => 'text']);
+        Event::assertDispatched(ChannelCreated::class, fn ($e) => $e->channel->room_id === $room->id);
     }
 
     public function test_a_plain_member_cannot_create_a_channel(): void
@@ -97,6 +104,8 @@ class ChannelCrudTest extends TestCase
 
     public function test_a_user_with_manage_channels_can_update_a_channel(): void
     {
+        Event::fake([ChannelUpdated::class]);
+
         $room    = Room::factory()->create();
         $channel = Channel::factory()->for($room)->create(['name' => 'old-name']);
         $user    = $this->memberWithManageChannels($room);
@@ -107,6 +116,7 @@ class ChannelCrudTest extends TestCase
 
         $response->assertOk();
         $this->assertSame('new-name', $channel->fresh()->name);
+        Event::assertDispatched(ChannelUpdated::class, fn ($e) => $e->channel->id === $channel->id);
     }
 
     public function test_a_plain_member_cannot_update_a_channel(): void
@@ -125,6 +135,8 @@ class ChannelCrudTest extends TestCase
 
     public function test_a_user_with_manage_channels_can_delete_a_channel(): void
     {
+        Event::fake([ChannelDeleted::class]);
+
         $room    = Room::factory()->create();
         $channel = Channel::factory()->for($room)->create();
         $user    = $this->memberWithManageChannels($room);
@@ -133,6 +145,8 @@ class ChannelCrudTest extends TestCase
 
         $response->assertOk();
         $this->assertDatabaseMissing('channels', ['id' => $channel->id]);
+        Event::assertDispatched(ChannelDeleted::class,
+            fn ($e) => $e->channelId === $channel->id && $e->roomId === $room->id);
     }
 
     public function test_a_plain_member_cannot_delete_a_channel(): void
