@@ -8,7 +8,6 @@ class AnnouncementChannelType implements ChannelType
     public function label(): string { return 'Announcements'; }
     public function icon(): string { return '📢'; }
     public function order(): int { return 0; }
-    public function isTextCapable(): bool { return true; }
-    public function isVoiceCapable(): bool { return false; }
+    public function capabilities(): array { return ['text.all']; }
     public function defaultSettings(): array { return []; }
 }

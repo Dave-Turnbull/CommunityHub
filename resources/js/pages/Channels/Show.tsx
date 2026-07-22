@@ -1,37 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Head } from '@inertiajs/react'
 import { RoomRail } from '@/components/layout/RoomRail'
 import { ChannelSidebar } from '@/components/layout/ChannelSidebar'
 import { MemberList } from '@/components/layout/MemberList'
-import { MessageList } from '@/components/chat/MessageList'
-import { MessageInput } from '@/components/chat/MessageInput'
-import { useChat } from '@/hooks/useChat'
 import { useChannelFocus } from '@/hooks/useChannelFocus'
 import { useUI } from '@/stores'
 import { subscribePresence } from '@/services/echo'
 import { channelTypeDescriptor, isTextCapableChannelType } from '@/services/channelTypes'
-import type { ChannelPageProps, Message } from '@/types'
+import type { ChannelPageProps } from '@/types'
 
 export default function ChannelShow({
     auth, rooms, room, channel, members, messages: initial, can_manage_channels, can_manage_roles,
 }: ChannelPageProps) {
-    const [replyTo, setReplyTo] = useState<Message | null>(null)
     const isTextCapable = isTextCapableChannelType(channel.type)
     const descriptor = channelTypeDescriptor(channel.type)
-    const CustomPanel = descriptor.Panel
+    const Content = descriptor.Content
 
     const { memberListOpen, toggleMemberList } = useUI()
-
-    // useChat/useChannelFocus assume a text scope with a message history —
-    // meaningless for a non-text-capable channel (see MessageController's
-    // guard against posting/listing messages there), so skip
-    // seeding/subscribing entirely.
-    const { messages, loadMore, hasMore } = useChat({
-        scopeId: channel.id,
-        scopeType: 'channel',
-        initial: initial ?? { data: [], has_more: false, next_cursor: null },
-        enabled: isTextCapable,
-    })
 
     useEffect(() => subscribePresence(), [])
     useChannelFocus(isTextCapable ? channel.id : null)
@@ -74,37 +59,12 @@ export default function ChannelShow({
                             </button>
                         </header>
 
-                        {CustomPanel ? (
-                            <CustomPanel channel={channel} currentUser={auth.user} />
+                        {Content ? (
+                            <Content channel={channel} currentUser={auth.user} initialMessages={initial} />
                         ) : (
-                            <>
-                                <MessageList
-                                    messages={messages}
-                                    currentUser={auth.user}
-                                    hasMore={hasMore}
-                                    onLoadMore={loadMore}
-                                    onReply={setReplyTo}
-                                    emptyState={
-                                        <div className="text-center">
-                                            <p className="text-3xl mb-2">👋</p>
-                                            <p className="text-text-primary font-semibold">
-                                                Welcome to #{channel.name}
-                                            </p>
-                                            <p className="text-sm text-text-muted">
-                                                This is the start of the channel.
-                                            </p>
-                                        </div>
-                                    }
-                                />
-
-                                <MessageInput
-                                    scopeId={channel.id}
-                                    scopeType="channel"
-                                    placeholder={`Message #${channel.name}`}
-                                    replyTo={replyTo}
-                                    onClearReply={() => setReplyTo(null)}
-                                />
-                            </>
+                            <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
+                                This channel type has no features enabled.
+                            </div>
                         )}
                     </main>
 

@@ -2,7 +2,6 @@
 
 use App\Models\Channel;
 use App\Models\Conversation;
-use App\Support\ChannelTypes\ChannelTypeRegistry;
 use Illuminate\Support\Facades\Broadcast;
 
 // Room text channel — presence channel so we get a member list for free.
@@ -35,8 +34,7 @@ Broadcast::channel('conversation.{conversationId}', function ($user, string $con
 // reach PHP, so there's no separate signal-sending route to authorize here.
 Broadcast::channel('voice.channel.{channelId}', function ($user, string $channelId) {
     $channel = Channel::find($channelId);
-    $isVoiceCapable = $channel && (ChannelTypeRegistry::for($channel->type)?->isVoiceCapable() ?? false);
-    if (! $channel || ! $isVoiceCapable || ! $channel->room->hasMember($user->id)) {
+    if (! $channel || ! $channel->hasCapability('voice.join') || ! $channel->room->hasMember($user->id)) {
         return false;
     }
 
@@ -47,12 +45,14 @@ Broadcast::channel('voice.channel.{channelId}', function ($user, string $channel
     ];
 });
 
-// Voice call roster + signaling for a conversation's (always-available)
-// voice capability — every dm/group Conversation can start a call, there's
-// no separate opt-in flag.
+// Voice call roster + signaling for a conversation's voice capability —
+// every dm/group Conversation grants 'voice.join' via HybridConversationType
+// (see app/Support/ChannelTypes), so this remains effectively unconditional
+// for any participant today, but now goes through the same capability check
+// Channel's voice gate does rather than skipping it entirely.
 Broadcast::channel('voice.conversation.{conversationId}', function ($user, string $conversationId) {
     $conversation = Conversation::find($conversationId);
-    if (! $conversation || ! $conversation->hasParticipant($user->id)) {
+    if (! $conversation || ! $conversation->hasCapability('voice.join') || ! $conversation->hasParticipant($user->id)) {
         return false;
     }
 

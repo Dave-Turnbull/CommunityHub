@@ -2,26 +2,16 @@ import { useEffect, useState } from 'react'
 import { Head } from '@inertiajs/react'
 import { RoomRail } from '@/components/layout/RoomRail'
 import { DMSidebar } from '@/components/layout/DMSidebar'
-import { MessageList } from '@/components/chat/MessageList'
-import { MessageInput } from '@/components/chat/MessageInput'
 import { AddParticipantsModal } from '@/components/messages/AddParticipantsModal'
-import { VoiceBar } from '@/components/voice/VoiceBar'
 import { Avatar } from '@/components/ui/Avatar'
-import { useChat } from '@/hooks/useChat'
 import { subscribePresence } from '@/services/echo'
-import type { DMPageProps, Message } from '@/types'
+import { channelTypeDescriptor } from '@/services/channelTypes'
+import type { DMPageProps } from '@/types'
 
 export default function DMShow({
     auth, rooms, conversations, conversation, messages: initial,
 }: DMPageProps) {
-    const [replyTo, setReplyTo] = useState<Message | null>(null)
     const [addingPeople, setAddingPeople] = useState(false)
-
-    const { messages, loadMore, hasMore } = useChat({
-        scopeId: conversation.id,
-        scopeType: 'conversation',
-        initial,
-    })
 
     useEffect(() => subscribePresence(), [])
 
@@ -30,6 +20,10 @@ export default function DMShow({
     const name = conversation.type === 'group'
         ? (conversation.name ?? 'Group Chat')
         : (other?.user?.display_name ?? 'Unknown')
+
+    // Every Conversation resolves through the one registered 'conversation'
+    // type (HybridConversationType on the backend) — see services/channelTypes.tsx.
+    const Content = channelTypeDescriptor('conversation').Content
 
     return (
         <>
@@ -77,30 +71,9 @@ export default function DMShow({
                             />
                         )}
 
-                        <VoiceBar conversation={conversation} currentUser={auth.user} />
-
-                        <MessageList
-                            messages={messages}
-                            currentUser={auth.user}
-                            hasMore={hasMore}
-                            onLoadMore={loadMore}
-                            onReply={setReplyTo}
-                            emptyState={
-                                <div className="text-center">
-                                    <p className="text-text-primary font-semibold">
-                                        This is the beginning of your conversation with {name}.
-                                    </p>
-                                </div>
-                            }
-                        />
-
-                        <MessageInput
-                            scopeId={conversation.id}
-                            scopeType="conversation"
-                            placeholder={`Message ${name}`}
-                            replyTo={replyTo}
-                            onClearReply={() => setReplyTo(null)}
-                        />
+                        {Content && (
+                            <Content conversation={conversation} currentUser={auth.user} initialMessages={initial} />
+                        )}
                     </main>
                 </div>
             </div>

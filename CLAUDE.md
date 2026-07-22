@@ -121,11 +121,16 @@ app/
                                resolves "does user X have permission Y in room Z," unioning
                                room-scoped + global role grants; ChannelTypes/ — the
                                ChannelType contract + ChannelTypeRegistry + built-in
-                               Text/Voice/AnnouncementChannelType — see Conventions
-                               "Channel types"
+                               Text/Voice/Announcement/HybridConversationType — see
+                               Conventions "Channel types"; Capabilities/ — the Feature
+                               contract + FeatureRegistry (group/wildcard expansion) +
+                               built-in Text/VoiceFeature — see Conventions "Capabilities"
+                               (a Feature is a capability *provider*, a ChannelType is a
+                               capability *consumer* — different jobs, don't conflate them)
 bootstrap/
   app.php                     THE wiring file — routing, middleware groups
   providers.php               provider list (App\Providers\AppServiceProvider,
+                               App\Providers\FeatureServiceProvider,
                                App\Providers\ChannelTypeServiceProvider)
 config/                       hand-written; app.php has NO 'providers' key (see traps).
                                mail.php/services.php only override specific keys — the
@@ -154,7 +159,11 @@ resources/
                                (`GET /rooms/{room}/roles`, gated by can_manage_roles) —
                                see Conventions "Roles & permissions"
     components/
-      chat/                   MessageList, MessageRow, MessageInput
+      chat/                   MessageList, MessageRow, MessageInput; TextChannelContent —
+                               the text Feature's frontend piece, owns its own useChat()
+                               call, used by both text/announcement channel types and
+                               (alongside VoiceBar) HybridConversationContent — see
+                               Conventions "Channel types"
       layout/                 RoomRail (renders the unread badge on the Messages icon —
                                see below; no notification bell/popover anymore),
                                ChannelSidebar (also renders the "+ Add Channel"/"🛡 Roles"
@@ -178,9 +187,10 @@ resources/
                                not a user setting, see Conventions)
       voice/                  VoiceChannelPanel (a room voice channel's entire main-pane
                                content — participant tiles + join/leave, no text chat),
-                               VoiceBar (persistent bar above the message thread in DM/Show —
-                               every Conversation always has voice available, so this always
-                               renders — both drive useVoiceChannel), and
+                               VoiceBar (persistent bar above the message thread, rendered by
+                               chat/HybridConversationContent.tsx since every Conversation
+                               always has voice available — see Conventions "Channel types" —
+                               both drive useVoiceChannel), and
                                VoiceChannelSidebarItem (a voice channel's row in
                                ChannelSidebar plus a live list of who's currently in its
                                call, driven by useVoiceChannelRoster — read-only, doesn't
@@ -236,7 +246,9 @@ tests/
                                through the real HTTP kernel
   Unit/Models/                pure model logic (reactionSummary, hasMember, sharesRoomWith, ...)
   Unit/Support/               ChannelFocus cache-logic tests — no HTTP, no RefreshDatabase;
-                               PermissionCheckerTest — pure Role/RoleAssignment logic
+                               PermissionCheckerTest — pure Role/RoleAssignment logic;
+                               FeatureRegistryTest — group/wildcard expansion, unknown-key
+                               rejection, against a throwaway fake Feature, no HTTP
 phpunit.xml                   sqlite :memory:, null broadcaster, sync queue — see Testing
 vitest.config.ts              jsdom env, '@' alias, loads resources/js/test/setup.ts;
                                pool: 'threads' — see trap #25
@@ -648,56 +660,134 @@ vitest.config.ts              jsdom env, '@' alias, loads resources/js/test/setu
   newly-added users — `DirectMessageNotificationData.message_id` is nullable for
   exactly this case (an "added to group" notification has no associated message).
 
+### Capabilities
+
+- **What a channel/conversation can *do* is a set of granted capability
+  keys resolved through `App\Support\Capabilities\FeatureRegistry`, not a
+  pair of hardcoded booleans.** A **Feature** (`app/Support/Capabilities/`,
+  e.g. `TextFeature`, `VoiceFeature`) is a capability *provider* — it
+  declares the atomic capabilities it offers (`capabilities(): array<suffix,
+  description>`, e.g. `'read'`, `'send_text'`, `'send_images'`,
+  `'send_video'` for text) and any named **groups** that bundle a subset of
+  them (`groups(): array<name, suffix[]>`). Every Feature automatically gets
+  an `all` group — auto-derived from `capabilities()`, never
+  hand-maintained, so it can't drift stale as new atomic capabilities are
+  added. Features are registered in `App\Providers\FeatureServiceProvider::
+  boot()`, a sibling to `ChannelTypeServiceProvider` — this is where a
+  future canvas/game Feature gets added.
+  A **`ChannelType`** (`app/Support/ChannelTypes/`) is a capability
+  *consumer* — a different job from a Feature, even though today's built-in
+  types (`TextChannelType`, `VoiceChannelType`, `AnnouncementChannelType`)
+  each map to exactly one Feature, which can make the distinction easy to
+  miss. `ChannelType::capabilities(): array` returns the requested
+  capability/group keys, e.g. `['text.all']` — **no default**: an empty
+  array is valid and means that type is granted nothing, not even reading
+  messages. `FeatureRegistry::resolveGrants(array $requested): array`
+  expands every group into its atomic members *once*, at the point
+  something asks — enforcement code never resolves hierarchy itself, it only
+  ever checks flat, fully-qualified atomic key membership (e.g.
+  `'text.send_text'`), via `Channel::hasCapability(string $key): bool` /
+  `Conversation::hasCapability(string $key): bool` (both delegate to
+  `ChannelTypeRegistry::hasCapability()`, same shape). `Channel::
+  isTextCapable()` still exists as a convenience wrapper for
+  `hasCapability('text.read')` — most existing call sites (`Web\
+  ChannelController::show`, `useChannelFocus` gating, etc.) didn't need to
+  change.
+  **Granular capabilities gate exactly the action they name, not a whole
+  feature at once** — `MessageController::authorizeSend()` checks
+  `'text.send_text'` only when `content` is present, and
+  `'text.send_images'`/`'text.send_video'` per attachment by its
+  `mime_type` (video vs. everything else) — a channel granted
+  `['text.read', 'text.send_text']` (no `send_all`/`all`) can be posted to
+  with plain text but any attachment 403s. `indexChannel`/`storeChannel`
+  check `'text.read'`.
+  Capability keys are **plain strings, not a PHP enum** — unlike
+  `App\Support\Permission` (a closed, hand-maintained set for room RBAC —
+  see "Roles & permissions," a different axis entirely, gating *who* can act
+  vs. *what a channel type can do*), capabilities must be definable by any
+  Feature a future plugin registers, so the vocabulary can't be centrally
+  closed. Same free-string shape as `channels.type` (trap #3/#30) for the
+  same reason — and the same permanence discipline applies: a capability
+  key, once shipped, is effectively never renamed (see `FeatureRegistryTest`
+  for the boot-time-failure behavior an unknown key produces —
+  `InvalidArgumentException`, not a silent `false`).
+
 ### Channel types
 
 - **Every channel type — built-in or future-plugin — implements the
   `App\Support\ChannelTypes\ChannelType` contract and is registered against
   `ChannelTypeRegistry`; nothing in the app hardcodes `'voice'`/`'text'`
   string checks anymore.** `channels.type` is still a free string with no DB
-  enum (trap #3/#30's shape unchanged), but capability now comes from the
-  registry instead of an array constant. The contract:
-  `key()`/`label()`/`icon()`/`order()`/`isTextCapable()`/`isVoiceCapable()`/
-  `defaultSettings()`. Built-ins (`TextChannelType`, `VoiceChannelType`,
-  `AnnouncementChannelType`, `app/Support/ChannelTypes/`) are registered in
-  `App\Providers\ChannelTypeServiceProvider::boot()` — a **dedicated**
-  provider (not folded into `AppServiceProvider`) specifically so a future
-  runtime-installed channel-type plugin has an established pattern to
-  imitate: register its own `ChannelType` implementation from its own
-  provider, and nothing else in the app needs to change. `Channel::
-  isTextCapable()` now reads `ChannelTypeRegistry::for($this->type)?->
-  isTextCapable() ?? false` — an unregistered type (a future plugin type
-  before its provider has booted, or a genuinely unknown one) is
-  text-incapable by default, same guarantee as before, still what
-  `MessageController::indexChannel`/`storeChannel` (422 if not) and
-  `ChannelController::show` (`messages` prop `null`, not an empty paginator)
-  check. `routes/channels.php`'s `voice.channel.{id}` broadcast-auth gate
-  checks `ChannelTypeRegistry::for($channel->type)?->isVoiceCapable()`
-  instead of a literal `$channel->type !== 'voice'` string comparison.
-  `RoomController::show`/`join` land on the room's first *text-capable*
-  channel via `ChannelTypeRegistry::textCapableTypeKeys()` rather than a
-  hardcoded `where('type', 'text')` — a subtle behavior widening now that
-  channels are deletable: an `announcement` channel can become "the room's
-  landing channel" if `general` is later deleted, where only `text` counted
-  before.
+  enum (trap #3/#30's shape unchanged). The contract:
+  `key()`/`label()`/`icon()`/`order()`/`capabilities()`/`defaultSettings()`
+  — see "Capabilities" above for what `capabilities()` actually resolves
+  through. Built-ins (`TextChannelType`, `VoiceChannelType`,
+  `AnnouncementChannelType`, `HybridConversationType`,
+  `app/Support/ChannelTypes/`) are registered in `App\Providers\
+  ChannelTypeServiceProvider::boot()` — a **dedicated** provider (not folded
+  into `AppServiceProvider`) specifically so a future runtime-installed
+  channel-type plugin has an established pattern to imitate: register its
+  own `ChannelType` implementation from its own provider, and nothing else
+  in the app needs to change. `routes/channels.php`'s `voice.channel.{id}`
+  broadcast-auth gate checks `$channel->hasCapability('voice.join')` instead
+  of a literal `$channel->type !== 'voice'` string comparison; `voice.
+  conversation.{id}` gets the equivalent check on `Conversation` now too
+  (previously unconditional for any participant — see "Conversations join
+  the capability system" under Voice). `RoomController::show`/`join` land on
+  the room's first *text-capable* channel via `ChannelTypeRegistry::
+  typeKeysWithCapability('text.read')` rather than a hardcoded `where('type',
+  'text')` — a subtle behavior widening now that channels are deletable: an
+  `announcement` channel can become "the room's landing channel" if
+  `general` is later deleted, where only `text` counted before.
   **Frontend mirror:** `resources/js/services/channelTypes.tsx` is the single
-  registry replacing the old scattered `TEXT_CAPABLE_CHANNEL_TYPES`/
-  `CHANNEL_TYPE_ICONS`/`CHANNEL_TYPE_ORDER`/`CHANNEL_TYPE_LABELS` exports and
-  `Channels/Show.tsx`'s local `CUSTOM_CHANNEL_PANELS` map — one
-  `ChannelTypeDescriptor` per type (`key/label/icon/order/isTextCapable`,
-  plus optional `Panel` and `SidebarItem` components). `Channels/Show.tsx`
-  looks up `channelTypeDescriptor(channel.type).Panel` to swap in a type's
-  entire main-pane content (today: `voice → VoiceChannelPanel`);
-  `ChannelSidebar` looks up `.SidebarItem` per channel instead of a hardcoded
-  `c.type === 'voice' ? <VoiceChannelSidebarItem/> : <Link/>` ternary — both
-  fall back to the default (chat UI / plain link) when a type has no
-  descriptor entry, and **any type still renders**, appended after known
-  ones with an auto-generated label (`"drawing"` → `"Drawing Channels"`),
-  the same non-vanishing guarantee as before. `ChannelType` (`types/index.ts`)
-  is `string`, not a closed union — a closed union would contradict the
-  extensibility goal; the registry, not the type system, is where a type's
-  existence is declared. `KNOWN_CHANNEL_TYPES` (the static, hand-mirrored
-  list backing `CreateChannelModal`'s type picker) has **no backend
-  round-trip** this milestone — see "Channel management" below.
+  registry — one `ChannelTypeDescriptor` per type
+  (`key/label/icon/order/capabilities/isTextCapable`, plus optional
+  `Content` and `SidebarItem` components). `capabilities` mirrors the
+  backend registration but is informational only today — there's no
+  JS-side `FeatureRegistry`/group-expansion port, that's deliberately
+  deferred (see "What frontend capability-checking can't do" below);
+  `isTextCapable` is still hand-set per type and is what actually drives
+  `useChannelFocus`/`useChat` gating. `Channels/Show.tsx` and `DM/Show.tsx`
+  both look up `channelTypeDescriptor(type).Content` to render a type's
+  **entire** main-pane content — there is no default/fallback UI anymore;
+  a type with no `Content` renders an explicit "this channel type has no
+  features enabled" empty state, matching the backend's "no default"
+  capability rule instead of silently defaulting to a chat UI the way the
+  old `Panel`-optional design did. `ChannelSidebar` looks up `.SidebarItem`
+  per channel instead of a hardcoded `c.type === 'voice' ? <VoiceChannelSidebarItem/>
+  : <Link/>` ternary — falls back to a plain link when a type has no
+  `SidebarItem`, and **any type still renders** in the sidebar, appended
+  after known ones with an auto-generated label (`"drawing"` → `"Drawing
+  Channels"`), the same non-vanishing guarantee as before. `ChannelType`
+  (`types/index.ts`) is `string`, not a closed union — a closed union would
+  contradict the extensibility goal; the registry, not the type system, is
+  where a type's existence is declared. `KNOWN_CHANNEL_TYPES` (the static,
+  hand-mirrored list backing `CreateChannelModal`'s type picker) excludes
+  the `conversation` hybrid type (never user-creatable as a room channel)
+  and has **no backend round-trip** this milestone — see "Channel
+  management" below.
+  **`Content`'s prop shape isn't a single fixed interface** — a
+  channel-scoped type's `Content` receives `{ channel, currentUser,
+  initialMessages }`; the one `conversation` type's receives `{
+  conversation, currentUser, initialMessages }`. Each registry entry is
+  only ever backed by one kind of entity in practice, so the descriptor
+  types `Content` loosely (`ComponentType<any>`) rather than forcing a
+  discriminated union onto a registry that doesn't need one — don't add
+  that generic machinery unless a real type needs to be backed by more than
+  one entity kind.
+  **The `text` Feature's frontend piece is `resources/js/components/chat/
+  TextChannelContent.tsx`** — owns its own `useChat()` call (scope-agnostic,
+  taking `scopeId`/`scopeType` directly) rather than the page calling
+  `useChat` and threading the result down, so any registered type — or a
+  hybrid type composing it alongside voice — can drop it in without the
+  page needing to know it's there. `text`/`announcement`'s registry entries
+  wrap it in a small `TextChannelTypeContent` adapter (fills in the
+  channel-specific placeholder/empty-state); `HybridConversationContent`
+  (`components/chat/HybridConversationContent.tsx`, the `conversation`
+  type's `Content`) reuses the same `TextChannelContent` directly alongside
+  `VoiceBar` — this is the exact layout `DM/Show.tsx` used to hand-build as
+  a page-specific one-off; it's now a reusable component both pages render
+  through the registry instead.
 - **Channel management: room admins can create/update/delete/reorder
   channels of any registered type, gated by the `manage_channels` permission
   — see "Roles & permissions."** `Api\ChannelController` (`POST /api/rooms/
@@ -718,20 +808,57 @@ vitest.config.ts              jsdom env, '@' alias, loads resources/js/test/setu
   *default* `general`/`Voice Chat` channels come into existence) now
   coexist: default scaffolding at room creation, ad-hoc creation after.
   `RoomController::show`/`join`'s "first channel" lookup is covered above.
+- **What frontend capability-checking can't do — read before adding data to
+  a Feature and assuming the frontend guards it.** The backend is the only
+  real enforcement boundary. There's currently no frontend equivalent of
+  `FeatureRegistry` that gates *which hooks a `Content` component is allowed
+  to call* — that was deliberately deferred (see `## Planned work`), because
+  React's Rules of Hooks means you can't dynamically hand a component a
+  subset of hooks to call conditionally anyway; the real version of this
+  would be each hook self-checking a capability context and throwing loudly
+  if misused, a DX aid, not a security boundary even when built. Every
+  capability that exposes *data* has to be enforced on the specific
+  endpoint/query returning that data, same as any other authorization —
+  `Web\ChannelController::show` already sends the room's member list to
+  *every* channel page regardless of type, which is a pre-existing gap
+  relative to a "channel types only see what they're granted" model, not
+  something this system closes on its own.
 
 ### Voice
 
-- **Conversations (dm/group) are explicitly not part of the channel-type
-  system above — they stay the one hybrid text+voice type, see the next
-  bullet.**
-- **Every dm/group `Conversation` always has voice available — it's a first-class,
-  always-on capability, not an optional add-on and not a separate entity.** "Hybrid
-  channel" (text + voice together) describes every `Conversation`, not a new model —
-  the `Conversation`/`conversation_participants` tables, `ConversationController`,
-  `ConversationPolicy`, and every convention above are unchanged. `VoiceBar`
-  (`components/voice/VoiceBar.tsx`) renders unconditionally above `MessageList`/
-  `MessageInput` in `DM/Show.tsx` for exactly this reason — there's no per-conversation
-  flag to check before showing it.
+- **Conversations (dm/group) now join the same capability/registry system
+  Channels use, without merging the underlying data models.** `Conversation`
+  and `Channel` remain separate Eloquent models/tables with their own
+  membership semantics (`Room::hasMember` vs. `Conversation::
+  hasParticipant`) — merging them would be a much larger, riskier migration
+  than anything this bought. Instead, `Conversation::typeKey(): string`
+  always returns `'conversation'` (`dm` and `group` behave identically
+  today, so one registration covers both — splitting them later is just
+  adding a second registered type and a `typeKey()` that consults
+  `$this->type`), and a new `HybridConversationType`
+  (`app/Support/ChannelTypes/HybridConversationType.php`) is registered
+  under that key granting `['text.all', 'voice.all']` — this *codifies*
+  Conversations' previous hardcoded "always text, always voice" behavior
+  into an explicit registration, not a behavior change for end users.
+  `Conversation::hasCapability()` mirrors `Channel`'s. `MessageController::
+  indexConversation`/`storeConversation` gained `hasCapability('text.read')`/
+  granular send checks for the first time — previously conversations had
+  *no* type-capability gate at all, just `hasParticipant`; this is
+  currently a no-op in practice since the one registered type grants
+  everything, but it's real enforcement, not vestigial. `routes/channels.php`'s
+  `voice.conversation.{id}` gate is the same story — was unconditional for
+  any participant, now checks `hasCapability('voice.join')` too.
+- **Every dm/group `Conversation` always has voice available — it's a
+  first-class, always-on capability (via `HybridConversationType`'s grant),
+  not an optional add-on.** "Hybrid channel" (text + voice together)
+  describes every `Conversation`, not a new model. `HybridConversationContent`
+  (`components/chat/HybridConversationContent.tsx`) — the `conversation`
+  type's registered `Content`, see "Channel types" — renders `VoiceBar`
+  above `TextChannelContent` unconditionally for exactly this reason;
+  there's no per-conversation flag to check before showing it. `DM/Show.tsx`
+  no longer builds this layout itself — it renders whatever
+  `channelTypeDescriptor('conversation').Content` is, the same mechanism
+  `Channels/Show.tsx` uses for every channel type.
 - **`voice_mode` (`auto | direct | relay`) lives on `channels` and `conversations`
   directly — it is a property of the call, not a per-user preference.** Every
   participant in a given channel/conversation's call gets the same behavior. `auto`
@@ -1308,18 +1435,36 @@ of proving a change works and needs nothing installed:
   with `Gate::allows(...)` and thread it through as an Inertia prop — see
   `ChannelPageProps.can_manage_channels`/`can_manage_roles` — don't
   re-implement the permission check in JS.
-- **New built-in channel type:** implement `App\Support\ChannelTypes\ChannelType`
-  (see `TextChannelType`/`VoiceChannelType`/`AnnouncementChannelType` for the
-  shape) and register it in `ChannelTypeServiceProvider::boot()`. If it's
-  text-incapable and/or voice-capable, that's just the interface methods —
-  no separate allow-list to update. On the frontend, add a matching entry to
-  `services/channelTypes.tsx`'s `REGISTRY` (icon/label/order, plus `Panel`/
-  `SidebarItem` components if it needs custom main-pane/sidebar rendering —
-  omit either to fall back to the default chat UI / plain link) and to
-  `KNOWN_CHANNEL_TYPES`'s ordering falls out automatically. This is the
-  code-level extensibility mechanism available today — see `## Planned work`
-  for the larger, not-yet-built runtime-installable plugin version of this
-  same idea, and don't start building that without an explicit go-ahead.
+- **New built-in channel type reusing existing Features (text/voice):**
+  implement `App\Support\ChannelTypes\ChannelType` (see `TextChannelType`/
+  `VoiceChannelType`/`AnnouncementChannelType`/`HybridConversationType` for
+  the shape) with a `capabilities()` returning the capability/group keys you
+  want granted (e.g. `['text.all']`, or something granular like
+  `['text.read', 'text.send_text']` — see Conventions "Capabilities") and
+  register it in `ChannelTypeServiceProvider::boot()`. No separate
+  allow-list to update — `hasCapability()` resolves through
+  `FeatureRegistry` automatically. On the frontend, add a matching entry to
+  `services/channelTypes.tsx`'s `REGISTRY` (icon/label/order/capabilities,
+  plus a `Content` component — reuse `TextChannelContent` directly or via a
+  small adapter the way `text`/`announcement` do if the type just needs
+  chat, compose it with other pieces the way `HybridConversationContent`
+  does for text+voice — and a `SidebarItem` if it needs custom sidebar
+  rendering; omit either to get an empty-state main pane / a plain link).
+  `KNOWN_CHANNEL_TYPES`'s ordering falls out automatically.
+- **New built-in channel type needing a genuinely new Feature (not just
+  text/voice):** first add the Feature — `App\Support\Capabilities\Feature`
+  (see `TextFeature`/`VoiceFeature` for the shape: `capabilities()` +
+  `groups()`), register it in `FeatureServiceProvider::boot()`, and give it
+  a real backend enforcement site (a controller checking `hasCapability()`
+  the way `MessageController` does — see Conventions "Capabilities" for why
+  a permission with no enforcement site is a real trap, same shape as
+  trap #24). On the frontend, build the Feature's own component (own hook
+  or state, own UI) the way `TextChannelContent`/`VoiceChannelPanel` are
+  built, then reference it from whichever `ChannelType`'s `Content` wants
+  it. Both of the above are the code-level extensibility mechanism
+  available today — see `## Planned work` for the larger, not-yet-built
+  runtime-installable plugin version of this same idea, and don't start
+  building that without an explicit go-ahead.
 - **New outbound email:** add a `Mailable` in `app/Mail/` (`implements
   ShouldQueue` so it goes through the `worker` container, not the request), a
   plain Blade view in `resources/views/emails/`, send via
@@ -1382,6 +1527,17 @@ notification code nearby, and don't treat its presence here as pre-approval. Eac
 is a real architectural commitment (new tables, new UI surfaces, or a delivery
 mechanism this app doesn't have yet) and deserves its own explicit go-ahead.
 
+- **Frontend `ChannelCapabilityContext` + hook self-gating.** Each Feature's
+  hook (`useChat`/a future `useCanvas`/etc.) would check a per-page context
+  populated from the entity's resolved capabilities and throw a loud,
+  clear error if used somewhere its capability wasn't granted — a
+  programmer-error catcher for "a `Content` component was written to use a
+  hook its type was never granted," not a security control (the backend's
+  `hasCapability()` checks are and remain the only real boundary — see
+  Conventions "Channel types," "What frontend capability-checking can't
+  do"). Deliberately deferred from the initial capability-system build:
+  worth adding once there are enough Features for this class of mistake to
+  actually be a papercut, not before.
 - **Push notifications** as a third delivery endpoint alongside `email`/`in_app` on
   `NotificationPreference`. Needs a device-token/subscription model (web push or a
   native path), a `push` boolean column (or a normalized per-endpoint table if a third

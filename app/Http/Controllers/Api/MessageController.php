@@ -26,7 +26,7 @@ class MessageController extends Controller
     {
         $user = $request->user();
         abort_unless($channel->room->hasMember($user->id), 403);
-        abort_unless($channel->isTextCapable(), 422, 'This channel has no text chat.');
+        abort_unless($channel->hasCapability('text.read'), 422, 'This channel has no text chat.');
 
         return response()->json(
             $this->paginate($channel->messages(), $request->query('before'), $user->id)
@@ -37,9 +37,10 @@ class MessageController extends Controller
     {
         $user = $request->user();
         abort_unless($channel->room->hasMember($user->id), 403);
-        abort_unless($channel->isTextCapable(), 422, 'This channel has no text chat.');
+        abort_unless($channel->hasCapability('text.read'), 422, 'This channel has no text chat.');
 
         $validated = $this->validateMessage($request);
+        $this->authorizeSend($channel, $validated);
 
         $message = Message::create([
             'channel_id'  => $channel->id,
@@ -67,6 +68,7 @@ class MessageController extends Controller
     {
         $user = $request->user();
         abort_unless($conversation->hasParticipant($user->id), 403);
+        abort_unless($conversation->hasCapability('text.read'), 422, 'This conversation has no text chat.');
 
         return response()->json(
             $this->paginate($conversation->messages(), $request->query('before'), $user->id)
@@ -77,8 +79,10 @@ class MessageController extends Controller
     {
         $user = $request->user();
         abort_unless($conversation->hasParticipant($user->id), 403);
+        abort_unless($conversation->hasCapability('text.read'), 422, 'This conversation has no text chat.');
 
         $validated = $this->validateMessage($request);
+        $this->authorizeSend($conversation, $validated);
 
         $message = Message::create([
             'conversation_id' => $conversation->id,
@@ -182,6 +186,28 @@ class MessageController extends Controller
                 'sender_name'  => $sender->display_name,
                 'preview'      => Str::limit((string) $message->content, 80),
             ]);
+        }
+    }
+
+    /**
+     * Checks the specific capability each piece of a message actually needs
+     * — plain content needs 'text.send_text', each attachment needs
+     * 'text.send_images' or 'text.send_video' depending on its mime type.
+     * $entity is a Channel or Conversation — both implement hasCapability().
+     */
+    private function authorizeSend(Channel|Conversation $entity, array $validated): void
+    {
+        if (! blank($validated['content'] ?? null)) {
+            abort_unless($entity->hasCapability('text.send_text'), 403, 'This channel cannot receive text messages.');
+        }
+
+        if (! empty($validated['attachment_ids'])) {
+            $mimeTypes = Attachment::whereIn('id', $validated['attachment_ids'])->pluck('mime_type');
+
+            foreach ($mimeTypes as $mimeType) {
+                $capability = str_starts_with($mimeType, 'video/') ? 'text.send_video' : 'text.send_images';
+                abort_unless($entity->hasCapability($capability), 403, 'This channel cannot receive that attachment type.');
+            }
         }
     }
 

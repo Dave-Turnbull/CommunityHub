@@ -13,18 +13,27 @@ describe('channelTypeDescriptor', () => {
         expect(descriptor.label).toBe('Voice Channels')
         expect(descriptor.icon).toBe('🔊')
         expect(descriptor.isTextCapable).toBe(false)
-        expect(descriptor.Panel).toBeDefined()
+        expect(descriptor.Content).toBeDefined()
         expect(descriptor.SidebarItem).toBeDefined()
     })
 
-    it('falls back to an auto-generated label/icon for an unregistered type', () => {
+    it('falls back to an auto-generated label/icon for an unregistered type, with no Content (no default)', () => {
         const descriptor = channelTypeDescriptor('drawing')
 
         expect(descriptor.label).toBe('Drawing Channels')
         expect(descriptor.icon).toBe('#')
         expect(descriptor.isTextCapable).toBe(false)
-        expect(descriptor.Panel).toBeUndefined()
+        expect(descriptor.capabilities).toEqual([])
+        expect(descriptor.Content).toBeUndefined()
         expect(descriptor.SidebarItem).toBeUndefined()
+    })
+
+    it('registers a hybrid conversation type granting both text and voice', () => {
+        const descriptor = channelTypeDescriptor('conversation')
+
+        expect(descriptor.capabilities).toEqual(['text.all', 'voice.all'])
+        expect(descriptor.isTextCapable).toBe(true)
+        expect(descriptor.Content).toBeDefined()
     })
 })
 
@@ -48,7 +57,7 @@ describe('orderedTypesIn', () => {
 })
 
 describe('KNOWN_CHANNEL_TYPES', () => {
-    it('lists the three built-in types sorted by order', () => {
+    it('lists the three user-creatable built-in types sorted by order, excluding the conversation hybrid', () => {
         expect(KNOWN_CHANNEL_TYPES.map((d) => d.key)).toEqual(['announcement', 'text', 'voice'])
     })
 })

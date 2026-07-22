@@ -33,15 +33,21 @@ class Channel extends Model
 
     /**
      * `type` has no DB-level enum constraint (see CLAUDE.md trap #3/#30's
-     * shape) — capability now comes from ChannelTypeRegistry (see
-     * app/Support/ChannelTypes), not a hardcoded array here. A type with no
-     * registered descriptor (an unrecognized/future-plugin type before its
-     * provider has registered it) is text-incapable by default, so it never
+     * shape) — capabilities come from ChannelTypeRegistry/FeatureRegistry
+     * (see app/Support/Capabilities), not a hardcoded array here. A type with
+     * no registered descriptor (an unrecognized/future-plugin type before
+     * its provider has registered it) grants nothing by default, so it never
      * silently gets a message endpoint just because nobody thought to add a
      * guard for it — see MessageController/ChannelController.
      */
+    public function hasCapability(string $capability): bool
+    {
+        return ChannelTypeRegistry::hasCapability($this->type, $capability);
+    }
+
+    /** Convenience for the common "does this channel have a message thread at all" check. */
     public function isTextCapable(): bool
     {
-        return ChannelTypeRegistry::for($this->type)?->isTextCapable() ?? false;
+        return $this->hasCapability('text.read');
     }
 }
