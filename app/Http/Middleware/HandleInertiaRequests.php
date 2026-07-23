@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Conversation;
+use App\Models\RecentCustomStatus;
 use App\Models\Room;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -25,9 +26,13 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $user?->only([
                     'id', 'username', 'display_name', 'avatar_url',
-                    'banner_url', 'bio', 'status', 'custom_status',
+                    'banner_url', 'bio', 'status', 'custom_status', 'custom_status_color',
                 ]),
             ],
+
+            'recentCustomStatuses' => fn () => $user
+                ? RecentCustomStatus::recentForUser($user->id)
+                : [],
 
             'rooms' => fn () => $user
                 ? Room::whereHas('members', fn ($q) => $q->where('user_id', $user->id))

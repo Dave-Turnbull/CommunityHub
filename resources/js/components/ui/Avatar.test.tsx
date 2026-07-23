@@ -37,7 +37,7 @@ describe('Avatar', () => {
     })
 
     it('prefers live presence status over the seeded status for the dot color', () => {
-        usePresence.getState().setStatus('user-1', 'online')
+        usePresence.getState().setPresence('user-1', { status: 'online', customStatus: null, customStatusColor: null })
 
         const { container } = render(<Avatar user={user} showStatus />)
 
@@ -49,5 +49,17 @@ describe('Avatar', () => {
         const { container } = render(<Avatar user={{ ...user, status: 'dnd' }} showStatus />)
 
         expect(container.querySelector('.bg-status-dnd')).not.toBeNull()
+    })
+
+    it('shows the custom status color on the dot instead of any plain status class, when status is custom', () => {
+        usePresence.getState().setPresence('user-1', {
+            status: 'custom', customStatus: 'Deep in code', customStatusColor: '#ff00aa',
+        })
+
+        const { container } = render(<Avatar user={user} showStatus />)
+        const dot = container.querySelector('.absolute')
+
+        expect(dot).toHaveStyle({ backgroundColor: '#ff00aa' })
+        expect(dot).not.toHaveClass('bg-status-online', 'bg-status-idle', 'bg-status-dnd', 'bg-status-offline')
     })
 })

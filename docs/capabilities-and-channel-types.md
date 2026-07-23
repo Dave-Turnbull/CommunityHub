@@ -34,6 +34,16 @@ never hand-maintained, so it cannot drift stale as new atomic capabilities are a
 
 Features are registered in `App\Providers\FeatureServiceProvider::boot()`.
 
+`StatusFeature` (`key='status'`, one capability `set_status`) is a registered Feature
+with **no `ChannelType` consumer at all** — status isn't scoped to
+any `Channel`/`Conversation` row, so there's nothing with a `type` column for it to
+attach to via `ChannelTypeRegistry`. It's registered anyway so a future `ChannelType`
+(or a future non-channel-scoped attachment point, if one is ever built) can request
+`status.all` the same mechanical way `HybridConversationType` requests `text.all`/
+`voice.all` — see `docs/status.md`. Real enforcement for status changes today is just
+"is this the authenticated user acting on themself" (`UserStatusService`, see
+`docs/service-layer.md`), not a `hasCapability()` check.
+
 Capability keys are plain strings, not a PHP enum, unlike `App\Support\Permission` (the
 closed, hand-maintained set for room RBAC — see `docs/roles-and-permissions.md`, a
 different axis: RBAC gates *who* can act, capabilities gate *what a channel type can

@@ -16,7 +16,7 @@ const DOT_SIZES = {
     lg: 'w-5 h-5',
 } as const
 
-const DOT_COLORS: Record<UserStatus, string> = {
+const DOT_COLORS: Record<Exclude<UserStatus, 'custom'>, string> = {
     online:  'bg-status-online',
     idle:    'bg-status-idle',
     dnd:     'bg-status-dnd',
@@ -32,7 +32,9 @@ interface Props {
 
 export function Avatar({ user, size = 'md', showStatus = false, className }: Props) {
     // Live status from the presence store, falling back to the seeded value
-    const live = usePresence((s) => s.statuses[user.id]) ?? user.status
+    const live = usePresence((s) => s.statuses[user.id]?.status) ?? user.status
+    // Only meaningful when live === 'custom' — see UserStatusService.
+    const liveCustomColor = usePresence((s) => s.statuses[user.id]?.customStatusColor) ?? user.custom_status_color
 
     const initials = user.display_name
         .split(' ')
@@ -59,11 +61,14 @@ export function Avatar({ user, size = 'md', showStatus = false, className }: Pro
             )}
 
             {showStatus && (
-                <span className={clsx(
-                    'absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-surface-700',
-                    DOT_SIZES[size],
-                    DOT_COLORS[live],
-                )} />
+                <span
+                    className={clsx(
+                        'absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-surface-700',
+                        DOT_SIZES[size],
+                        live !== 'custom' && DOT_COLORS[live],
+                    )}
+                    style={live === 'custom' && liveCustomColor ? { backgroundColor: liveCustomColor } : undefined}
+                />
             )}
         </div>
     )

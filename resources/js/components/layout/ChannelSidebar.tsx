@@ -7,13 +7,14 @@ import { CreateChannelModal } from './CreateChannelModal'
 import { channelTypeDescriptor, orderedTypesIn } from '@/services/channelTypes'
 import { subscribeRoomChannels } from '@/services/echo'
 import { useChannels } from '@/stores'
-import type { Channel, Room, User } from '@/types'
+import type { Channel, RecentCustomStatus, Room, User } from '@/types'
 
 interface Props {
     room: Room
     channels: Channel[]
     activeChannelId: string
     currentUser: User
+    recentCustomStatuses: RecentCustomStatus[]
     canManageChannels?: boolean
     canManageRoles?: boolean
 }
@@ -38,7 +39,7 @@ function DefaultChannelRow({ channel, active }: { channel: Channel; active: bool
 }
 
 export function ChannelSidebar({
-    room, channels, activeChannelId, currentUser, canManageChannels, canManageRoles,
+    room, channels, activeChannelId, currentUser, recentCustomStatuses, canManageChannels, canManageRoles,
 }: Props) {
     const [inviting, setInviting] = useState(false)
     const [creatingChannel, setCreatingChannel] = useState(false)
@@ -122,7 +123,7 @@ export function ChannelSidebar({
                 })}
             </nav>
 
-            <UserPanel user={currentUser} />
+            <UserPanel user={currentUser} recentCustomStatuses={recentCustomStatuses} />
         </div>
     )
 }

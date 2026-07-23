@@ -9,9 +9,11 @@ import type {
     NotificationPreference,
     PaginatedMessages,
     PermissionKey,
+    RecentCustomStatus,
     Role,
     RoomInvite,
     User,
+    UserStatus,
     VoiceDevicePreference,
 } from '@/types'
 
@@ -261,5 +263,27 @@ export async function updateVoiceDevicePreference(
     preference: VoiceDevicePreference
 ): Promise<VoiceDevicePreference> {
     const { data } = await axios.put('/api/voice/device-preference', preference)
+    return data
+}
+
+// ── User status ──────────────────────────────────────────────────────────
+
+// One endpoint for all 5 statuses — `custom_status`/`custom_status_color` are
+// only meaningful (and required backend-side) when status is 'custom'.
+export async function updateUserStatus(
+    status: UserStatus,
+    customStatus?: string | null,
+    customStatusColor?: string | null
+): Promise<{
+    status: UserStatus
+    custom_status: string | null
+    custom_status_color: string | null
+    recent: RecentCustomStatus[]
+}> {
+    const { data } = await axios.patch('/api/user-status', {
+        status,
+        custom_status: customStatus,
+        custom_status_color: customStatusColor,
+    })
     return data
 }

@@ -78,9 +78,10 @@ Broadcast::channel('voice.conversation.{conversationId}', function ($user, strin
 // Global presence — tracks who is online across the whole app.
 Broadcast::channel('presence.global', function ($user) {
     return [
-        'user_id'       => $user->id,
-        'status'        => $user->status,
-        'custom_status' => $user->custom_status,
+        'user_id'             => $user->id,
+        'status'              => $user->status,
+        'custom_status'       => $user->custom_status,
+        'custom_status_color' => $user->custom_status_color,
     ];
 });
 

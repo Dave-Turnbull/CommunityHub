@@ -120,6 +120,20 @@ class ChannelAuthTest extends TestCase
         $response->assertForbidden();
     }
 
+    public function test_the_global_presence_channel_auth_payload_includes_custom_status_color(): void
+    {
+        $user = User::factory()->create(['custom_status' => 'Busy', 'custom_status_color' => '#ff00aa']);
+
+        $response = $this->actingAs($user)->postJson('/broadcasting/auth', [
+            'channel_name' => 'presence-presence.global',
+            'socket_id'    => '1234.5678',
+        ]);
+
+        $response->assertOk();
+        $channelData = json_decode($response->json('channel_data'), true);
+        $this->assertSame('#ff00aa', $channelData['user_info']['custom_status_color']);
+    }
+
     public function test_a_user_can_authorize_their_own_private_channel(): void
     {
         $user = User::factory()->create();

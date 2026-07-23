@@ -53,7 +53,7 @@ describe('ChannelSidebar', () => {
             channel({ id: 'c-announce', name: 'news', type: 'announcement' }),
         ]
 
-        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-text" currentUser={user} />)
+        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-text" currentUser={user} recentCustomStatuses={[]} />)
 
         const labels = screen.getAllByText(/Channels$|Announcements/).map((el) => el.textContent)
         expect(labels).toEqual(['Announcements', 'Text Channels', 'Voice Channels'])
@@ -64,7 +64,7 @@ describe('ChannelSidebar', () => {
             channel({ id: 'c-drawing', name: 'Whiteboard', type: 'drawing' as Channel['type'] }),
         ]
 
-        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-drawing" currentUser={user} />)
+        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-drawing" currentUser={user} recentCustomStatuses={[]} />)
 
         expect(screen.getByText('Drawing Channels')).toBeInTheDocument()
         expect(screen.getByText('Whiteboard')).toBeInTheDocument()
@@ -73,7 +73,7 @@ describe('ChannelSidebar', () => {
     it('highlights the active channel link', () => {
         const channels: Channel[] = [channel({ id: 'c-text', name: 'general', type: 'text' })]
 
-        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-text" currentUser={user} />)
+        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-text" currentUser={user} recentCustomStatuses={[]} />)
 
         expect(screen.getByText('general').closest('a')).toHaveClass('bg-surface-400')
     })
@@ -85,7 +85,7 @@ describe('ChannelSidebar', () => {
         ])
         const channels: Channel[] = [channel({ id: 'c-voice', name: 'Voice Chat', type: 'voice' })]
 
-        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-voice" currentUser={user} />)
+        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-voice" currentUser={user} recentCustomStatuses={[]} />)
 
         expect(screen.getByText('Bob')).toBeInTheDocument()
         expect(screen.getByText('Carol')).toBeInTheDocument()
@@ -95,13 +95,13 @@ describe('ChannelSidebar', () => {
     it('shows no participant list under an empty voice channel', () => {
         const channels: Channel[] = [channel({ id: 'c-voice', name: 'Voice Chat', type: 'voice' })]
 
-        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-voice" currentUser={user} />)
+        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-voice" currentUser={user} recentCustomStatuses={[]} />)
 
         expect(screen.queryByLabelText('Muted')).not.toBeInTheDocument()
     })
 
     it('hides the add-channel button and roles link by default', () => {
-        render(<ChannelSidebar room={room} channels={[]} activeChannelId="" currentUser={user} />)
+        render(<ChannelSidebar room={room} channels={[]} activeChannelId="" currentUser={user} recentCustomStatuses={[]} />)
 
         expect(screen.queryByTitle('Add channel')).not.toBeInTheDocument()
         expect(screen.queryByTitle('Manage roles')).not.toBeInTheDocument()
@@ -109,7 +109,7 @@ describe('ChannelSidebar', () => {
 
     it('shows the add-channel button when canManageChannels is true', () => {
         render(
-            <ChannelSidebar room={room} channels={[]} activeChannelId="" currentUser={user} canManageChannels />
+            <ChannelSidebar room={room} channels={[]} activeChannelId="" currentUser={user} recentCustomStatuses={[]} canManageChannels />
         )
 
         expect(screen.getByTitle('Add channel')).toBeInTheDocument()
@@ -117,7 +117,7 @@ describe('ChannelSidebar', () => {
 
     it('shows a roles link to /rooms/{id}/roles when canManageRoles is true', () => {
         render(
-            <ChannelSidebar room={room} channels={[]} activeChannelId="" currentUser={user} canManageRoles />
+            <ChannelSidebar room={room} channels={[]} activeChannelId="" currentUser={user} recentCustomStatuses={[]} canManageRoles />
         )
 
         expect(screen.getByTitle('Manage roles')).toHaveAttribute('href', '/rooms/room-1/roles')
@@ -126,7 +126,7 @@ describe('ChannelSidebar', () => {
     it('reflects a channel added to the shared store by another tab/user (e.g. via ChannelCreated)', () => {
         const channels: Channel[] = [channel({ id: 'c-text', name: 'general', type: 'text' })]
 
-        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-text" currentUser={user} />)
+        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-text" currentUser={user} recentCustomStatuses={[]} />)
 
         act(() => {
             useChannels.getState().addChannel('room-1', channel({ id: 'c-new', name: 'new-room-channel', type: 'text' }))
@@ -138,7 +138,7 @@ describe('ChannelSidebar', () => {
     it('reflects a channel removed from the shared store by another tab/user (e.g. via ChannelDeleted)', () => {
         const channels: Channel[] = [channel({ id: 'c-text', name: 'general', type: 'text' })]
 
-        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-text" currentUser={user} />)
+        render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-text" currentUser={user} recentCustomStatuses={[]} />)
 
         act(() => {
             useChannels.getState().removeChannel('room-1', 'c-text')

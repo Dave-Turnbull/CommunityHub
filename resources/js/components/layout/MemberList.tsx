@@ -6,7 +6,7 @@ export function MemberList({ members }: { members: RoomMember[] }) {
     const statuses = usePresence((s) => s.statuses)
 
     const isOnline = (m: RoomMember) =>
-        (statuses[m.user_id] ?? m.user?.status) !== 'offline'
+        (statuses[m.user_id]?.status ?? m.user?.status) !== 'offline'
 
     const online  = members.filter(isOnline)
     const offline = members.filter((m) => !isOnline(m))
@@ -20,25 +20,33 @@ export function MemberList({ members }: { members: RoomMember[] }) {
                     {label} — {list.length}
                 </p>
 
-                {list.map((m) => m.user && (
-                    <div
-                        key={m.id}
-                        className={`flex items-center gap-2 px-3 py-1.5 mx-1 rounded
-                                    hover:bg-surface-500 cursor-pointer ${dim ? 'opacity-40' : ''}`}
-                    >
-                        <Avatar user={m.user} size="sm" showStatus />
-                        <div className="min-w-0">
-                            <p className="text-sm text-text-secondary truncate leading-tight">
-                                {m.nickname ?? m.user.display_name}
-                            </p>
-                            {m.user.custom_status && (
-                                <p className="text-[11px] text-text-muted truncate leading-tight">
-                                    {m.user.custom_status}
+                {list.map((m) => {
+                    if (!m.user) return null
+
+                    const status = statuses[m.user_id]?.status ?? m.user.status
+                    const customStatus = statuses[m.user_id]?.customStatus ?? m.user.custom_status
+                    const label = status === 'custom' ? customStatus : null
+
+                    return (
+                        <div
+                            key={m.id}
+                            className={`flex items-center gap-2 px-3 py-1.5 mx-1 rounded
+                                        hover:bg-surface-500 cursor-pointer ${dim ? 'opacity-40' : ''}`}
+                        >
+                            <Avatar user={m.user} size="sm" showStatus />
+                            <div className="min-w-0">
+                                <p className="text-sm text-text-secondary truncate leading-tight">
+                                    {m.nickname ?? m.user.display_name}
                                 </p>
-                            )}
+                                {label && (
+                                    <p className="text-[11px] text-text-muted truncate leading-tight">
+                                        {label}
+                                    </p>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    )
+                })}
             </div>
         )
     }

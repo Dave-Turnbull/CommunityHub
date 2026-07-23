@@ -8,7 +8,7 @@ import { channelTypeDescriptor } from '@/services/channelTypes'
 import type { DMPageProps } from '@/types'
 
 export default function DMShow({
-    auth, rooms, conversations, conversation, messages: initial,
+    auth, rooms, conversations, conversation, messages: initial, recentCustomStatuses,
 }: DMPageProps) {
     const [addingPeople, setAddingPeople] = useState(false)
 
@@ -33,6 +33,7 @@ export default function DMShow({
                     <DMSidebar
                         conversations={conversations}
                         currentUser={auth.user}
+                        recentCustomStatuses={recentCustomStatuses}
                         activeConversationId={conversation.id}
                     />
 

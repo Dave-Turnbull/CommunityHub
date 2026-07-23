@@ -4,26 +4,26 @@ namespace App\Events;
 
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Not sent ->toOthers() like most broadcasts here — UserStatusService is
- * called from plain Inertia requests (Settings, login/logout), which never
- * set the X-Socket-ID header axios adds, so toOthers() would have nothing to
- * exclude anyway. Broadcasting to everyone (including the user who changed
- * it) keeps this the one source of truth for usePresence, rather than also
- * threading a local optimistic update through every UserStatusService call
- * site.
+ * ShouldBroadcastNow, not the queued ShouldBroadcast most events here use —
+ * this one is not sent ->toOthers() (it broadcasts to the acting user's own
+ * tabs too, see UserStatusService), so a queued delay is directly visible to
+ * the person who just changed their own status instead of only affecting
+ * other users' views.
  */
-class UserStatusChanged implements ShouldBroadcast
+class UserStatusChanged implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public function __construct(
         public string $userId,
         public string $status,
+        public ?string $customStatus,
+        public ?string $customStatusColor,
     ) {}
 
     public function broadcastOn(): array
@@ -36,8 +36,10 @@ class UserStatusChanged implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'user_id' => $this->userId,
-            'status'  => $this->status,
+            'user_id'             => $this->userId,
+            'status'              => $this->status,
+            'custom_status'       => $this->customStatus,
+            'custom_status_color' => $this->customStatusColor,
         ];
     }
 }

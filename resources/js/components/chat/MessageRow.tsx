@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Avatar } from '@/components/ui/Avatar'
+import { DropdownMenu } from '@/components/ui/DropdownMenu'
 import { EmojiPicker } from '@/components/emoji/EmojiPicker'
 import { addReaction, removeReaction, deleteMessage, editMessage } from '@/services/api'
 import type { Message, User } from '@/types'
@@ -168,36 +168,19 @@ export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
                     </button>
 
                     {isMine && (
-                        <DropdownMenu.Root>
-                            <DropdownMenu.Trigger asChild>
+                        <DropdownMenu
+                            trigger={
                                 <button className="p-1 rounded hover:bg-surface-400 text-text-muted hover:text-text-primary">
                                     ⋯
                                 </button>
-                            </DropdownMenu.Trigger>
-                            <DropdownMenu.Portal>
-                                <DropdownMenu.Content
-                                    align="end"
-                                    sideOffset={4}
-                                    className="z-50 min-w-[160px] p-1 rounded-md bg-surface-900 border
-                                               border-surface-400 shadow-xl text-sm animate-fade-in"
-                                >
-                                    <DropdownMenu.Item
-                                        onSelect={() => setEditing(true)}
-                                        className="px-2 py-1.5 rounded cursor-pointer outline-none text-text-secondary
-                                                   hover:bg-brand hover:text-white"
-                                    >
-                                        Edit
-                                    </DropdownMenu.Item>
-                                    <DropdownMenu.Item
-                                        onSelect={() => deleteMessage(message.id)}
-                                        className="px-2 py-1.5 rounded cursor-pointer outline-none text-danger
-                                                   hover:bg-danger hover:text-white"
-                                    >
-                                        Delete
-                                    </DropdownMenu.Item>
-                                </DropdownMenu.Content>
-                            </DropdownMenu.Portal>
-                        </DropdownMenu.Root>
+                            }
+                            align="end"
+                            sideOffset={4}
+                            className="min-w-[160px] p-1 rounded-md bg-surface-900 border border-surface-400 shadow-xl text-sm"
+                        >
+                            <DropdownMenu.Item onSelect={() => setEditing(true)}>Edit</DropdownMenu.Item>
+                            <DropdownMenu.Item onSelect={() => deleteMessage(message.id)} danger>Delete</DropdownMenu.Item>
+                        </DropdownMenu>
                     )}
                 </div>
             </div>
