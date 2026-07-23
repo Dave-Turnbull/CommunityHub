@@ -17,7 +17,7 @@ class User extends Authenticatable
 
     protected $fillable = [
         'username', 'display_name', 'email', 'password',
-        'avatar_url', 'banner_url', 'bio', 'status', 'custom_status',
+        'avatar_url', 'banner_url', 'bio', 'status', 'custom_status', 'custom_status_color',
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -40,6 +40,7 @@ class User extends Authenticatable
     public function roomMembers(): HasMany { return $this->hasMany(RoomMember::class); }
     public function messages(): HasMany    { return $this->hasMany(Message::class, 'author_id'); }
     public function reactions(): HasMany     { return $this->hasMany(Reaction::class); }
+    public function recentCustomStatuses(): HasMany { return $this->hasMany(RecentCustomStatus::class); }
 
     public function sharesRoomWith(string $otherUserId): bool
     {

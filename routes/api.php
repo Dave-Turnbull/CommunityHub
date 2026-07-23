@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\ReactionController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\RoomInviteController;
 use App\Http\Controllers\Api\UploadController;
+use App\Http\Controllers\Api\UserStatusController;
 use App\Http\Controllers\Api\VoiceDevicePreferenceController;
 use App\Http\Controllers\Api\VoiceIceServersController;
 use Illuminate\Support\Facades\Route;
@@ -78,4 +79,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/voice/ice-servers',        [VoiceIceServersController::class, 'index']);
     Route::get('/voice/device-preference',  [VoiceDevicePreferenceController::class, 'index']);
     Route::put('/voice/device-preference',  [VoiceDevicePreferenceController::class, 'update']);
+
+    // User status — quick self-service action from the UserPanel popover, see
+    // App\Support\Capabilities\StatusFeature.
+    Route::patch('/user-status', [UserStatusController::class, 'update']);
 });

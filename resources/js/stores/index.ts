@@ -115,15 +115,21 @@ export const useMessages = create<MessageStore>((set) => ({
 
 // ── Presence ─────────────────────────────────────────────────────────────
 
+export interface PresenceEntry {
+    status: UserStatus
+    customStatus: string | null
+    customStatusColor: string | null
+}
+
 interface PresenceStore {
-    statuses: Record<string, UserStatus>
-    setStatus: (userId: string, status: UserStatus) => void
+    statuses: Record<string, PresenceEntry>
+    setPresence: (userId: string, entry: PresenceEntry) => void
 }
 
 export const usePresence = create<PresenceStore>((set) => ({
     statuses: {},
-    setStatus: (userId, status) =>
-        set((s) => ({ statuses: { ...s.statuses, [userId]: status } })),
+    setPresence: (userId, entry) =>
+        set((s) => ({ statuses: { ...s.statuses, [userId]: entry } })),
 }))
 
 // ── UI ───────────────────────────────────────────────────────────────────

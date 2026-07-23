@@ -93,10 +93,21 @@ describe('usePresence', () => {
         usePresence.setState({ statuses: {} })
     })
 
-    it('setStatus records a user status', () => {
-        usePresence.getState().setStatus('user-1', 'online')
+    it('setPresence records a full presence entry for a user', () => {
+        usePresence.getState().setPresence('user-1', { status: 'custom', customStatus: 'Busy', customStatusColor: '#ff00aa' })
 
-        expect(usePresence.getState().statuses['user-1']).toBe('online')
+        expect(usePresence.getState().statuses['user-1']).toEqual({
+            status: 'custom', customStatus: 'Busy', customStatusColor: '#ff00aa',
+        })
+    })
+
+    it('a later setPresence call replaces the entire entry for a user', () => {
+        usePresence.getState().setPresence('user-1', { status: 'custom', customStatus: 'Busy', customStatusColor: '#ff00aa' })
+        usePresence.getState().setPresence('user-1', { status: 'dnd', customStatus: null, customStatusColor: null })
+
+        expect(usePresence.getState().statuses['user-1']).toEqual({
+            status: 'dnd', customStatus: null, customStatusColor: null,
+        })
     })
 })
 

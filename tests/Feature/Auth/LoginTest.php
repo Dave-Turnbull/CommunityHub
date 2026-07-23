@@ -31,6 +31,24 @@ class LoginTest extends TestCase
         $this->assertSame('online', $user->fresh()->status);
     }
 
+    public function test_logging_in_forces_online_and_clears_any_existing_custom_status(): void
+    {
+        $user = User::factory()->create([
+            'email'    => 'alice@example.com',
+            'password' => Hash::make('password'),
+            'status'   => 'custom',
+            'custom_status' => 'On vacation',
+            'custom_status_color' => '#112233',
+        ]);
+
+        $this->post('/login', ['login' => 'alice@example.com', 'password' => 'password']);
+
+        $user->refresh();
+        $this->assertSame('online', $user->status);
+        $this->assertNull($user->custom_status);
+        $this->assertNull($user->custom_status_color);
+    }
+
     public function test_a_user_can_login_with_username(): void
     {
         $user = User::factory()->create([

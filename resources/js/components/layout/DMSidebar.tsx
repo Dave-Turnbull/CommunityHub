@@ -4,11 +4,12 @@ import { Link } from '@inertiajs/react'
 import { Avatar } from '@/components/ui/Avatar'
 import { NewConversationModal } from '@/components/messages/NewConversationModal'
 import { UserPanel } from './UserPanel'
-import type { Conversation, User } from '@/types'
+import type { Conversation, RecentCustomStatus, User } from '@/types'
 
 interface Props {
     conversations: Conversation[]
     currentUser: User
+    recentCustomStatuses: RecentCustomStatus[]
     activeConversationId?: string
 }
 
@@ -20,7 +21,7 @@ function title(c: Conversation, meId: string): string {
     return other?.user?.display_name ?? 'Unknown'
 }
 
-export function DMSidebar({ conversations, currentUser, activeConversationId }: Props) {
+export function DMSidebar({ conversations, currentUser, recentCustomStatuses, activeConversationId }: Props) {
     const [composing, setComposing] = useState(false)
 
     const dms    = conversations.filter((c) => c.type === 'dm')
@@ -106,7 +107,7 @@ export function DMSidebar({ conversations, currentUser, activeConversationId }: 
                 )}
             </nav>
 
-            <UserPanel user={currentUser} />
+            <UserPanel user={currentUser} recentCustomStatuses={recentCustomStatuses} />
         </div>
     )
 }

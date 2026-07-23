@@ -115,14 +115,16 @@ app/
                                roles-and-permissions.md)
     Controller.php            empty abstract base — Laravel ships none by default, keep it
   Http/Middleware/
-    HandleInertiaRequests.php shares auth.user, rooms, conversations, flash
+    HandleInertiaRequests.php shares auth.user, rooms, conversations,
+                               recentCustomStatuses (see docs/status.md), flash
   Mail/                       Mailable classes (RoomInviteMail), ShouldQueue — sent via
                                the `worker` container, Mailpit catches them in dev
   Models/                     all UUID-keyed (HasUuids); Notification is the exception to
                                the "table name matches model" convention — see trap #22.
                                NotificationPreference/VoiceDevicePreference — see docs/
                                notifications.md and docs/voice.md; Role/RolePermission/
-                               RoleAssignment — see docs/roles-and-permissions.md
+                               RoleAssignment — see docs/roles-and-permissions.md;
+                               RecentCustomStatus — see docs/status.md
   Policies/                   authorization seams beyond simple membership checks —
                                see docs/roles-and-permissions.md and docs/
                                conversations-and-invites.md
@@ -130,7 +132,9 @@ app/
     ChannelTypeServiceProvider.php  registers every built-in ChannelType — see docs/
                                capabilities-and-channel-types.md
     FeatureServiceProvider.php      registers every built-in Feature — see docs/
-                               capabilities-and-channel-types.md
+                               capabilities-and-channel-types.md (TextFeature/
+                               VoiceFeature/StatusFeature — the latter has no
+                               ChannelType consumer yet, see docs/status.md)
   Services/                   {Operation}Service classes — see docs/service-layer.md.
                                Not the same thing as Support/Capabilities' Feature — a
                                Feature declares what a capability *is*, a Service is
@@ -174,8 +178,12 @@ resources/
       chat/                   MessageList, MessageRow, MessageInput, TextChannelContent
                                — see docs/capabilities-and-channel-types.md
       layout/                 RoomRail, ChannelSidebar (renders "+ Add Channel"/"🛡
-                               Roles" affordances), DMSidebar, MemberList, UserPanel,
-                               InviteModal, CreateChannelModal
+                               Roles" affordances), DMSidebar, MemberList, UserPanel
+                               (the avatar+name trigger — see docs/status.md),
+                               UserStatusPopover (the popup itself: status switcher,
+                               custom status color+text+save, recent statuses,
+                               Settings/Logout — see docs/status.md), InviteModal,
+                               CreateChannelModal
       messages/                NotificationFeed (see docs/notifications.md); UserPicker
                                — see docs/conversations-and-invites.md
       settings/                NotificationPreferences (see docs/notifications.md);
@@ -197,7 +205,11 @@ resources/
                                display) would also want, not something specific to voice
                                itself. See docs/voice.md.
       emoji/ ui/               EmojiPicker, Avatar, Tooltip, Tabs (generic tabbed
-                               container), Toggle (custom, no Radix Switch dependency)
+                               container), Toggle (custom, no Radix Switch dependency),
+                               Popover, DropdownMenu (thin Radix wrappers — EmojiPicker
+                               and MessageRow's edit/delete menu are built on these
+                               rather than importing Radix directly; UserStatusPopover
+                               is too, see docs/status.md)
     hooks/                    useChat, useAutoScroll, useNotifications,
                                useChannelFocus (see docs/notifications.md),
                                useVoiceChannel (see docs/voice.md)
@@ -730,8 +742,8 @@ of proving a change works and needs nothing installed:
     closure already returns it).
 39. **`.here()`/`.joining()` only ever fire once, at the moment a tab's own
     `presence.global` subscription is (re)established — a status change afterward
-    (Settings, or the forced online/offline `UserStatusService::setStatus` does on
-    login/logout) is invisible to every already-connected tab, including the tab that
+    (the status popover, or the forced online/offline `UserStatusService::setStatus`
+    does on login/logout) is invisible to every already-connected tab, including the tab that
     made the change itself, until it reconnects.** This was easy to miss before trap
     #38's fix, because the old per-page `subscribePresence()` churned enough on
     ordinary navigation that reconnecting (and re-running `.here()`) happened often
@@ -742,8 +754,9 @@ of proving a change works and needs nothing installed:
     itself (the one place every status mutation already funnels through), and a
     matching `.listen('.UserStatusChanged', ...)` in `subscribePresence()`. Deliberately
     **not** sent `->toOthers()` like this app's other broadcasts (see `## Conventions`)
-    — `UserStatusService` is called from plain Inertia requests (Settings, login,
-    logout), which never carry the `X-Socket-ID` header axios adds, so `toOthers()`
+    — `UserStatusService` is called from plain Inertia requests (login, logout) and
+    from the status popover's Api endpoints (`docs/status.md`), none of which carry
+    the `X-Socket-ID` header axios adds, so `toOthers()`
     would have nothing to exclude; broadcasting to everyone including the user who
     changed it keeps the live update on one path instead of also threading a local
     optimistic update through every call site. Any future status-adjacent change
@@ -770,6 +783,25 @@ of proving a change works and needs nothing installed:
     (and its already-populated roster) instead of rejoining from scratch. Don't remove
     this grace period to "simplify" the ref-counting back to synchronous — the whole
     point is covering a gap that isn't guaranteed to be zero-width.
+41. **Status went through two overcomplicated designs before landing on the current
+    one — a single `status` column with 5 values (`online`/`idle`/`dnd`/`offline`/
+    `custom`), where `custom_status`/`custom_status_color` only ever hold something
+    when `status === 'custom'`.** Earlier iterations tried to track a plain status and
+    a custom status as two semi-independent things (separate `setStatus()`/
+    `setCustomStatus()`/`setStatusAndClearCustom()` methods, a frontend merge step to
+    carry one field forward while changing the other, then a monotonic `updatedAt`
+    guard bolted on to fix an out-of-order-broadcast symptom that design created). Each
+    fix added real complexity to work around a problem the *data model itself* caused
+    — two axes that could disagree about whether a custom status was active invited
+    exactly that kind of bug. The 5-value model makes it structurally impossible:
+    every status change (plain or custom) goes through one `UserStatusService::
+    setStatus()` call and one `Api\UserStatusController::update()` endpoint, always
+    sets all three columns together, and the frontend's `UserStatusPopover` has one
+    `applyStatus()` function with nothing to merge or preserve across calls. If a
+    future status-adjacent feature is tempted to add a second "is custom active" flag
+    alongside `status`, or a second write path that doesn't go through
+    `UserStatusService::setStatus()`, don't — that reintroduces the exact shape of
+    bug this rebuild removed. See `docs/status.md`.
 
 ## Adding things — quick recipes
 

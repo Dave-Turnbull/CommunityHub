@@ -70,13 +70,24 @@ genuinely server-side:
 
 ### `UserStatusService`
 
-Self-service only, no capability check beyond authentication.
+Self-service only, no capability check beyond authentication — see `docs/status.md`
+for the full schema (a single 5-value `status` column, `custom` being one of the 5
+rather than a modifier on the others), broadcast contract, and UI.
 
-- `setStatus(User $user, string $status): void` — `online`/`idle`/`dnd`/`offline`.
-- `setCustomStatus(User $user, ?string $customStatus): void`.
+- `setStatus(User $user, string $status, ?string $customStatus = null, ?string $customStatusColor = null): void`
+  — the only write path, for every status including `custom`. Passing anything other
+  than `'custom'` nulls `custom_status`/`custom_status_color` as part of the same
+  update; passing `'custom'` also records the (text, color) pair into the per-user
+  recent-statuses list (capped at 3, deduped on reapply). Used identically by
+  `AuthController`'s login/register/logout (forcing `online`/`offline`, which also
+  clears any active custom status — no exception carved out for that) and
+  `Api\UserStatusController` (the popover).
+- `recentCustomStatuses(User $user): Collection` — the up-to-3 most recent distinct
+  custom statuses, most recent first.
 
-Consolidates what were previously separate inline `->update(['status' => ...])` calls
-in `AuthController::login`/`register`/`logout` and `SettingsController::update`.
+Broadcasts the full presence snapshot (status + custom_status + color) via
+`UserStatusChanged`, a `ShouldBroadcastNow` event (not the queued `ShouldBroadcast`
+most events here use — see `docs/status.md` for why).
 
 ### `UserSettingsService`
 

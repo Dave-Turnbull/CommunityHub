@@ -9,6 +9,7 @@ import type { ChannelPageProps } from '@/types'
 
 export default function ChannelShow({
     auth, rooms, room, channel, members, messages: initial, can_manage_channels, can_manage_roles,
+    recentCustomStatuses,
 }: ChannelPageProps) {
     const isTextCapable = isTextCapableChannelType(channel.type)
     const descriptor = channelTypeDescriptor(channel.type)
@@ -31,6 +32,7 @@ export default function ChannelShow({
                         channels={room.channels ?? []}
                         activeChannelId={channel.id}
                         currentUser={auth.user}
+                        recentCustomStatuses={recentCustomStatuses}
                         canManageChannels={can_manage_channels}
                         canManageRoles={can_manage_roles}
                     />

@@ -52,6 +52,7 @@ function buildProps(roles: Role[]): RoomRolesPageProps {
         auth: { user },
         rooms: [],
         conversations: [],
+        recentCustomStatuses: [],
         flash: {},
         room: {
             id: 'room-1', name: 'Cool Room', icon_url: null, owner_id: 'user-1', invite_code: 'abc123',

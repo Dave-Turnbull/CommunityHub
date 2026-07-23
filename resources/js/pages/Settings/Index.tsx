@@ -3,26 +3,17 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Tabs } from '@/components/ui/Tabs'
 import { NotificationPreferences } from '@/components/settings/NotificationPreferences'
 import { AudioSettings } from '@/components/settings/AudioSettings'
-import type { SharedProps, User, UserStatus } from '@/types'
+import type { SharedProps, User } from '@/types'
 
 interface Props extends SharedProps {
     user: User
 }
 
-const STATUSES: { value: UserStatus; label: string; color: string }[] = [
-    { value: 'online',  label: 'Online',        color: 'bg-status-online' },
-    { value: 'idle',    label: 'Idle',          color: 'bg-status-idle' },
-    { value: 'dnd',     label: 'Do Not Disturb',color: 'bg-status-dnd' },
-    { value: 'offline', label: 'Invisible',     color: 'bg-status-offline' },
-]
-
 export default function SettingsIndex({ user }: Props) {
     const { data, setData, patch, processing, isDirty } = useForm({
-        display_name:  user.display_name,
-        bio:           user.bio ?? '',
-        avatar_url:    user.avatar_url ?? '',
-        status:        user.status,
-        custom_status: user.custom_status ?? '',
+        display_name: user.display_name,
+        bio:          user.bio ?? '',
+        avatar_url:   user.avatar_url ?? '',
     })
 
     return (
@@ -60,11 +51,6 @@ export default function SettingsIndex({ user }: Props) {
                                                     {data.display_name || user.display_name}
                                                 </p>
                                                 <p className="text-sm text-text-muted">@{user.username}</p>
-                                                {data.custom_status && (
-                                                    <p className="text-sm text-text-secondary mt-1 truncate">
-                                                        {data.custom_status}
-                                                    </p>
-                                                )}
                                                 {data.bio && (
                                                     <p className="text-sm text-text-secondary mt-2">{data.bio}</p>
                                                 )}
@@ -111,40 +97,6 @@ export default function SettingsIndex({ user }: Props) {
                                                 <p className="text-[11px] text-text-muted mt-1 text-right">
                                                     {data.bio.length}/190
                                                 </p>
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1.5">
-                                                    Custom Status
-                                                </label>
-                                                <input
-                                                    value={data.custom_status}
-                                                    onChange={(e) => setData('custom_status', e.target.value)}
-                                                    placeholder="What's happening?"
-                                                    maxLength={128}
-                                                    className="w-full bg-surface-800 border border-surface-400 rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-2">
-                                                    Status
-                                                </label>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    {STATUSES.map((s) => (
-                                                        <button
-                                                            key={s.value}
-                                                            onClick={() => setData('status', s.value)}
-                                                            className={`flex items-center gap-2 px-3 py-2 rounded border text-sm transition-colors
-                                                                ${data.status === s.value
-                                                                    ? 'border-brand bg-brand/10 text-text-primary'
-                                                                    : 'border-surface-400 text-text-secondary hover:border-brand'}`}
-                                                        >
-                                                            <span className={`w-2.5 h-2.5 rounded-full ${s.color}`} />
-                                                            {s.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
                                             </div>
 
                                             <button

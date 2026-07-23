@@ -117,12 +117,16 @@ describe('echo service', () => {
         const { subscribePresence } = await import('@/services/echo')
 
         subscribePresence()
-        hereCallbacks[0]([{ user_id: 'user-1', status: 'online' }])
+        hereCallbacks[0]([{ user_id: 'user-1', status: 'online', custom_status: 'Busy', custom_status_color: '#ff00aa' }])
         joiningCallbacks[0]({ user_id: 'user-2', status: 'dnd' })
         leavingCallbacks[0]({ user_id: 'user-2' })
 
-        expect(usePresence.getState().statuses['user-1']).toBe('online')
-        expect(usePresence.getState().statuses['user-2']).toBe('offline')
+        expect(usePresence.getState().statuses['user-1']).toEqual({
+            status: 'online', customStatus: 'Busy', customStatusColor: '#ff00aa',
+        })
+        expect(usePresence.getState().statuses['user-2']).toEqual({
+            status: 'offline', customStatus: null, customStatusColor: null,
+        })
     })
 
     it('honors a joining member\'s actual configured status rather than assuming online', async () => {
@@ -131,7 +135,9 @@ describe('echo service', () => {
         subscribePresence()
         joiningCallbacks[0]({ user_id: 'user-3', status: 'idle' })
 
-        expect(usePresence.getState().statuses['user-3']).toBe('idle')
+        expect(usePresence.getState().statuses['user-3']).toEqual({
+            status: 'idle', customStatus: null, customStatusColor: null,
+        })
     })
 
     it('updates an already-connected member\'s status live on UserStatusChanged, without waiting for a reconnect', async () => {
@@ -139,9 +145,13 @@ describe('echo service', () => {
 
         subscribePresence()
         hereCallbacks[0]([{ user_id: 'user-1', status: 'online' }])
-        listeners['.UserStatusChanged']({ user_id: 'user-1', status: 'dnd' })
+        listeners['.UserStatusChanged']({
+            user_id: 'user-1', status: 'custom', custom_status: 'Deep in code', custom_status_color: '#112233',
+        })
 
-        expect(usePresence.getState().statuses['user-1']).toBe('dnd')
+        expect(usePresence.getState().statuses['user-1']).toEqual({
+            status: 'custom', customStatus: 'Deep in code', customStatusColor: '#112233',
+        })
     })
 
     it('subscribeNotifications joins the private per-user channel', async () => {

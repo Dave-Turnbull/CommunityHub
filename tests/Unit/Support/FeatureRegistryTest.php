@@ -4,6 +4,7 @@ namespace Tests\Unit\Support;
 
 use App\Support\Capabilities\Feature;
 use App\Support\Capabilities\FeatureRegistry;
+use App\Support\Capabilities\StatusFeature;
 use Tests\TestCase;
 
 class FeatureRegistryTest extends TestCase
@@ -92,5 +93,15 @@ class FeatureRegistryTest extends TestCase
     public function test_an_empty_request_resolves_to_nothing(): void
     {
         $this->assertSame([], FeatureRegistry::resolveGrants([]));
+    }
+
+    public function test_status_feature_resolves_via_the_real_registry_even_with_no_consumer(): void
+    {
+        FeatureRegistry::flush();
+        FeatureRegistry::register(new StatusFeature());
+
+        $resolved = FeatureRegistry::resolveGrants(['status.all']);
+
+        $this->assertEqualsCanonicalizing(['status.set_status'], $resolved);
     }
 }

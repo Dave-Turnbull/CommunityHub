@@ -20,6 +20,8 @@ run commands, testing, known traps), see `CLAUDE.md` at the project root.
   suppression, preferences, and the delivery surface.
 - [conversations-and-invites.md](conversations-and-invites.md) — message scoping,
   conversation creation/deduplication, group participants, and room invite mechanisms.
+- [status.md](status.md) — the status/custom-status/color schema, `StatusFeature`,
+  `UserStatusService`, the live-broadcast contract, and the `UserStatusPopover` UI.
 
 ## Keeping this up to date
 

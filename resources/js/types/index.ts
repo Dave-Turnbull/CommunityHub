@@ -1,4 +1,7 @@
-export type UserStatus  = 'online' | 'idle' | 'dnd' | 'offline'
+// 'custom' replaces the other 4 entirely rather than combining with them —
+// custom_status/custom_status_color only ever hold something when status is
+// 'custom' (see UserStatusService).
+export type UserStatus  = 'online' | 'idle' | 'dnd' | 'offline' | 'custom'
 
 // Open-ended on purpose — runtime types come from the channel-type registry
 // (services/channelTypes.tsx), which mirrors App\Support\ChannelTypes on the
@@ -24,6 +27,15 @@ export interface User {
     bio?: string | null
     status: UserStatus
     custom_status?: string | null
+    custom_status_color?: string | null
+}
+
+// One entry per (text, color) pair a user has set as their custom status —
+// see UserStatusService::recordRecentCustomStatus. Capped at 3, most recent
+// first.
+export interface RecentCustomStatus {
+    text: string
+    color: string
 }
 
 export interface Room {
@@ -267,6 +279,7 @@ export interface SharedProps {
     auth: { user: User }
     rooms: Room[]
     conversations: Conversation[]
+    recentCustomStatuses: RecentCustomStatus[]
     flash: { success?: string; error?: string }
 }
 
