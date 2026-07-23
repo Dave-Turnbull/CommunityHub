@@ -163,7 +163,9 @@ resources/
     emails/                   plain Blade mail views (room-invite.blade.php) — no
                                markdown mail layout in this repo, keep them simple
   js/
-    app.tsx                   Inertia bootstrap + QueryClientProvider
+    app.tsx                   Inertia bootstrap + QueryClientProvider; also owns the
+                               one global presence subscription (see trap #38) —
+                               keyed off router's 'navigate' event, not any page
     pages/                    one file per Inertia page (Auth, Channels, DM, Rooms,
                                Settings, Invite — the invite-accept landing page);
                                Rooms/Roles.tsx is the minimal room role-management page
@@ -184,7 +186,7 @@ resources/
                                container), Toggle (custom, no Radix Switch dependency)
     hooks/                    useChat, useAutoScroll, useNotifications,
                                useChannelFocus (see docs/notifications.md),
-                               useVoiceChannel, useVoiceChannelRoster (see docs/voice.md)
+                               useVoiceChannel (see docs/voice.md)
     services/                 api.ts (axios — the only place a component may call axios
                                directly), channelTypes.tsx (frontend channel-type
                                registry — see docs/capabilities-and-channel-types.md),
@@ -674,6 +676,65 @@ of proving a change works and needs nothing installed:
     file needs to live somewhere this exclusion doesn't cover — a subfolder
     glob pattern changes, for instance — re-verify this still holds rather
     than assuming it does.
+37. **A hook shared by multiple mounted consumers must not tie a side effect to any
+    one consumer's unmount.** `useVoiceChannel` originally left the call in an
+    unmount cleanup ("navigating away from the page mid-call should hang up") — fine
+    when only `VoiceChannelPanel`/`VoiceBar` called it (one mounted instance per active
+    call, tied to the page actually showing that channel/conversation). Once
+    `VoiceChannelSidebarItem` started calling the same hook (to back the sidebar's
+    hover join/leave button), a voice channel you'd joined had *two* mounted
+    `useVoiceChannel` instances for the same scope — the page's and the sidebar row's.
+    Since Inertia re-renders the whole page tree per navigation (no persistent layout —
+    see trap #38), switching to any other channel/room unmounted both instances, and
+    the cleanup fired `leaveVoice()` even when navigating *back into the same still-open
+    call*. `services/webrtc.ts`'s `joinVoice()` already leaves any previously-active
+    call itself before joining a new one (`if (currentKey && currentKey !== newKey)
+    leaveVoice()`), which is the only "auto-leave" this app actually wants — the
+    unmount-triggered leave in the hook was redundant with that and actively wrong once
+    a second consumer existed. Removed entirely; a call now only ends via an explicit
+    Leave click, joining a different call, or a real socket disconnect. If a future
+    voice surface needs its own "left the page" behavior, don't reintroduce this in
+    the shared hook — every consumer of `useVoiceChannel` unmounts on every in-app
+    navigation, shared hook or page-specific.
+38. **Presence (`presence.global`) must not be subscribed from inside a specific
+    page component.** `subscribePresence()` used to be called from `Channels/Show.tsx`
+    and `DM/Show.tsx`'s own `useEffect`, which meant a user only showed up as "online"
+    to everyone else while sitting on one of those two page types — visiting Settings,
+    Rooms/Create, or anywhere else silently dropped them off the global roster, and
+    every Inertia navigation between page types (no persistent layout in this app — see
+    `## Conventions`' `RoomRail` bullet, every page rebuilds its own tree) caused a real
+    leave+rejoin blip on the WebSocket. Fixed by driving the subscription from
+    `app.tsx` instead, keyed off `auth.user.id` from Inertia's own `router.on('navigate')`
+    event (plus the initial page load) rather than any single page's mount lifecycle —
+    this is the one place that's genuinely tied to "is someone logged in in this tab,"
+    not "which page are they currently on." A future page that needs to know about
+    presence should read `usePresence`'s store, never call `subscribePresence()` itself.
+    Separately, `.joining()`'s handler had hardcoded every newly-joining member's status
+    to `'online'` regardless of their actual `status` column (idle/dnd/invisible) — only
+    `.here()`'s initial snapshot used the real value. Both handlers now read `u.status`
+    from the presence channel's own payload (`routes/channels.php`'s `presence.global`
+    closure already returns it).
+39. **`.here()`/`.joining()` only ever fire once, at the moment a tab's own
+    `presence.global` subscription is (re)established — a status change afterward
+    (Settings, or the forced online/offline `UserStatusService::setStatus` does on
+    login/logout) is invisible to every already-connected tab, including the tab that
+    made the change itself, until it reconnects.** This was easy to miss before trap
+    #38's fix, because the old per-page `subscribePresence()` churned enough on
+    ordinary navigation that reconnecting (and re-running `.here()`) happened often
+    enough to paper over it. Once presence became one persistent connection for the
+    whole tab session, a status change stopped updating anywhere without a hard
+    refresh. Fixed with `UserStatusChanged` (`app/Events/UserStatusChanged.php`), a
+    `ShouldBroadcast` on `presence.global` fired from `UserStatusService::setStatus()`
+    itself (the one place every status mutation already funnels through), and a
+    matching `.listen('.UserStatusChanged', ...)` in `subscribePresence()`. Deliberately
+    **not** sent `->toOthers()` like this app's other broadcasts (see `## Conventions`)
+    — `UserStatusService` is called from plain Inertia requests (Settings, login,
+    logout), which never carry the `X-Socket-ID` header axios adds, so `toOthers()`
+    would have nothing to exclude; broadcasting to everyone including the user who
+    changed it keeps the live update on one path instead of also threading a local
+    optimistic update through every call site. Any future status-adjacent change
+    should go through `UserStatusService`, not a direct `$user->update(['status' =>
+    ...])`, or it silently won't broadcast.
 
 ## Adding things — quick recipes
 
@@ -776,7 +837,11 @@ of proving a change works and needs nothing installed:
   #32). `RTCPeerConnection`/`MediaStream` objects go in `services/webrtc.ts`'s
   module-level maps; the current user's own call state (mute/connection/scope) goes
   in `useVoice`; the shared, anyone-can-read participant list goes in `useVoiceRoster`
-  — never merge these three.
+  — never merge these three. `useVoiceChannel` is shared by every surface that can
+  join/leave/display a given scope's call (`VoiceChannelPanel`, `VoiceBar`,
+  `VoiceChannelSidebarItem`) — don't add an unmount-triggered `leaveVoice()` to it or
+  a new consumer, `webrtc.ts`'s `joinVoice()` already leaves any previous call itself
+  (see trap #37).
 
 ## Planned work
 

@@ -19,6 +19,10 @@ const presenceChannel = {
         leavingCallbacks.push(cb)
         return presenceChannel
     }),
+    listen: vi.fn((event: string, cb: (event: unknown) => void) => {
+        listeners[event] = cb
+        return presenceChannel
+    }),
 }
 
 const whisperListeners: Record<string, (event: unknown) => void> = {}
@@ -114,11 +118,30 @@ describe('echo service', () => {
 
         subscribePresence()
         hereCallbacks[0]([{ user_id: 'user-1', status: 'online' }])
-        joiningCallbacks[0]({ user_id: 'user-2' })
+        joiningCallbacks[0]({ user_id: 'user-2', status: 'dnd' })
         leavingCallbacks[0]({ user_id: 'user-2' })
 
         expect(usePresence.getState().statuses['user-1']).toBe('online')
         expect(usePresence.getState().statuses['user-2']).toBe('offline')
+    })
+
+    it('honors a joining member\'s actual configured status rather than assuming online', async () => {
+        const { subscribePresence } = await import('@/services/echo')
+
+        subscribePresence()
+        joiningCallbacks[0]({ user_id: 'user-3', status: 'idle' })
+
+        expect(usePresence.getState().statuses['user-3']).toBe('idle')
+    })
+
+    it('updates an already-connected member\'s status live on UserStatusChanged, without waiting for a reconnect', async () => {
+        const { subscribePresence } = await import('@/services/echo')
+
+        subscribePresence()
+        hereCallbacks[0]([{ user_id: 'user-1', status: 'online' }])
+        listeners['.UserStatusChanged']({ user_id: 'user-1', status: 'dnd' })
+
+        expect(usePresence.getState().statuses['user-1']).toBe('dnd')
     })
 
     it('subscribeNotifications joins the private per-user channel', async () => {

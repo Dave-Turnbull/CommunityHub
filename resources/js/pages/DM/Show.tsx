@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Head } from '@inertiajs/react'
 import { RoomRail } from '@/components/layout/RoomRail'
 import { DMSidebar } from '@/components/layout/DMSidebar'
 import { AddParticipantsModal } from '@/components/messages/AddParticipantsModal'
 import { Avatar } from '@/components/ui/Avatar'
-import { subscribePresence } from '@/services/echo'
 import { channelTypeDescriptor } from '@/services/channelTypes'
 import type { DMPageProps } from '@/types'
 
@@ -12,8 +11,6 @@ export default function DMShow({
     auth, rooms, conversations, conversation, messages: initial,
 }: DMPageProps) {
     const [addingPeople, setAddingPeople] = useState(false)
-
-    useEffect(() => subscribePresence(), [])
 
     const other = conversation.participants?.find((p) => p.user_id !== auth.user.id)
 

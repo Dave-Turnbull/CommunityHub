@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Events\UserStatusChanged;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -45,6 +47,23 @@ class LoginTest extends TestCase
         $response->assertRedirect('/');
         $this->assertAuthenticatedAs($user);
         $this->assertSame('online', $user->fresh()->status);
+    }
+
+    public function test_login_broadcasts_the_forced_online_status_live(): void
+    {
+        Event::fake([UserStatusChanged::class]);
+        $user = User::factory()->create([
+            'email'    => 'alice@example.com',
+            'password' => Hash::make('password'),
+            'status'   => 'offline',
+        ]);
+
+        $this->post('/login', ['login' => 'alice@example.com', 'password' => 'password']);
+
+        Event::assertDispatched(
+            UserStatusChanged::class,
+            fn (UserStatusChanged $event) => $event->userId === $user->id && $event->status === 'online'
+        );
     }
 
     public function test_login_fails_with_incorrect_password(): void

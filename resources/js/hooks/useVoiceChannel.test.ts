@@ -80,17 +80,8 @@ describe('useVoiceChannel', () => {
         expect(result.current.isActive).toBe(true)
     })
 
-    it('leaves the call on unmount if this scope is still the active one', () => {
+    it('does not leave the call on unmount — navigating channels/rooms must not drop an active call', () => {
         useVoice.setState({ scopeId: 'chan-1' })
-        const { unmount } = renderHook(() => useVoiceChannel('channel', 'chan-1', currentUser, 'auto'))
-
-        unmount()
-
-        expect(webrtc.leaveVoice).toHaveBeenCalled()
-    })
-
-    it('does not leave the call on unmount if a different scope is active', () => {
-        useVoice.setState({ scopeId: 'other-chan' })
         const { unmount } = renderHook(() => useVoiceChannel('channel', 'chan-1', currentUser, 'auto'))
 
         unmount()

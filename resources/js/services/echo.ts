@@ -57,8 +57,16 @@ export function subscribePresence(): () => void {
         .here((users: { user_id: string; status: UserStatus }[]) =>
             users.forEach((u) => setStatus(u.user_id, u.status))
         )
-        .joining((u: { user_id: string }) => setStatus(u.user_id, 'online'))
+        // Use the joining member's actual configured status (idle/dnd/invisible),
+        // not a hardcoded 'online' — a member showing up here is merely "has a tab
+        // open," which isn't the same thing as their chosen status.
+        .joining((u: { user_id: string; status: UserStatus }) => setStatus(u.user_id, u.status))
         .leaving((u: { user_id: string }) => setStatus(u.user_id, 'offline'))
+        // A user changing their own status (Settings, or the forced online/offline on
+        // login/logout) — .here()/.joining() only fire once, at connection time, so
+        // without this an already-open tab (including the user's own) never sees the
+        // change until it reconnects. See UserStatusService::setStatus.
+        .listen('.UserStatusChanged', (e: { user_id: string; status: UserStatus }) => setStatus(e.user_id, e.status))
 
     return () => e.leave('presence.global')
 }

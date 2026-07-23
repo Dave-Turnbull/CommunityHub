@@ -112,7 +112,7 @@ export function ChannelSidebar({
 
                             {group.map((c) => (
                                 SidebarItem ? (
-                                    <SidebarItem key={c.id} channel={c} active={c.id === activeChannelId} />
+                                    <SidebarItem key={c.id} channel={c} active={c.id === activeChannelId} currentUser={currentUser} />
                                 ) : (
                                     <DefaultChannelRow key={c.id} channel={c} active={c.id === activeChannelId} />
                                 )
