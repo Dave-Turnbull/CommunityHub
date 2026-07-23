@@ -98,7 +98,7 @@ export function ChannelSidebar({
                 />
             )}
 
-            <nav className="flex-1 min-h-0 overflow-y-auto p-2">
+            <nav className="flex-1 min-h-0 overflow-y-auto p-2 select-none">
                 {orderedTypesIn(list.map((c) => c.type)).map((type) => {
                     const group = list.filter((c) => c.type === type)
                     const descriptor = channelTypeDescriptor(type)

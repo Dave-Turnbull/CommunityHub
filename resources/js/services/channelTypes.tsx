@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react'
 import { VoiceChannelPanel } from '@/components/voice/VoiceChannelPanel'
-import { VoiceChannelSidebarItem } from '@/components/voice/VoiceChannelSidebarItem'
+import { VoiceChannelSidebarItem } from '@/components/sidebar/VoiceChannelSidebarItem'
 import { HybridConversationContent } from '@/components/chat/HybridConversationContent'
 import { TextChannelContent } from '@/components/chat/TextChannelContent'
 import type { Channel, ChannelType, PaginatedMessages, User } from '@/types'

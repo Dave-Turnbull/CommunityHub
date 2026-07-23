@@ -163,35 +163,63 @@ describe('voicePresence', () => {
         expect(leave).not.toHaveBeenCalled()
     })
 
-    it('the underlying subscription is torn down once the last subscriber leaves', () => {
+    it('the underlying subscription is torn down once the last subscriber leaves and the grace period elapses', () => {
+        vi.useFakeTimers()
         const id = uniqueChannelId()
         const first = subscribeVoiceRoster('channel', id)
         const second = subscribeVoiceRoster('channel', id)
 
         first.leave()
         second.leave()
+        expect(leave).not.toHaveBeenCalled() // not yet — still within the grace period
 
+        vi.runAllTimers()
         expect(leave).toHaveBeenCalledTimes(1)
+        vi.useRealTimers()
     })
 
-    it('the roster is cleared once the last subscriber leaves', () => {
+    it('the roster is cleared once the last subscriber leaves and the grace period elapses', () => {
+        vi.useFakeTimers()
         const id = uniqueChannelId()
         const sub = subscribeVoiceRoster('channel', id)
         whisperListeners['call-state']({ userId: 'user-2', displayName: 'Bob', avatarUrl: null, inCall: true })
 
         sub.leave()
+        vi.runAllTimers()
 
         expect(useVoiceRoster.getState().rosters[`channel.${id}`]).toBeUndefined()
+        vi.useRealTimers()
     })
 
-    it('subscribing again after everyone left re-joins the underlying channel', () => {
+    it('re-subscribing within the grace period reuses the still-alive subscription and keeps the roster intact', () => {
+        vi.useFakeTimers()
+        const id = uniqueChannelId()
+        const sub = subscribeVoiceRoster('channel', id)
+        whisperListeners['call-state']({ userId: 'user-2', displayName: 'Bob', avatarUrl: null, inCall: true })
+
+        sub.leave()
+        subscribeVoiceRoster('channel', id)
+        vi.runAllTimers()
+
+        expect(leave).not.toHaveBeenCalled()
+        expect(echo.joinVoiceChannel).toHaveBeenCalledTimes(1)
+        expect(useVoiceRoster.getState().rosters[`channel.${id}`]).toEqual([
+            { userId: 'user-2', displayName: 'Bob', avatarUrl: null, muted: false },
+        ])
+        vi.useRealTimers()
+    })
+
+    it('subscribing again after the grace period has elapsed re-joins the underlying channel', () => {
+        vi.useFakeTimers()
         const id = uniqueChannelId()
         const sub = subscribeVoiceRoster('channel', id)
         sub.leave()
+        vi.runAllTimers()
 
         subscribeVoiceRoster('channel', id)
 
         expect(echo.joinVoiceChannel).toHaveBeenCalledTimes(2)
+        vi.useRealTimers()
     })
 
     it('calling leave twice on the same handle only decrements the ref count once', () => {

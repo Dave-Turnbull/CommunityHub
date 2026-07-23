@@ -63,6 +63,25 @@ state, entirely separate from presence subscription:
   explicit "leaving" `call-state` was whispered first — covers a crashed tab or dropped
   connection.
 
+## Sidebar interaction
+
+`VoiceChannelSidebarItem` offers two ways to join a call, both single-purpose:
+
+- A hover icon button (opacity-0 until the row is hovered, or connected — then it stays
+  visible) — single click, toggles join/leave.
+- Double-clicking the channel name — join only. It deliberately never leaves: a
+  double-click is two `click` events (each of which already navigates via the `Link`'s
+  own `href`, into the very channel the row represents) followed by a `dblclick`. If the
+  `dblclick` handler also left when already connected, double-clicking a call you're
+  already in would immediately kick you out the moment you land back on its own page —
+  reads as the sidebar randomly dropping your call, not a deliberate leave action. Leaving
+  has its own explicit affordance (the hover button, or the main-pane panel's Leave
+  button) instead.
+
+`ChannelSidebar` and `DMSidebar`'s `<nav>` are `select-none` — double-clicking a row (to
+join voice, or just landing an errant double-click while navigating) shouldn't highlight
+the row's text the way a normal double-click-on-text would.
+
 ## Shared roster
 
 The roster ("who's actually in this call," as opposed to who's merely observing) is
@@ -81,11 +100,14 @@ This also avoids a presence channel's `.here()` callback firing only once, at th
 moment its own subscription succeeds — Echo/Pusher do not replay it for a callback
 registered afterward — which is why this module does not call `.here()` at all.
 
-Two independent consumers call `subscribeVoiceRoster`: `VoiceChannelSidebarItem` (via
-`hooks/useVoiceChannel.ts`, the same hook `VoiceChannelPanel` uses to join/leave — the
-sidebar row and the main-pane panel share one hook so the roster and join/leave state
-never drift between the two surfaces) for the sidebar's participant list and hover
-join/leave button, and `services/webrtc.ts`'s
+Two independent consumers call `subscribeVoiceRoster`: `components/sidebar/
+VoiceChannelSidebarItem` (via `hooks/useVoiceChannel.ts`, the same hook `VoiceChannelPanel`
+uses to join/leave — the sidebar row and the main-pane panel share one hook so the roster
+and join/leave state never drift between the two surfaces) and its `VoiceParticipantList`
+molecule (who's in the call including the current user, muted or not — a plain
+presentational component over a participant list, kept in `sidebar/` rather than `voice/`
+since it's a "sidebar row's live sub-list" shape, not something inherently voice-specific),
+and `services/webrtc.ts`'s
 `joinVoice()` for the actual call, which reads the current `useVoiceRoster` snapshot and
 reconciles its `RTCPeerConnection` map against that store on every change
 (`reconcilePeers`) — opening a connection for a roster id it doesn't have one for yet,
@@ -97,6 +119,17 @@ already in the call before the viewer has clicked Join.
 call `echo.ts`'s `joinVoiceChannel()` directly a second time for the same scope. Two
 independent direct subscribers to the same presence channel produce the `.here()`
 callback-never-fires failure mode above.
+
+Tearing down the underlying subscription when refCount hits 0 is deliberately delayed by
+a grace period (`TEARDOWN_GRACE_MS`, 5s), not immediate. An Inertia navigation within the
+same scope — e.g. double-clicking a voice channel's sidebar name, which also navigates
+there on the double-click's underlying single clicks — unmounts every current subscriber
+before the new page's subscribers mount, and that gap isn't guaranteed to be zero-width
+(the visit is an async fetch). Tearing down immediately would wipe the roster via
+`clearRoster` and force the new page's subscribers to rebuild it from a fresh,
+network-round-trip-slow handshake — visibly, everyone already in the call flickering out
+and back in. A resubscribe for the same scope within the grace window cancels the pending
+teardown and reuses the still-alive subscription (roster included) instead.
 
 ## Negotiation
 
