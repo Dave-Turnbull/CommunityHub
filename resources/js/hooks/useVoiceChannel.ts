@@ -53,16 +53,6 @@ export function useVoiceChannel(
         setMuted(!useVoice.getState().selfMuted)
     }, [])
 
-    // Leave the call if this page unmounts while still connected to it — e.g.
-    // navigating away from the channel/conversation mid-call.
-    useEffect(() => {
-        return () => {
-            if (useVoice.getState().scopeId === scopeId) {
-                leaveVoice()
-            }
-        }
-    }, [scopeId])
-
     return {
         participants: (roster ?? []).filter((p) => p.userId !== userId),
         selfMuted,

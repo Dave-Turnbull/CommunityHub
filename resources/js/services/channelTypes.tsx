@@ -37,7 +37,7 @@ export interface ChannelTypeDescriptor {
     /** Replaces the channel/conversation's entire main-pane content — omit to show an empty state (see CLAUDE.md: no type gets a default). */
     Content?: ComponentType<any>
     /** Replaces ChannelSidebar's default row — omit for a plain link. Channel-scoped types only. */
-    SidebarItem?: ComponentType<{ channel: Channel; active: boolean }>
+    SidebarItem?: ComponentType<{ channel: Channel; active: boolean; currentUser: User }>
 }
 
 function TextChannelTypeContent({

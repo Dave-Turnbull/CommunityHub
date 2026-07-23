@@ -1,11 +1,9 @@
-import { useEffect } from 'react'
 import { Head } from '@inertiajs/react'
 import { RoomRail } from '@/components/layout/RoomRail'
 import { ChannelSidebar } from '@/components/layout/ChannelSidebar'
 import { MemberList } from '@/components/layout/MemberList'
 import { useChannelFocus } from '@/hooks/useChannelFocus'
 import { useUI } from '@/stores'
-import { subscribePresence } from '@/services/echo'
 import { channelTypeDescriptor, isTextCapableChannelType } from '@/services/channelTypes'
 import type { ChannelPageProps } from '@/types'
 
@@ -18,7 +16,6 @@ export default function ChannelShow({
 
     const { memberListOpen, toggleMemberList } = useUI()
 
-    useEffect(() => subscribePresence(), [])
     useChannelFocus(isTextCapable ? channel.id : null)
 
     return (

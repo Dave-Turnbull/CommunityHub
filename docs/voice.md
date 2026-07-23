@@ -81,8 +81,11 @@ This also avoids a presence channel's `.here()` callback firing only once, at th
 moment its own subscription succeeds — Echo/Pusher do not replay it for a callback
 registered afterward — which is why this module does not call `.here()` at all.
 
-Two independent consumers call `subscribeVoiceRoster`: `ChannelSidebar` (via
-`hooks/useVoiceChannelRoster.ts`) for read-only display, and `services/webrtc.ts`'s
+Two independent consumers call `subscribeVoiceRoster`: `VoiceChannelSidebarItem` (via
+`hooks/useVoiceChannel.ts`, the same hook `VoiceChannelPanel` uses to join/leave — the
+sidebar row and the main-pane panel share one hook so the roster and join/leave state
+never drift between the two surfaces) for the sidebar's participant list and hover
+join/leave button, and `services/webrtc.ts`'s
 `joinVoice()` for the actual call, which reads the current `useVoiceRoster` snapshot and
 reconciles its `RTCPeerConnection` map against that store on every change
 (`reconcilePeers`) — opening a connection for a roster id it doesn't have one for yet,
