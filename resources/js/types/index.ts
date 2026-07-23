@@ -197,6 +197,8 @@ export interface VoiceDevicePreference {
     client_id: string
     input_device_id: string | null
     output_device_id: string | null
+    // 0-100; 0 means voice activation is off and the mic always transmits.
+    send_threshold: number
 }
 
 export interface VoiceParticipant {

@@ -18,7 +18,47 @@ class VoiceDevicePreferenceTest extends TestCase
         $response = $this->actingAs($user)->getJson('/api/voice/device-preference?client_id=laptop-1');
 
         $response->assertOk();
-        $response->assertJson(['client_id' => 'laptop-1', 'input_device_id' => null, 'output_device_id' => null]);
+        $response->assertJson(['client_id' => 'laptop-1', 'input_device_id' => null, 'output_device_id' => null, 'send_threshold' => 0]);
+    }
+
+    public function test_a_user_can_set_their_send_threshold(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->putJson('/api/voice/device-preference', [
+            'client_id'      => 'laptop-1',
+            'send_threshold' => 35,
+        ]);
+
+        $response->assertOk();
+        $response->assertJson(['send_threshold' => 35]);
+        $this->assertDatabaseHas('voice_device_preferences', [
+            'user_id' => $user->id, 'client_id' => 'laptop-1', 'send_threshold' => 35,
+        ]);
+    }
+
+    public function test_send_threshold_must_be_between_zero_and_a_hundred(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->putJson('/api/voice/device-preference', [
+            'client_id' => 'laptop-1', 'send_threshold' => 101,
+        ])->assertUnprocessable();
+
+        $this->actingAs($user)->putJson('/api/voice/device-preference', [
+            'client_id' => 'laptop-1', 'send_threshold' => -1,
+        ])->assertUnprocessable();
+    }
+
+    public function test_omitting_send_threshold_defaults_it_to_zero(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->putJson('/api/voice/device-preference', [
+            'client_id' => 'laptop-1', 'input_device_id' => 'mic-a',
+        ]);
+
+        $response->assertJson(['send_threshold' => 0]);
     }
 
     public function test_a_user_can_set_their_device_preference_for_a_client(): void

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useVoice, useVoiceRoster } from '@/stores'
+import { useVoice, useVoiceRoster, useSpeaking, useRemoteStreamVersion, useConnectionQuality } from '@/stores'
 import * as api from '@/services/api'
 import * as voicePresence from '@/services/voicePresence'
 import * as voiceCallGuard from '@/services/voiceCallGuard'
@@ -31,6 +31,34 @@ const unsubscribeCallGuard = vi.fn()
 vi.mock('@/services/voiceCallGuard', () => ({
     announceJoin: vi.fn(),
     guardAgainstOtherTabsJoining: vi.fn(() => unsubscribeCallGuard),
+}))
+
+// voiceActivation.ts's own dB-threshold math is covered by
+// voiceActivation.test.ts — mocked here so these tests can drive its
+// onGateChange callback directly and assert on how webrtc.ts reacts,
+// without needing to fake AudioContext/requestAnimationFrame too.
+const voiceActivationStop = vi.fn()
+const voiceActivationCalls: { threshold: number; onGateChange: (open: boolean) => void }[] = []
+
+vi.mock('@/services/voiceActivation', () => ({
+    startVoiceActivation: vi.fn((_stream: unknown, threshold: number, onGateChange: (open: boolean) => void) => {
+        voiceActivationCalls.push({ threshold, onGateChange })
+        return { stop: voiceActivationStop }
+    }),
+}))
+
+// connectionQuality.ts's own getStats parsing/classification is covered by
+// connectionQuality.test.ts — mocked here so these tests can drive its
+// onQualityChange callback directly, without needing a real getStats/fake
+// timers setup on top of everything else this file already fakes.
+const connectionQualityStop = vi.fn()
+const connectionQualityCalls: { onQualityChange: (quality: string) => void }[] = []
+
+vi.mock('@/services/connectionQuality', () => ({
+    startConnectionQualityMonitor: vi.fn((_pc: unknown, onQualityChange: (quality: string) => void) => {
+        connectionQualityCalls.push({ onQualityChange })
+        return { stop: connectionQualityStop }
+    }),
 }))
 
 // A minimal fake RTCPeerConnection — must be a real `function` (not an arrow
@@ -88,6 +116,11 @@ describe('webrtc service', () => {
         for (const key of Object.keys(whisperListeners)) delete whisperListeners[key]
         useVoice.getState().reset()
         useVoiceRoster.setState({ rosters: {} })
+        useSpeaking.setState({ speaking: {} })
+        useRemoteStreamVersion.setState({ version: 0 })
+        useConnectionQuality.setState({ quality: {} })
+        voiceActivationCalls.length = 0
+        connectionQualityCalls.length = 0
         vi.mocked(api.fetchIceServers).mockResolvedValue({
             iceServers: [{ urls: 'stun:turn.test:3478' }, { urls: 'turn:turn.test:3478', username: 'u', credential: 'c' }],
         })
@@ -303,5 +336,298 @@ describe('webrtc service', () => {
         await whisperListeners['signal']({ to: 'someone-else', from: 'peer-9', description: { type: 'offer', sdp: 'x' } })
 
         expect(instances).toHaveLength(0)
+    })
+
+    // Perfect Negotiation glare: both sides can send an offer at once. The
+    // "impolite" side (currentUserId > remoteUserId — see isPolite) must drop
+    // the incoming offer rather than fight its own in-flight negotiation.
+    it('an impolite peer ignores a colliding incoming offer while it already has one in flight', async () => {
+        mockGetUserMedia()
+        // 'me' < 'zzz-peer', so isPolite('zzz-peer') is false — we are impolite.
+        useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'zzz-peer' })])
+        const { joinVoice } = await import('@/services/webrtc')
+        await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+        expect(instances).toHaveLength(1)
+
+        // Simulate this side already negotiating its own offer (glare).
+        instances[0].signalingState = 'have-local-offer'
+        whisper.mockClear()
+
+        await whisperListeners['signal']({
+            to: 'me', from: 'zzz-peer', description: { type: 'offer', sdp: 'remote-offer' },
+        })
+
+        // Neither setRemoteDescription (which would populate localDescription
+        // in this fake) nor an answering whisper should have happened.
+        expect(instances[0].localDescription).toBeNull()
+        expect(whisper).not.toHaveBeenCalledWith('signal', expect.objectContaining({ to: 'zzz-peer' }))
+    })
+
+    // The mirror image: the "polite" side (currentUserId < remoteUserId) backs
+    // off its own offer and accepts the incoming one instead of ignoring it.
+    it('a polite peer accepts a colliding incoming offer and answers it', async () => {
+        mockGetUserMedia()
+        // 'me' > 'aaa-peer', so isPolite('aaa-peer') is true — we are polite.
+        useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'aaa-peer' })])
+        const { joinVoice } = await import('@/services/webrtc')
+        await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+        expect(instances).toHaveLength(1)
+
+        instances[0].signalingState = 'have-local-offer'
+        whisper.mockClear()
+
+        await whisperListeners['signal']({
+            to: 'me', from: 'aaa-peer', description: { type: 'offer', sdp: 'remote-offer' },
+        })
+
+        expect(instances[0].localDescription).toEqual({ type: 'offer', sdp: 'fake' })
+        expect(whisper).toHaveBeenCalledWith('signal', {
+            to: 'aaa-peer', from: 'me', description: { type: 'offer', sdp: 'fake' },
+        })
+    })
+
+    it('requests explicit echoCancellation/noiseSuppression/autoGainControl constraints', async () => {
+        mockGetUserMedia()
+        const { joinVoice } = await import('@/services/webrtc')
+
+        await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+        expect(vi.mocked(navigator.mediaDevices.getUserMedia)).toHaveBeenCalledWith({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        })
+    })
+
+    it('merges the explicit audio constraints with a requested input device id', async () => {
+        mockGetUserMedia()
+        const { joinVoice } = await import('@/services/webrtc')
+
+        await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', inputDeviceId: 'mic-42' })
+
+        expect(vi.mocked(navigator.mediaDevices.getUserMedia)).toHaveBeenCalledWith({
+            audio: {
+                deviceId: { exact: 'mic-42' },
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+            },
+        })
+    })
+
+    describe('voice activation (send threshold)', () => {
+        it('passes the send threshold into voice activation as a 0..1 fraction', async () => {
+            mockGetUserMedia()
+            const { joinVoice } = await import('@/services/webrtc')
+
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+
+            expect(voiceActivationCalls[0].threshold).toBeCloseTo(0.4)
+        })
+
+        it('defaults the threshold to 0 (always-on) when not provided', async () => {
+            mockGetUserMedia()
+            const { joinVoice } = await import('@/services/webrtc')
+
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            expect(voiceActivationCalls[0].threshold).toBe(0)
+        })
+
+        it('disables the local audio track when the gate closes', async () => {
+            const track = mockGetUserMedia()
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+
+            voiceActivationCalls[0].onGateChange(false)
+
+            expect(track.enabled).toBe(false)
+        })
+
+        it('re-enables the local audio track when the gate reopens, if not manually muted', async () => {
+            const track = mockGetUserMedia()
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+            voiceActivationCalls[0].onGateChange(false)
+
+            voiceActivationCalls[0].onGateChange(true)
+
+            expect(track.enabled).toBe(true)
+        })
+
+        it('a manual mute stays in effect even while the gate is open', async () => {
+            const track = mockGetUserMedia()
+            const { joinVoice, setMuted } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+
+            setMuted(true)
+            voiceActivationCalls[0].onGateChange(true)
+
+            expect(track.enabled).toBe(false)
+        })
+
+        it('unmuting respects the current (closed) gate state instead of forcing the track on', async () => {
+            const track = mockGetUserMedia()
+            const { joinVoice, setMuted } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+
+            setMuted(true)
+            voiceActivationCalls[0].onGateChange(false)
+            setMuted(false)
+
+            expect(track.enabled).toBe(false)
+        })
+
+        it('unmuting re-enables the track immediately when the gate is open', async () => {
+            const track = mockGetUserMedia()
+            const { joinVoice, setMuted } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+
+            setMuted(true)
+            voiceActivationCalls[0].onGateChange(true)
+            setMuted(false)
+
+            expect(track.enabled).toBe(true)
+        })
+
+        it('stops voice activation on leave', async () => {
+            mockGetUserMedia()
+            const { joinVoice, leaveVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+
+            leaveVoice()
+
+            expect(voiceActivationStop).toHaveBeenCalled()
+        })
+    })
+
+    describe('per-remote-participant speaking detection', () => {
+        it('starts speaking detection for a remote track using the fixed speaking threshold', async () => {
+            mockGetUserMedia()
+            useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'peer-1' })])
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+            voiceActivationCalls.length = 0 // drop the local-gate call made during join
+
+            instances[0].ontrack?.({ streams: [{} as MediaStream] })
+
+            expect(voiceActivationCalls).toHaveLength(1)
+            expect(voiceActivationCalls[0].threshold).toBeCloseTo(0.15)
+        })
+
+        it('marks a remote participant as speaking when their gate opens', async () => {
+            mockGetUserMedia()
+            useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'peer-1' })])
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+            voiceActivationCalls.length = 0
+            instances[0].ontrack?.({ streams: [{} as MediaStream] })
+
+            voiceActivationCalls[0].onGateChange(true)
+
+            expect(useSpeaking.getState().speaking['peer-1']).toBe(true)
+        })
+
+        it('marks a remote participant as not speaking when their gate closes', async () => {
+            mockGetUserMedia()
+            useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'peer-1' })])
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+            voiceActivationCalls.length = 0
+            instances[0].ontrack?.({ streams: [{} as MediaStream] })
+            voiceActivationCalls[0].onGateChange(true)
+
+            voiceActivationCalls[0].onGateChange(false)
+
+            expect(useSpeaking.getState().speaking['peer-1']).toBe(false)
+        })
+
+        it('stops speaking detection and clears the speaking flag once the peer is torn down', async () => {
+            mockGetUserMedia()
+            useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'peer-1' })])
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+            instances[0].ontrack?.({ streams: [{} as MediaStream] })
+            voiceActivationCalls[voiceActivationCalls.length - 1].onGateChange(true)
+            expect(useSpeaking.getState().speaking['peer-1']).toBe(true)
+
+            useVoiceRoster.getState().removeParticipant('channel.chan-1', 'peer-1')
+
+            expect(useSpeaking.getState().speaking['peer-1']).toBe(false)
+        })
+
+        it('getRemoteStream returns the stream captured on ontrack, and nothing before it arrives or after teardown', async () => {
+            mockGetUserMedia()
+            useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'peer-1' })])
+            const { joinVoice, getRemoteStream } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+            expect(getRemoteStream('peer-1')).toBeUndefined()
+
+            const fakeStream = {} as MediaStream
+            instances[0].ontrack?.({ streams: [fakeStream] })
+            expect(getRemoteStream('peer-1')).toBe(fakeStream)
+
+            useVoiceRoster.getState().removeParticipant('channel.chan-1', 'peer-1')
+            expect(getRemoteStream('peer-1')).toBeUndefined()
+        })
+
+        it('bumps useRemoteStreamVersion when a remote track arrives, so audio-playback components know to re-attach it', async () => {
+            mockGetUserMedia()
+            useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'peer-1' })])
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+            const before = useRemoteStreamVersion.getState().version
+
+            instances[0].ontrack?.({ streams: [{} as MediaStream] })
+
+            expect(useRemoteStreamVersion.getState().version).toBe(before + 1)
+        })
+
+        it('bumps useRemoteStreamVersion when a peer is torn down', async () => {
+            mockGetUserMedia()
+            useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'peer-1' })])
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+            const before = useRemoteStreamVersion.getState().version
+
+            useVoiceRoster.getState().removeParticipant('channel.chan-1', 'peer-1')
+
+            expect(useRemoteStreamVersion.getState().version).toBe(before + 1)
+        })
+    })
+
+    describe('per-remote-participant connection quality', () => {
+        it('starts connection-quality monitoring for a new peer connection', async () => {
+            mockGetUserMedia()
+            useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'peer-1' })])
+            const { joinVoice } = await import('@/services/webrtc')
+
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            expect(connectionQualityCalls).toHaveLength(1)
+        })
+
+        it('updates useConnectionQuality when the monitor reports a tier', async () => {
+            mockGetUserMedia()
+            useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'peer-1' })])
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            connectionQualityCalls[0].onQualityChange('poor')
+
+            expect(useConnectionQuality.getState().quality['peer-1']).toBe('poor')
+        })
+
+        it('stops connection-quality monitoring and resets to unknown once the peer is torn down', async () => {
+            mockGetUserMedia()
+            useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'peer-1' })])
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+            connectionQualityCalls[0].onQualityChange('good')
+            expect(useConnectionQuality.getState().quality['peer-1']).toBe('good')
+
+            useVoiceRoster.getState().removeParticipant('channel.chan-1', 'peer-1')
+
+            expect(connectionQualityStop).toHaveBeenCalled()
+            expect(useConnectionQuality.getState().quality['peer-1']).toBe('unknown')
+        })
     })
 })

@@ -50,14 +50,15 @@ class UserSettingsService
             'client_id'        => $clientId,
             'input_device_id'  => $preference->input_device_id ?? null,
             'output_device_id' => $preference->output_device_id ?? null,
+            'send_threshold'   => $preference->send_threshold ?? 0,
         ];
     }
 
-    public function updateDevicePreference(User $user, string $clientId, ?string $inputDeviceId, ?string $outputDeviceId): VoiceDevicePreference
+    public function updateDevicePreference(User $user, string $clientId, ?string $inputDeviceId, ?string $outputDeviceId, int $sendThreshold = 0): VoiceDevicePreference
     {
         return VoiceDevicePreference::updateOrCreate(
             ['user_id' => $user->id, 'client_id' => $clientId],
-            ['input_device_id' => $inputDeviceId, 'output_device_id' => $outputDeviceId],
+            ['input_device_id' => $inputDeviceId, 'output_device_id' => $outputDeviceId, 'send_threshold' => $sendThreshold],
         );
     }
 }

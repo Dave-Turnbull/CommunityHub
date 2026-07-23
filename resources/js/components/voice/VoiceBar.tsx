@@ -1,4 +1,5 @@
 import { Avatar } from '@/components/ui/Avatar'
+import { ParticipantVolumeControl } from '@/components/voice/ParticipantVolumeControl'
 import { useVoiceChannel } from '@/hooks/useVoiceChannel'
 import type { Conversation, User } from '@/types'
 
@@ -13,7 +14,7 @@ interface Props {
  * renders, layered above MessageList/MessageInput without touching either.
  */
 export function VoiceBar({ conversation, currentUser }: Props) {
-    const { participants, selfMuted, connectionState, isActive, join, leave, toggleMute } =
+    const { participants, selfMuted, deafened, connectionState, isActive, join, leave, toggleMute, toggleDeafen } =
         useVoiceChannel('conversation', conversation.id, currentUser, conversation.voice_mode)
 
     return (
@@ -23,11 +24,7 @@ export function VoiceBar({ conversation, currentUser }: Props) {
                     <div className="flex -space-x-2">
                         <Avatar user={currentUser} size="sm" />
                         {participants.map((p) => (
-                            <Avatar
-                                key={p.userId}
-                                user={{ id: p.userId, display_name: p.displayName, avatar_url: p.avatarUrl, username: p.userId, status: 'online' }}
-                                size="sm"
-                            />
+                            <ParticipantVolumeControl key={p.userId} participant={p} size="sm" />
                         ))}
                     </div>
 
@@ -40,6 +37,12 @@ export function VoiceBar({ conversation, currentUser }: Props) {
                         className="ml-auto rounded bg-surface-500 hover:bg-surface-400 px-3 py-1 text-xs font-medium text-text-primary transition-colors duration-100"
                     >
                         {selfMuted ? 'Unmute' : 'Mute'}
+                    </button>
+                    <button
+                        onClick={toggleDeafen}
+                        className="rounded bg-surface-500 hover:bg-surface-400 px-3 py-1 text-xs font-medium text-text-primary transition-colors duration-100"
+                    >
+                        {deafened ? 'Undeafen' : 'Deafen'}
                     </button>
                     <button
                         onClick={leave}

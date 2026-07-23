@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AudioSettings } from '@/components/settings/AudioSettings'
 import * as api from '@/services/api'
@@ -54,7 +54,7 @@ function mockMediaDevices(devices: typeof unlabeledDevices, opts: { withAnalyser
 describe('AudioSettings', () => {
     beforeEach(() => {
         vi.mocked(api.fetchVoiceDevicePreference).mockResolvedValue({
-            client_id: 'client-1', input_device_id: null, output_device_id: null,
+            client_id: 'client-1', input_device_id: null, output_device_id: null, send_threshold: 0,
         })
     })
 
@@ -102,7 +102,7 @@ describe('AudioSettings', () => {
     it('picking a microphone persists it via the API for this client', async () => {
         mockMediaDevices(labeledDevices)
         vi.mocked(api.updateVoiceDevicePreference).mockResolvedValue({
-            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null,
+            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null, send_threshold: 0,
         })
         const user = userEvent.setup()
         render(<AudioSettings />)
@@ -111,8 +111,43 @@ describe('AudioSettings', () => {
         await user.selectOptions(screen.getByLabelText('Microphone'), 'mic-1')
 
         expect(api.updateVoiceDevicePreference).toHaveBeenCalledWith({
-            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null,
+            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null, send_threshold: 0,
         })
+    })
+
+    it('renders the mic sensitivity slider at the stored threshold', async () => {
+        vi.mocked(api.fetchVoiceDevicePreference).mockResolvedValue({
+            client_id: 'client-1', input_device_id: null, output_device_id: null, send_threshold: 25,
+        })
+        mockMediaDevices(labeledDevices)
+
+        render(<AudioSettings />)
+
+        expect(await screen.findByLabelText('Mic Sensitivity')).toHaveValue('25')
+        expect(screen.getByText('25%')).toBeInTheDocument()
+    })
+
+    it('moving the sensitivity slider persists the new threshold', async () => {
+        mockMediaDevices(labeledDevices)
+        vi.mocked(api.updateVoiceDevicePreference).mockResolvedValue({
+            client_id: 'client-1', input_device_id: null, output_device_id: null, send_threshold: 60,
+        })
+        render(<AudioSettings />)
+        await screen.findByLabelText('Mic Sensitivity')
+
+        fireEvent.change(screen.getByLabelText('Mic Sensitivity'), { target: { value: '60' } })
+
+        expect(api.updateVoiceDevicePreference).toHaveBeenCalledWith(
+            expect.objectContaining({ send_threshold: 60 })
+        )
+    })
+
+    it('a threshold of 0 is labeled "Always on" instead of "0%"', async () => {
+        mockMediaDevices(labeledDevices)
+
+        render(<AudioSettings />)
+
+        expect(await screen.findByText('Always on')).toBeInTheDocument()
     })
 
     it('starting the microphone test shows a live level meter', async () => {
@@ -125,6 +160,19 @@ describe('AudioSettings', () => {
 
         expect(await screen.findByRole('progressbar', { name: 'Microphone level' })).toBeInTheDocument()
         expect(screen.getByText('Stop Test')).toBeInTheDocument()
+    })
+
+    it('requests explicit echoCancellation/noiseSuppression/autoGainControl constraints for the mic test', async () => {
+        const { getUserMedia } = mockMediaDevices(labeledDevices, { withAnalyser: true })
+        const user = userEvent.setup()
+        render(<AudioSettings />)
+        await screen.findByText('Built-in Mic')
+
+        await user.click(screen.getByText('Start Test'))
+
+        expect(getUserMedia).toHaveBeenCalledWith({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        })
     })
 
     it('stopping the test removes the level meter and stops the stream', async () => {

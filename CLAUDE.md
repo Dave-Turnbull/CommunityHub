@@ -189,7 +189,11 @@ resources/
       settings/                NotificationPreferences (see docs/notifications.md);
                                AudioSettings (see docs/voice.md)
       voice/                  VoiceChannelPanel, VoiceBar — a channel/conversation's
-                               main-pane voice UI. VoiceChannelSidebarItem lives in
+                               main-pane voice UI. Both render ParticipantVolumeControl
+                               per remote participant (speaking-ring Avatar + volume
+                               Popover) which itself renders RemoteParticipantAudio (the
+                               actual hidden <audio> playback element — see docs/voice.md).
+                               VoiceChannelSidebarItem lives in
                                sidebar/, not here — see below
       sidebar/                Components that render *inside* ChannelSidebar's per-
                                channel-type row slot (`ChannelTypeDescriptor.
@@ -217,11 +221,17 @@ resources/
                                directly), channelTypes.tsx (frontend channel-type
                                registry — see docs/capabilities-and-channel-types.md),
                                echo.ts (Reverb subscriptions), voicePresence.ts,
-                               webrtc.ts, voiceCallGuard.ts (see docs/voice.md),
-                               clientId.ts (localStorage-persisted per-browser-install id)
+                               webrtc.ts, voiceCallGuard.ts, voiceActivation.ts,
+                               connectionQuality.ts (getStats()-based per-peer quality
+                               polling, no signaling involved — see docs/voice.md),
+                               audioLevel.ts (dBFS level-meter math shared by the
+                               AudioSettings mic test and voice activation — see
+                               docs/voice.md), clientId.ts (localStorage-persisted
+                               per-browser-install id)
     stores/                   Zustand: useMessages, usePresence, useUI, useNotifications,
                                useChannels (see docs/capabilities-and-channel-types.md),
-                               useVoice, useVoiceRoster (see docs/voice.md)
+                               useVoice, useVoiceRoster, useSpeaking, useVoiceVolume,
+                               useRemoteStreamVersion, useConnectionQuality (see docs/voice.md)
     types/                    all shared interfaces + Inertia page-prop types;
                                `ChannelType` is `string`, not a closed union
     test/setup.ts             Vitest setup — @testing-library/jest-dom matchers

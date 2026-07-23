@@ -3,7 +3,7 @@ import { fetchVoiceDevicePreference } from '@/services/api'
 import { getClientId } from '@/services/clientId'
 import { rosterKey, subscribeVoiceRoster } from '@/services/voicePresence'
 import { joinVoice, leaveVoice, setMuted } from '@/services/webrtc'
-import { useVoice, useVoiceRoster } from '@/stores'
+import { useVoice, useVoiceRoster, useSpeaking, useConnectionQuality } from '@/stores'
 import type { User, VoiceConnectionMode } from '@/types'
 
 export function useVoiceChannel(
@@ -15,7 +15,10 @@ export function useVoiceChannel(
     const userId = currentUser.id
     const key = rosterKey(scopeType, scopeId)
     const roster = useVoiceRoster((s) => s.rosters[key])
+    const speaking = useSpeaking((s) => s.speaking)
+    const quality = useConnectionQuality((s) => s.quality)
     const selfMuted = useVoice((s) => s.selfMuted)
+    const deafened = useVoice((s) => s.deafened)
     const connectionState = useVoice((s) => s.connectionState)
     const activeScopeId = useVoice((s) => s.scopeId)
     const joining = useRef(false)
@@ -40,7 +43,11 @@ export function useVoiceChannel(
                 scopeType,
                 scopeId,
                 { id: currentUser.id, displayName: currentUser.display_name, avatarUrl: currentUser.avatar_url },
-                { inputDeviceId: devicePreference.input_device_id, connectionMode }
+                {
+                    inputDeviceId: devicePreference.input_device_id,
+                    connectionMode,
+                    sendThreshold: devicePreference.send_threshold,
+                }
             )
         } finally {
             joining.current = false
@@ -53,13 +60,23 @@ export function useVoiceChannel(
         setMuted(!useVoice.getState().selfMuted)
     }, [])
 
+    // Deafen is pure local playback state — it never touches the mic/track,
+    // so unlike toggleMute it doesn't go through services/webrtc.ts at all.
+    const toggleDeafen = useCallback(() => {
+        useVoice.getState().setDeafened(!useVoice.getState().deafened)
+    }, [])
+
     return {
-        participants: (roster ?? []).filter((p) => p.userId !== userId),
+        participants: (roster ?? [])
+            .filter((p) => p.userId !== userId)
+            .map((p) => ({ ...p, speaking: speaking[p.userId] ?? false, quality: quality[p.userId] ?? 'unknown' })),
         selfMuted,
+        deafened,
         connectionState,
         isActive: activeScopeId === scopeId,
         join,
         leave,
         toggleMute,
+        toggleDeafen,
     }
 }
