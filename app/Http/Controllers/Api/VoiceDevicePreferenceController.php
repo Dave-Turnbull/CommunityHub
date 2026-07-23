@@ -3,24 +3,20 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\VoiceDevicePreference;
+use App\Services\UserSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class VoiceDevicePreferenceController extends Controller
 {
+    public function __construct(private readonly UserSettingsService $settings) {}
+
     /** The stored device preference for this user's (user_id, client_id) pair, or nulls if none is stored yet. */
     public function index(Request $request): JsonResponse
     {
         $clientId = $this->validateClientId($request);
 
-        $preference = VoiceDevicePreference::forClient($request->user()->id, $clientId);
-
-        return response()->json([
-            'client_id'         => $clientId,
-            'input_device_id'   => $preference->input_device_id ?? null,
-            'output_device_id'  => $preference->output_device_id ?? null,
-        ]);
+        return response()->json($this->settings->devicePreference($request->user(), $clientId));
     }
 
     public function update(Request $request): JsonResponse
@@ -31,12 +27,11 @@ class VoiceDevicePreferenceController extends Controller
             'output_device_id'  => ['nullable', 'string'],
         ]);
 
-        $preference = VoiceDevicePreference::updateOrCreate(
-            ['user_id' => $request->user()->id, 'client_id' => $validated['client_id']],
-            [
-                'input_device_id'  => $validated['input_device_id'] ?? null,
-                'output_device_id' => $validated['output_device_id'] ?? null,
-            ],
+        $preference = $this->settings->updateDevicePreference(
+            $request->user(),
+            $validated['client_id'],
+            $validated['input_device_id'] ?? null,
+            $validated['output_device_id'] ?? null,
         );
 
         return response()->json($preference);

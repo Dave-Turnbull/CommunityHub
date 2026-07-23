@@ -1,5 +1,6 @@
 import { fetchIceServers } from '@/services/api'
 import { rosterKey, subscribeVoiceRoster } from '@/services/voicePresence'
+import { announceJoin, guardAgainstOtherTabsJoining } from '@/services/voiceCallGuard'
 import { useVoice, useVoiceRoster } from '@/stores'
 import type { VoiceConnectionMode } from '@/types'
 
@@ -30,6 +31,7 @@ let currentUserId: string | null = null
 let currentKey: string | null = null
 let currentIceServers: RTCIceServer[] = []
 let currentTransportPolicy: RTCIceTransportPolicy = 'all'
+let unsubscribeCallGuard: (() => void) | null = null
 
 export function getRemoteStream(userId: string): MediaStream | undefined {
     return remoteStreams.get(userId)
@@ -178,9 +180,20 @@ export async function joinVoice(
     self: VoiceSelf,
     options: JoinVoiceOptions
 ): Promise<void> {
+    const newKey = rosterKey(scopeType, scopeId)
+
+    // Same-tab case: deterministic, no whisper round-trip needed — this
+    // tab's own state already knows if it's in a different call. The
+    // cross-tab case (a second open tab) is handled below via
+    // voiceCallGuard, which is best-effort (whisper has no delivery
+    // guarantee) since it has to reach another tab.
+    if (currentKey && currentKey !== newKey) {
+        leaveVoice()
+    }
+
     const store = useVoice.getState()
     currentUserId = self.id
-    currentKey = rosterKey(scopeType, scopeId)
+    currentKey = newKey
     currentTransportPolicy = options.connectionMode === 'relay' ? 'relay' : 'all'
 
     store.setConnectionState('connecting')
@@ -213,6 +226,9 @@ export async function joinVoice(
     reconcilePeers(currentKey)
     unsubscribeRoster = useVoiceRoster.subscribe(() => reconcilePeers(currentKey as string))
 
+    announceJoin(self.id, scopeType, scopeId)
+    unsubscribeCallGuard = guardAgainstOtherTabsJoining(self.id, leaveVoice)
+
     store.setConnectionState('connected')
 }
 
@@ -222,6 +238,8 @@ export function leaveVoice(): void {
     localStream = null
     unsubscribeRoster?.()
     unsubscribeRoster = null
+    unsubscribeCallGuard?.()
+    unsubscribeCallGuard = null
 
     if (currentUserId && currentKey) {
         useVoiceRoster.getState().removeParticipant(currentKey, currentUserId)

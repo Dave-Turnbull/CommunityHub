@@ -83,6 +83,44 @@ export function joinVoiceChannel(scopeType: 'channel' | 'conversation', scopeId:
 }
 
 /**
+ * Announce that this tab just joined a voice call, over the current user's
+ * own private channel (already subscribed everywhere via
+ * subscribeNotifications() — no dedicated channel needed). Every other open
+ * tab for the same user hears this and can decide to leave whatever call it
+ * was in — see services/voiceCallGuard.ts, which is what actually acts on
+ * it. Fire-and-forget, like every other whisper in this app; never reaches
+ * PHP (see CLAUDE.md's Voice conventions on why voice signaling avoids the
+ * backend for latency).
+ */
+export function announceVoiceJoin(userId: string, scopeType: 'channel' | 'conversation', scopeId: string): void {
+    getEcho().private(`App.Models.User.${userId}`).whisper('voice-join', { scopeType, scopeId })
+}
+
+/**
+ * Listen for another of this user's own tabs announcing a voice-call join.
+ * Returns a cleanup function that removes only this listener — NOT
+ * `e.leave(name)` — this channel is shared with subscribeNotifications()'s
+ * own, independent, whole-session subscription to the same
+ * `App.Models.User.{id}` channel; leaving it here would tear that down too
+ * (the same class of bug as trap #32: two independent subscribers to one
+ * channel need independent teardown, not a shared "last one out" leave).
+ * See services/voiceCallGuard.ts for how this is used.
+ */
+export function subscribeVoiceCallGuard(
+    userId: string,
+    onOtherTabJoined: (scopeType: 'channel' | 'conversation', scopeId: string) => void
+): () => void {
+    const name = `App.Models.User.${userId}`
+    const listener = (ev: { scopeType: 'channel' | 'conversation'; scopeId: string }) =>
+        onOtherTabJoined(ev.scopeType, ev.scopeId)
+
+    const channel = getEcho().private(name)
+    channel.listenForWhisper('voice-join', listener)
+
+    return () => channel.stopListeningForWhisper('voice-join', listener)
+}
+
+/**
  * Subscribe to a room's channel list — ChannelCreated/ChannelUpdated/
  * ChannelDeleted, so every room member's sidebar stays live without a page
  * reload. Private, not presence — nothing here needs a member roster.
