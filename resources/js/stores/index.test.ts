@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useChannels, useMessages, useNotifications, usePresence, useUI, useVoice, useVoiceRoster } from '@/stores'
+import { useChannels, useConnectionQuality, useMessages, useNotifications, usePresence, useRemoteStreamVersion, useSpeaking, useUI, useVoice, useVoiceRoster, useVoiceVolume } from '@/stores'
 import type { AppNotification, Channel, Message, VoiceParticipant } from '@/types'
 
 const makeMessage = (overrides: Partial<Message> = {}): Message => ({
@@ -215,9 +215,17 @@ describe('useVoice', () => {
         expect(useVoice.getState().connectionState).toBe('connected')
     })
 
-    it('reset clears scope, self participant, mute, and connection state', () => {
+    it('setDeafened updates its own field independently of selfMuted', () => {
+        useVoice.getState().setDeafened(true)
+
+        expect(useVoice.getState().deafened).toBe(true)
+        expect(useVoice.getState().selfMuted).toBe(false)
+    })
+
+    it('reset clears scope, self participant, mute, deafen, and connection state', () => {
         useVoice.getState().setScope('conversation', 'conv-1', makeParticipant({ userId: 'me' }))
         useVoice.getState().setSelfMuted(true)
+        useVoice.getState().setDeafened(true)
         useVoice.getState().setConnectionState('connected')
 
         useVoice.getState().reset()
@@ -227,6 +235,7 @@ describe('useVoice', () => {
             selfParticipant: null,
             scopeId: null,
             selfMuted: false,
+            deafened: false,
             connectionState: 'idle',
         })
     })
@@ -282,6 +291,96 @@ describe('useVoiceRoster', () => {
         useVoiceRoster.getState().clearRoster('channel.chan-1')
 
         expect(useVoiceRoster.getState().rosters['channel.chan-1']).toBeUndefined()
+    })
+})
+
+describe('useSpeaking', () => {
+    beforeEach(() => {
+        useSpeaking.setState({ speaking: {} })
+    })
+
+    it('defaults to not speaking for an unknown user', () => {
+        expect(useSpeaking.getState().speaking['user-2']).toBeUndefined()
+    })
+
+    it('setSpeaking records a user as speaking', () => {
+        useSpeaking.getState().setSpeaking('user-2', true)
+
+        expect(useSpeaking.getState().speaking['user-2']).toBe(true)
+    })
+
+    it('setSpeaking does not affect other users', () => {
+        useSpeaking.getState().setSpeaking('user-2', true)
+        useSpeaking.getState().setSpeaking('user-3', true)
+
+        expect(useSpeaking.getState().speaking).toEqual({ 'user-2': true, 'user-3': true })
+    })
+
+    it('clear resets every tracked user', () => {
+        useSpeaking.getState().setSpeaking('user-2', true)
+
+        useSpeaking.getState().clear()
+
+        expect(useSpeaking.getState().speaking).toEqual({})
+    })
+})
+
+describe('useVoiceVolume', () => {
+    beforeEach(() => {
+        useVoiceVolume.setState({ volumes: {} })
+    })
+
+    it('has no stored volume for an unknown user (callers default to 1)', () => {
+        expect(useVoiceVolume.getState().volumes['user-2']).toBeUndefined()
+    })
+
+    it('setVolume records a user\'s volume', () => {
+        useVoiceVolume.getState().setVolume('user-2', 0.5)
+
+        expect(useVoiceVolume.getState().volumes['user-2']).toBe(0.5)
+    })
+
+    it('setVolume does not affect other users', () => {
+        useVoiceVolume.getState().setVolume('user-2', 0.5)
+        useVoiceVolume.getState().setVolume('user-3', 0.2)
+
+        expect(useVoiceVolume.getState().volumes).toEqual({ 'user-2': 0.5, 'user-3': 0.2 })
+    })
+})
+
+describe('useRemoteStreamVersion', () => {
+    beforeEach(() => {
+        useRemoteStreamVersion.setState({ version: 0 })
+    })
+
+    it('bump increments the version', () => {
+        useRemoteStreamVersion.getState().bump()
+        useRemoteStreamVersion.getState().bump()
+
+        expect(useRemoteStreamVersion.getState().version).toBe(2)
+    })
+})
+
+describe('useConnectionQuality', () => {
+    beforeEach(() => {
+        useConnectionQuality.setState({ quality: {} })
+    })
+
+    it('has no stored quality for an unknown user', () => {
+        expect(useConnectionQuality.getState().quality['user-2']).toBeUndefined()
+    })
+
+    it('setQuality records a user\'s quality tier', () => {
+        useConnectionQuality.getState().setQuality('user-2', 'good')
+
+        expect(useConnectionQuality.getState().quality['user-2']).toBe('good')
+    })
+
+    it('setQuality does not affect other users', () => {
+        useConnectionQuality.getState().setQuality('user-2', 'good')
+        useConnectionQuality.getState().setQuality('user-3', 'poor')
+
+        expect(useConnectionQuality.getState().quality).toEqual({ 'user-2': 'good', 'user-3': 'poor' })
     })
 })
 

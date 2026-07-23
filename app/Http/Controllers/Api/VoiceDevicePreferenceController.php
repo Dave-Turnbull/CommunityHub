@@ -25,6 +25,7 @@ class VoiceDevicePreferenceController extends Controller
             'client_id'         => ['required', 'string', 'max:64'],
             'input_device_id'   => ['nullable', 'string'],
             'output_device_id'  => ['nullable', 'string'],
+            'send_threshold'    => ['nullable', 'integer', 'min:0', 'max:100'],
         ]);
 
         $preference = $this->settings->updateDevicePreference(
@@ -32,6 +33,7 @@ class VoiceDevicePreferenceController extends Controller
             $validated['client_id'],
             $validated['input_device_id'] ?? null,
             $validated['output_device_id'] ?? null,
+            $validated['send_threshold'] ?? 0,
         );
 
         return response()->json($preference);

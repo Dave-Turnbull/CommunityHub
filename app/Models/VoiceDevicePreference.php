@@ -11,7 +11,7 @@ class VoiceDevicePreference extends Model
 {
     use HasFactory, HasUuids;
 
-    protected $fillable = ['user_id', 'client_id', 'input_device_id', 'output_device_id'];
+    protected $fillable = ['user_id', 'client_id', 'input_device_id', 'output_device_id', 'send_threshold'];
 
     public function user(): BelongsTo
     {

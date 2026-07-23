@@ -15,6 +15,7 @@ class VoiceDevicePreferenceFactory extends Factory
             'client_id'        => (string) Str::uuid(),
             'input_device_id'  => null,
             'output_device_id' => null,
+            'send_threshold'   => 0,
         ];
     }
 }

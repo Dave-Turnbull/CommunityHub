@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { AppNotification, Channel, Message, ReactionSummary, UserStatus, VoiceParticipant } from '@/types'
+import type { ConnectionQuality } from '@/services/connectionQuality'
 
 // ── Channels ─────────────────────────────────────────────────────────────
 // Keyed by roomId, mirroring useMessages' scopeId-keyed shape. Seeded from
@@ -198,10 +199,17 @@ interface VoiceStore {
     scopeId: string | null
     selfParticipant: VoiceParticipant | null
     selfMuted: boolean
+    // Silences every remote participant's playback for this tab only — pure
+    // local listening state, entirely independent of selfMuted (deafening
+    // does not stop your own mic from sending) and of each participant's
+    // individual useVoiceVolume level, which stays untouched underneath it —
+    // see docs/voice.md and RemoteParticipantAudio.
+    deafened: boolean
     connectionState: VoiceConnectionState
 
     setScope: (scopeType: 'channel' | 'conversation', scopeId: string, selfParticipant: VoiceParticipant) => void
     setSelfMuted: (muted: boolean) => void
+    setDeafened: (deafened: boolean) => void
     setConnectionState: (state: VoiceConnectionState) => void
     reset: () => void
 }
@@ -211,6 +219,7 @@ const VOICE_INITIAL_STATE = {
     scopeId: null,
     selfParticipant: null,
     selfMuted: false,
+    deafened: false,
     connectionState: 'idle' as VoiceConnectionState,
 }
 
@@ -219,6 +228,7 @@ export const useVoice = create<VoiceStore>((set) => ({
 
     setScope: (scopeType, scopeId, selfParticipant) => set({ scopeType, scopeId, selfParticipant }),
     setSelfMuted: (muted) => set({ selfMuted: muted }),
+    setDeafened: (deafened) => set({ deafened }),
     setConnectionState: (state) => set({ connectionState: state }),
     reset: () => set(VOICE_INITIAL_STATE),
 }))
@@ -273,5 +283,91 @@ export const useVoiceRoster = create<VoiceRosterStore>((set) => ({
         set((s) => {
             const { [key]: _removed, ...rest } = s.rosters
             return { rosters: rest }
+        }),
+}))
+
+// ── Speaking ─────────────────────────────────────────────────────────────
+// Whether each remote peer's incoming audio is currently above a fixed level
+// threshold — purely local to this tab (each client independently analyzes
+// the decoded audio it receives), never whispered/broadcast, and therefore
+// kept out of useVoiceRoster's shared, whisper-populated participant state.
+// Keyed directly by userId, not by scope, since services/webrtc.ts only ever
+// has peer connections open for the one call this tab is currently in (see
+// docs/voice.md's "Single active call" section).
+
+interface SpeakingStore {
+    speaking: Record<string, boolean>
+    setSpeaking: (userId: string, isSpeaking: boolean) => void
+    clear: () => void
+}
+
+export const useSpeaking = create<SpeakingStore>((set) => ({
+    speaking: {},
+
+    setSpeaking: (userId, isSpeaking) =>
+        set((s) => {
+            if ((s.speaking[userId] ?? false) === isSpeaking) return s
+            return { speaking: { ...s.speaking, [userId]: isSpeaking } }
+        }),
+
+    clear: () => set({ speaking: {} }),
+}))
+
+// ── Voice volume ─────────────────────────────────────────────────────────
+// Per-remote-participant *local playback* volume (0..1, default 1) — a
+// personal "how loud does this person sound to me" preference. Never shared,
+// never affects what anyone sends; kept separate from useVoiceRoster (shared,
+// whisper-driven) for the same reason as useSpeaking above. Not persisted
+// across sessions — resets to 1 (100%) on reload, same as useSpeaking.
+
+interface VoiceVolumeStore {
+    volumes: Record<string, number>
+    setVolume: (userId: string, volume: number) => void
+}
+
+export const useVoiceVolume = create<VoiceVolumeStore>((set) => ({
+    volumes: {},
+    setVolume: (userId, volume) =>
+        set((s) => ({ volumes: { ...s.volumes, [userId]: volume } })),
+}))
+
+// ── Remote stream version ────────────────────────────────────────────────
+// services/webrtc.ts's `remoteStreams` Map holds the actual MediaStream
+// objects and deliberately stays out of a store (not serializable-safe,
+// shouldn't itself trigger re-renders — see the Voice section above). This
+// is purely a "something changed" tick a component can subscribe to so it
+// knows to re-read services/webrtc.ts's `getRemoteStream(userId)` and
+// re-attach a fresh stream to an <audio> element, without ever putting the
+// MediaStream itself in React/Zustand state.
+
+interface RemoteStreamVersionStore {
+    version: number
+    bump: () => void
+}
+
+export const useRemoteStreamVersion = create<RemoteStreamVersionStore>((set) => ({
+    version: 0,
+    bump: () => set((s) => ({ version: s.version + 1 })),
+}))
+
+// ── Connection quality ───────────────────────────────────────────────────
+// Per-remote-peer connection quality tier, purely local (each side polls its
+// own RTCPeerConnection.getStats() for that peer — see
+// services/connectionQuality.ts) — never whispered, since every figure it's
+// based on already lives on the peer connection object itself. Same keying
+// rationale as useSpeaking/useVoiceVolume: by userId, not by scope.
+
+interface ConnectionQualityStore {
+    quality: Record<string, ConnectionQuality>
+    setQuality: (userId: string, quality: ConnectionQuality) => void
+}
+
+export const useConnectionQuality = create<ConnectionQualityStore>((set) => ({
+    quality: {},
+
+    setQuality: (userId, quality) =>
+        set((s) => {
+            if (s.quality[userId] === quality) return s
+            return { quality: { ...s.quality, [userId]: quality } }
         }),
 }))

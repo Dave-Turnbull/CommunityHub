@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchVoiceDevicePreference, updateVoiceDevicePreference } from '@/services/api'
 import { getClientId } from '@/services/clientId'
+import { computeLevel } from '@/services/audioLevel'
 import type { VoiceDevicePreference } from '@/types'
 
 interface DeviceOption {
@@ -73,9 +74,22 @@ export function AudioSettings() {
         updateVoiceDevicePreference(next)
     }
 
+    const updateSendThreshold = (value: number) => {
+        if (!preference) return
+
+        const next = { ...preference, send_threshold: value }
+        setPreference(next)
+        updateVoiceDevicePreference(next)
+    }
+
     async function startTest() {
         const stream = await navigator.mediaDevices.getUserMedia({
-            audio: preference?.input_device_id ? { deviceId: { exact: preference.input_device_id } } : true,
+            audio: {
+                ...(preference?.input_device_id ? { deviceId: { exact: preference.input_device_id } } : {}),
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+            },
         })
         streamRef.current = stream
 
@@ -88,10 +102,7 @@ export function AudioSettings() {
         const data = new Uint8Array(analyser.fftSize)
         const tick = () => {
             analyser.getByteTimeDomainData(data)
-            const rms = Math.sqrt(
-                Array.from(data).reduce((sum, v) => sum + ((v - 128) / 128) ** 2, 0) / data.length
-            )
-            setLevel(Math.min(1, rms * 4))
+            setLevel(computeLevel(data))
             rafRef.current = requestAnimationFrame(tick)
         }
         tick()
@@ -192,17 +203,48 @@ export function AudioSettings() {
                         aria-valuenow={Math.round(level * 100)}
                         aria-valuemin={0}
                         aria-valuemax={100}
-                        className="h-2 w-full rounded-full bg-surface-500 overflow-hidden"
+                        className="relative h-2 w-full rounded-full bg-surface-500 overflow-hidden"
                     >
                         <div
                             className="h-full bg-success transition-[width] duration-75"
                             style={{ width: `${Math.round(level * 100)}%` }}
                         />
+                        {preference.send_threshold > 0 && (
+                            <div
+                                aria-hidden
+                                className="absolute top-0 h-full w-0.5 bg-text-primary"
+                                style={{ left: `${preference.send_threshold}%` }}
+                            />
+                        )}
                     </div>
                 )}
 
                 {/* Hidden — this is the mic-loopback element, not a UI control. */}
                 <audio ref={audioElRef} className="hidden" />
+
+                <div className="pt-1">
+                    <div className="flex items-center justify-between gap-4">
+                        <label htmlFor="voice-send-threshold" className="text-sm font-medium text-text-primary">
+                            Mic Sensitivity
+                        </label>
+                        <span className="text-xs text-text-muted">
+                            {preference.send_threshold === 0 ? 'Always on' : `${preference.send_threshold}%`}
+                        </span>
+                    </div>
+                    <p className="text-xs text-text-muted mt-0.5 mb-2">
+                        In a real call, only transmit once your mic level crosses this line —
+                        like other voice apps&apos; input sensitivity. Set to 0 to always transmit.
+                    </p>
+                    <input
+                        id="voice-send-threshold"
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={preference.send_threshold}
+                        onChange={(e) => updateSendThreshold(Number(e.target.value))}
+                        className="w-full accent-brand"
+                    />
+                </div>
             </div>
         </div>
     )

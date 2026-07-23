@@ -1,7 +1,9 @@
 import { fetchIceServers } from '@/services/api'
 import { rosterKey, subscribeVoiceRoster } from '@/services/voicePresence'
 import { announceJoin, guardAgainstOtherTabsJoining } from '@/services/voiceCallGuard'
-import { useVoice, useVoiceRoster } from '@/stores'
+import { startVoiceActivation, type VoiceActivationHandle } from '@/services/voiceActivation'
+import { startConnectionQualityMonitor, type ConnectionQualityHandle } from '@/services/connectionQuality'
+import { useVoice, useVoiceRoster, useSpeaking, useRemoteStreamVersion, useConnectionQuality } from '@/stores'
 import type { VoiceConnectionMode } from '@/types'
 
 interface SignalPayload {
@@ -22,6 +24,14 @@ type VoiceChannelHandle = ReturnType<typeof subscribeVoiceRoster>['channel']
 
 const peers = new Map<string, PeerEntry>()
 const remoteStreams = new Map<string, MediaStream>()
+// Per-remote-peer "are they currently speaking" detection — purely local
+// (see stores/index.ts's useSpeaking), never whispered. Not user-configurable,
+// unlike the local mic's send threshold.
+const speakingHandles = new Map<string, VoiceActivationHandle>()
+const SPEAKING_THRESHOLD = 0.15
+// Per-remote-peer connection quality polling — also purely local (see
+// stores/index.ts's useConnectionQuality).
+const qualityHandles = new Map<string, ConnectionQualityHandle>()
 
 let localStream: MediaStream | null = null
 let voiceChannel: VoiceChannelHandle | null = null
@@ -32,6 +42,16 @@ let currentKey: string | null = null
 let currentIceServers: RTCIceServer[] = []
 let currentTransportPolicy: RTCIceTransportPolicy = 'all'
 let unsubscribeCallGuard: (() => void) | null = null
+let voiceActivation: VoiceActivationHandle | null = null
+// Whether the voice-activation gate currently considers the mic "loud
+// enough to send" — independent of the user's own explicit mute, which
+// always wins (see applyTrackState).
+let gateOpen = true
+
+function applyTrackState(): void {
+    const muted = useVoice.getState().selfMuted
+    localStream?.getAudioTracks().forEach((track) => { track.enabled = !muted && gateOpen })
+}
 
 export function getRemoteStream(userId: string): MediaStream | undefined {
     return remoteStreams.get(userId)
@@ -61,6 +81,11 @@ function createPeerConnection(remoteUserId: string): PeerEntry {
 
     localStream?.getTracks().forEach((track) => pc.addTrack(track, localStream as MediaStream))
 
+    qualityHandles.get(remoteUserId)?.stop()
+    qualityHandles.set(remoteUserId, startConnectionQualityMonitor(pc, (quality) => {
+        useConnectionQuality.getState().setQuality(remoteUserId, quality)
+    }))
+
     pc.onnegotiationneeded = async () => {
         try {
             entry.makingOffer = true
@@ -82,6 +107,11 @@ function createPeerConnection(remoteUserId: string): PeerEntry {
     pc.ontrack = ({ streams }) => {
         if (streams[0]) {
             remoteStreams.set(remoteUserId, streams[0])
+            useRemoteStreamVersion.getState().bump()
+            speakingHandles.get(remoteUserId)?.stop()
+            speakingHandles.set(remoteUserId, startVoiceActivation(streams[0], SPEAKING_THRESHOLD, (speaking) => {
+                useSpeaking.getState().setSpeaking(remoteUserId, speaking)
+            }))
         }
     }
 
@@ -132,6 +162,13 @@ function teardownPeer(remoteUserId: string): void {
     peers.get(remoteUserId)?.pc.close()
     peers.delete(remoteUserId)
     remoteStreams.delete(remoteUserId)
+    useRemoteStreamVersion.getState().bump()
+    speakingHandles.get(remoteUserId)?.stop()
+    speakingHandles.delete(remoteUserId)
+    useSpeaking.getState().setSpeaking(remoteUserId, false)
+    qualityHandles.get(remoteUserId)?.stop()
+    qualityHandles.delete(remoteUserId)
+    useConnectionQuality.getState().setQuality(remoteUserId, 'unknown')
 }
 
 /**
@@ -172,6 +209,9 @@ export interface VoiceSelf {
 export interface JoinVoiceOptions {
     inputDeviceId?: string | null
     connectionMode: VoiceConnectionMode
+    // 0-100; 0 (the default) means voice activation is off and the mic
+    // always transmits — see services/voiceActivation.ts.
+    sendThreshold?: number
 }
 
 export async function joinVoice(
@@ -204,7 +244,18 @@ export async function joinVoice(
         : iceServers
 
     localStream = await navigator.mediaDevices.getUserMedia({
-        audio: options.inputDeviceId ? { deviceId: { exact: options.inputDeviceId } } : true,
+        audio: {
+            ...(options.inputDeviceId ? { deviceId: { exact: options.inputDeviceId } } : {}),
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+        },
+    })
+
+    gateOpen = true
+    voiceActivation = startVoiceActivation(localStream, (options.sendThreshold ?? 0) / 100, (open) => {
+        gateOpen = open
+        applyTrackState()
     })
 
     const { channel, leave } = subscribeVoiceRoster(scopeType, scopeId)
@@ -234,6 +285,9 @@ export async function joinVoice(
 
 export function leaveVoice(): void {
     Array.from(peers.keys()).forEach(teardownPeer)
+    voiceActivation?.stop()
+    voiceActivation = null
+    gateOpen = true
     localStream?.getTracks().forEach((track) => track.stop())
     localStream = null
     unsubscribeRoster?.()
@@ -255,8 +309,8 @@ export function leaveVoice(): void {
 }
 
 export function setMuted(muted: boolean): void {
-    localStream?.getAudioTracks().forEach((track) => { track.enabled = !muted })
     useVoice.getState().setSelfMuted(muted)
+    applyTrackState()
 
     if (currentUserId && currentKey) {
         // Whisper reaches every other subscriber but never the sender — update
