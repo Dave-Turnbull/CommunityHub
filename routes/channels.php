@@ -3,6 +3,7 @@
 use App\Models\Channel;
 use App\Models\Conversation;
 use App\Models\Room;
+use App\Services\VoiceSignalingService;
 use Illuminate\Support\Facades\Broadcast;
 
 // Room text channel — presence channel so we get a member list for free.
@@ -45,7 +46,7 @@ Broadcast::channel('conversation.{conversationId}', function ($user, string $con
 // reach PHP, so there's no separate signal-sending route to authorize here.
 Broadcast::channel('voice.channel.{channelId}', function ($user, string $channelId) {
     $channel = Channel::find($channelId);
-    if (! $channel || ! $channel->hasCapability('voice.join') || ! $channel->room->hasMember($user->id)) {
+    if (! $channel || ! app(VoiceSignalingService::class)->canJoin($user, $channel)) {
         return false;
     }
 
@@ -63,7 +64,7 @@ Broadcast::channel('voice.channel.{channelId}', function ($user, string $channel
 // Channel's voice gate does rather than skipping it entirely.
 Broadcast::channel('voice.conversation.{conversationId}', function ($user, string $conversationId) {
     $conversation = Conversation::find($conversationId);
-    if (! $conversation || ! $conversation->hasCapability('voice.join') || ! $conversation->hasParticipant($user->id)) {
+    if (! $conversation || ! app(VoiceSignalingService::class)->canJoin($user, $conversation)) {
         return false;
     }
 

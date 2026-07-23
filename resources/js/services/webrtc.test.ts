@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useVoice, useVoiceRoster } from '@/stores'
 import * as api from '@/services/api'
 import * as voicePresence from '@/services/voicePresence'
+import * as voiceCallGuard from '@/services/voiceCallGuard'
 import type { VoiceParticipant } from '@/types'
 
 vi.mock('@/services/api', () => ({
@@ -23,6 +24,13 @@ const presenceChannel = {
 vi.mock('@/services/voicePresence', () => ({
     rosterKey: (scopeType: string, scopeId: string) => `${scopeType}.${scopeId}`,
     subscribeVoiceRoster: vi.fn(() => ({ channel: presenceChannel, leave })),
+}))
+
+const unsubscribeCallGuard = vi.fn()
+
+vi.mock('@/services/voiceCallGuard', () => ({
+    announceJoin: vi.fn(),
+    guardAgainstOtherTabsJoining: vi.fn(() => unsubscribeCallGuard),
 }))
 
 // A minimal fake RTCPeerConnection — must be a real `function` (not an arrow
@@ -252,6 +260,39 @@ describe('webrtc service', () => {
         expect(useVoice.getState().selfMuted).toBe(true)
         expect(useVoiceRoster.getState().rosters['channel.chan-1'].find((p) => p.userId === 'me')?.muted).toBe(true)
         expect(whisper).toHaveBeenCalledWith('mute-state', { userId: 'me', muted: true })
+    })
+
+    it('announces itself to other tabs of the same user via voiceCallGuard on join', async () => {
+        mockGetUserMedia()
+        const { joinVoice } = await import('@/services/webrtc')
+
+        await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+        expect(voiceCallGuard.announceJoin).toHaveBeenCalledWith('me', 'channel', 'chan-1')
+        expect(voiceCallGuard.guardAgainstOtherTabsJoining).toHaveBeenCalledWith('me', expect.any(Function))
+    })
+
+    it('unsubscribes the cross-tab call guard on leave', async () => {
+        mockGetUserMedia()
+        const { joinVoice, leaveVoice } = await import('@/services/webrtc')
+        await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+        leaveVoice()
+
+        expect(unsubscribeCallGuard).toHaveBeenCalled()
+    })
+
+    it('joining a different scope while already in a call leaves the old one first (same-tab guard)', async () => {
+        mockGetUserMedia()
+        useVoiceRoster.getState().setRoster('channel.chan-1', [participant({ userId: 'peer-1' })])
+        const { joinVoice } = await import('@/services/webrtc')
+        await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+        expect(instances).toHaveLength(1)
+
+        await joinVoice('channel', 'chan-2', selfInfo, { connectionMode: 'auto' })
+
+        expect(instances[0].connectionState).toBe('closed')
+        expect(useVoice.getState().scopeId).toBe('chan-2')
     })
 
     it('an incoming signal addressed to someone else is ignored', async () => {

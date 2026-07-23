@@ -4,24 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\NotificationPreference;
+use App\Services\UserSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class NotificationPreferenceController extends Controller
 {
-    /** The effective (override-or-default) preference for every known category. */
+    public function __construct(private readonly UserSettingsService $settings) {}
+
     public function index(Request $request): JsonResponse
     {
-        $userId = $request->user()->id;
-
-        $preferences = collect(array_keys(NotificationPreference::DEFAULTS))
-            ->map(fn ($category) => [
-                'category' => $category,
-                ...NotificationPreference::for($userId, $category),
-            ])
-            ->values();
-
-        return response()->json($preferences);
+        return response()->json($this->settings->notificationPreferences($request->user()));
     }
 
     public function update(Request $request): JsonResponse
@@ -32,13 +25,11 @@ class NotificationPreferenceController extends Controller
             'in_app'   => ['required', 'boolean'],
         ]);
 
-        if (! $validated['in_app'] && in_array($validated['category'], NotificationPreference::IN_APP_LOCKED, true)) {
-            return response()->json(['message' => 'This category cannot be turned off.'], 422);
-        }
-
-        $preference = NotificationPreference::updateOrCreate(
-            ['user_id' => $request->user()->id, 'category' => $validated['category']],
-            ['email' => $validated['email'], 'in_app' => $validated['in_app']],
+        $preference = $this->settings->updateNotificationPreference(
+            $request->user(),
+            $validated['category'],
+            $validated['email'],
+            $validated['in_app'],
         );
 
         return response()->json($preference);

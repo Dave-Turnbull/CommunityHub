@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\RoomInvite;
 use App\Models\User;
+use App\Services\UserStatusService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,6 +15,8 @@ use Inertia\Response;
 
 class AuthController extends Controller
 {
+    public function __construct(private readonly UserStatusService $status) {}
+
     public function showLogin(): Response
     {
         return Inertia::render('Auth/Login');
@@ -37,7 +40,7 @@ class AuthController extends Controller
         }
 
         $request->session()->regenerate();
-        Auth::user()->update(['status' => 'online']);
+        $this->status->setStatus(Auth::user(), 'online');
 
         return $this->acceptPendingInvite($request) ?? redirect()->intended('/');
     }
@@ -61,8 +64,8 @@ class AuthController extends Controller
             'display_name' => $validated['display_name'],
             'email'        => $validated['email'],
             'password'     => Hash::make($validated['password']),
-            'status'       => 'online',
         ]);
+        $this->status->setStatus($user, 'online');
 
         Auth::login($user);
         $request->session()->regenerate();
@@ -72,7 +75,9 @@ class AuthController extends Controller
 
     public function logout(Request $request): RedirectResponse
     {
-        $request->user()?->update(['status' => 'offline']);
+        if ($user = $request->user()) {
+            $this->status->setStatus($user, 'offline');
+        }
 
         Auth::logout();
         $request->session()->invalidate();

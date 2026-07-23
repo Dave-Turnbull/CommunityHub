@@ -21,11 +21,19 @@ const presenceChannel = {
     }),
 }
 
+const whisperListeners: Record<string, (event: unknown) => void> = {}
+
 const channel = {
     listen: vi.fn((event: string, cb: (event: unknown) => void) => {
         listeners[event] = cb
         return channel
     }),
+    whisper: vi.fn(() => channel),
+    listenForWhisper: vi.fn((event: string, cb: (event: unknown) => void) => {
+        whisperListeners[event] = cb
+        return channel
+    }),
+    stopListeningForWhisper: vi.fn(),
 }
 
 const echoInstance = {
@@ -50,6 +58,7 @@ describe('echo service', () => {
         useNotifications.setState({ notifications: [] })
         useChannels.setState({ channels: {} })
         for (const key of Object.keys(listeners)) delete listeners[key]
+        for (const key of Object.keys(whisperListeners)) delete whisperListeners[key]
         hereCallbacks.length = 0
         joiningCallbacks.length = 0
         leavingCallbacks.length = 0
@@ -184,5 +193,34 @@ describe('echo service', () => {
         cleanup()
 
         expect(echoInstance.leave).toHaveBeenCalledWith('room.room-1')
+    })
+
+    it('announceVoiceJoin whispers voice-join on the per-user private channel', async () => {
+        const { announceVoiceJoin } = await import('@/services/echo')
+
+        announceVoiceJoin('user-1', 'channel', 'chan-1')
+
+        expect(echoInstance.private).toHaveBeenCalledWith('App.Models.User.user-1')
+        expect(channel.whisper).toHaveBeenCalledWith('voice-join', { scopeType: 'channel', scopeId: 'chan-1' })
+    })
+
+    it('subscribeVoiceCallGuard dispatches an incoming voice-join whisper to the callback', async () => {
+        const { subscribeVoiceCallGuard } = await import('@/services/echo')
+        const onOtherTabJoined = vi.fn()
+
+        subscribeVoiceCallGuard('user-1', onOtherTabJoined)
+        whisperListeners['voice-join']({ scopeType: 'channel', scopeId: 'chan-2' })
+
+        expect(onOtherTabJoined).toHaveBeenCalledWith('channel', 'chan-2')
+    })
+
+    it('subscribeVoiceCallGuard cleanup removes only its own whisper listener, not the whole channel', async () => {
+        const { subscribeVoiceCallGuard } = await import('@/services/echo')
+
+        const cleanup = subscribeVoiceCallGuard('user-1', vi.fn())
+        cleanup()
+
+        expect(channel.stopListeningForWhisper).toHaveBeenCalledWith('voice-join', expect.any(Function))
+        expect(echoInstance.leave).not.toHaveBeenCalledWith('App.Models.User.user-1')
     })
 })
