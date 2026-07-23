@@ -19,6 +19,21 @@ interface Subscription {
 }
 
 const subscriptions = new Map<string, Subscription>()
+const pendingTeardowns = new Map<string, ReturnType<typeof setTimeout>>()
+
+// Inertia navigating within the same voice scope (e.g. double-clicking a voice
+// channel's name to join it, or simply clicking into the channel the sidebar
+// row already represents) unmounts every current subscriber (ChannelSidebar's
+// row, VoiceChannelPanel) before the new page's own subscribers mount — not
+// necessarily in the same tick, since the visit itself is an async fetch. Without
+// this grace period, that gap drops refCount to 0, tearing down the underlying
+// presence channel and wiping the roster (see clearRoster below), only for the
+// new page's subscribers to rebuild it a moment later from a fresh — and
+// genuinely network-round-trip-slow — `.joining()`/call-state handshake. That
+// reads as everyone in the call flickering out and back in. Held long enough to
+// cover a normal Inertia visit; a subscriber that doesn't come back within it was
+// a real "nobody's watching this scope anymore," not a page swap.
+const TEARDOWN_GRACE_MS = 5000
 
 export function rosterKey(scopeType: ScopeType, scopeId: string): string {
     return `${scopeType}.${scopeId}`
@@ -47,6 +62,13 @@ export function rosterKey(scopeType: ScopeType, scopeId: string): string {
  */
 export function subscribeVoiceRoster(scopeType: ScopeType, scopeId: string): { channel: VoiceChannelHandle; leave: () => void } {
     const key = rosterKey(scopeType, scopeId)
+
+    const pending = pendingTeardowns.get(key)
+    if (pending) {
+        clearTimeout(pending)
+        pendingTeardowns.delete(key)
+    }
+
     let sub = subscriptions.get(key)
 
     if (!sub) {
@@ -100,9 +122,13 @@ export function subscribeVoiceRoster(scopeType: ScopeType, scopeId: string): { c
 
             subscription.refCount -= 1
             if (subscription.refCount <= 0) {
-                subscription.leaveUnderlying()
-                subscriptions.delete(key)
-                useVoiceRoster.getState().clearRoster(key)
+                const timer = setTimeout(() => {
+                    subscription.leaveUnderlying()
+                    subscriptions.delete(key)
+                    useVoiceRoster.getState().clearRoster(key)
+                    pendingTeardowns.delete(key)
+                }, TEARDOWN_GRACE_MS)
+                pendingTeardowns.set(key, timer)
             }
         },
     }

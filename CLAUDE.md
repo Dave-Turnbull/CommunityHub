@@ -180,8 +180,22 @@ resources/
                                — see docs/conversations-and-invites.md
       settings/                NotificationPreferences (see docs/notifications.md);
                                AudioSettings (see docs/voice.md)
-      voice/                  VoiceChannelPanel, VoiceBar, VoiceChannelSidebarItem —
-                               see docs/voice.md
+      voice/                  VoiceChannelPanel, VoiceBar — a channel/conversation's
+                               main-pane voice UI. VoiceChannelSidebarItem lives in
+                               sidebar/, not here — see below
+      sidebar/                Components that render *inside* ChannelSidebar's per-
+                               channel-type row slot (`ChannelTypeDescriptor.
+                               SidebarItem` — see docs/capabilities-and-channel-types.md),
+                               as opposed to voice/'s main-pane content. VoiceChannelSidebarItem
+                               (the row — a hover icon button toggles join/leave;
+                               double-clicking the name also joins, but never leaves, see
+                               docs/voice.md) composes the VoiceParticipantList molecule
+                               (who's in the call including the current user, muted or
+                               not) — kept separate because it's the "list of people/status
+                               under a sidebar row" shape a future sidebar addition (a
+                               music player's listener count, a per-channel elapsed-time
+                               display) would also want, not something specific to voice
+                               itself. See docs/voice.md.
       emoji/ ui/               EmojiPicker, Avatar, Tooltip, Tabs (generic tabbed
                                container), Toggle (custom, no Radix Switch dependency)
     hooks/                    useChat, useAutoScroll, useNotifications,
@@ -735,6 +749,27 @@ of proving a change works and needs nothing installed:
     optimistic update through every call site. Any future status-adjacent change
     should go through `UserStatusService`, not a direct `$user->update(['status' =>
     ...])`, or it silently won't broadcast.
+40. **`subscribeVoiceRoster`'s ref-counted teardown originally assumed the last
+    subscriber's unmount and the next subscriber's mount happen in the same tick** —
+    true for a React StrictMode double-invoke, false for an Inertia page navigation,
+    which is an async fetch. Double-clicking a voice channel's sidebar name to join it
+    also navigates there on the underlying single clicks (a double-click is two clicks
+    then a dblclick — see the "New voice-adjacent feature" recipe), and that
+    navigation unmounts every current subscriber (`ChannelSidebar`'s row,
+    `VoiceChannelPanel`) before the new page's own subscribers mount moments later.
+    With the original immediate-teardown-at-refCount-0 logic, that gap tore down the
+    underlying presence channel and wiped `useVoiceRoster` via `clearRoster` — then the
+    new page's subscribers rebuilt it from a fresh, genuinely network-round-trip-slow
+    `.joining()`/call-state handshake. Visibly: everyone already in the call would
+    disappear from the roster, then the joining user would appear, then everyone else
+    would reappear as their whispers arrived — looked exactly like a state management
+    bug even though each individual store update was correct. Fixed with a grace
+    period (`TEARDOWN_GRACE_MS`, 5s) in `services/voicePresence.ts`: refCount hitting 0
+    schedules the real teardown instead of running it inline, and a resubscribe for the
+    same scope within that window cancels it and reuses the still-alive subscription
+    (and its already-populated roster) instead of rejoining from scratch. Don't remove
+    this grace period to "simplify" the ref-counting back to synchronous — the whole
+    point is covering a gap that isn't guaranteed to be zero-width.
 
 ## Adding things — quick recipes
 

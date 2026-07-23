@@ -95,7 +95,7 @@ export function DMSidebar({ conversations, currentUser, activeConversationId }: 
 
             {composing && <NewConversationModal onClose={() => setComposing(false)} />}
 
-            <nav className="flex-1 min-h-0 overflow-y-auto p-2">
+            <nav className="flex-1 min-h-0 overflow-y-auto p-2 select-none">
                 {renderList(dms, 'Direct Messages')}
                 {renderList(groups, 'Group Messages')}
 
