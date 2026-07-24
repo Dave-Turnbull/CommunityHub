@@ -321,13 +321,39 @@ are.
 
 ## Audio constraints
 
-Every `getUserMedia({ audio: ... })` call in the voice path (`webrtc.ts`'s `joinVoice`,
-`AudioSettings.tsx`'s mic test) explicitly requests `echoCancellation: true`,
-`noiseSuppression: true`, `autoGainControl: true` alongside the optional device-id
-constraint, rather than relying on the browser's implicit defaults for a bare
-`audio: true`. These happen to match Chrome's own defaults today, so this is a
-no-behavior-change clarification, not a tuning change — but it pins the behavior
-explicitly rather than leaving it to whatever a given browser defaults to.
+`echo_cancellation`/`noise_suppression`/`auto_gain_control` (all on
+`VoiceDevicePreference`, defaults `true`/`true`/`false` — matching what used to be
+hardcoded) are user-configurable per `(user_id, client_id)`, exposed as three
+toggles in `AudioSettings.tsx`'s "Audio Processing" section. Every
+`getUserMedia({ audio: ... })` call in the voice path (`webrtc.ts`'s `joinVoice`,
+`AudioSettings.tsx`'s mic test) reads these from the fetched preference rather than
+hardcoding any of the three — `JoinVoiceOptions.echoCancellation`/
+`noiseSuppression`/`autoGainControl` default to the same values (`?? true`/`?? true`/
+`?? false`) if not provided, so any caller that doesn't pass them (there are none
+left, but the fallback is deliberate) sees the historical behavior.
+
+**Unlike the send-threshold slider, these three are not live-reactive** — they're
+`getUserMedia` constraints, fixed at the moment a stream is acquired, so a toggle
+change only takes effect on the *next* join or the *next* mic test, same as the
+input/output device pickers right above them in the same page. Don't treat this as
+a bug to fix the way send_threshold's non-reactivity was (see trap #42 in
+`CLAUDE.md`) — it's a fundamentally different kind of setting (hardware/track-level
+constraint vs. a software-side comparison against a live threshold), not an
+oversight.
+
+**`auto_gain_control: true` disables the sensitivity slider, both visually and
+functionally.** AGC continuously boosts quiet input toward a target loudness,
+including pure noise-floor silence with no one talking, which produces a fixed
+non-zero level reading that never actually reflects "not talking" (diagnosed from a
+real report — the mic-test meter would settle at a stable non-zero level even with
+the mic muted). That defeats the premise of the level-based send-threshold gate
+(`services/voiceActivation.ts`), which assumes silence reads near 0. Turning AGC on
+in `AudioSettings.tsx`'s `updateProcessingToggle()` therefore also forces
+`send_threshold` to `0` (both the persisted preference and the live
+`useMicSensitivity` store) and the slider renders `disabled`, rather than leaving a
+threshold value that would silently stop meaning anything. If a future change adds
+a way to set AGC and sensitivity independently, re-solve this conflict deliberately
+— don't just remove the guard.
 
 ## Voice activation (send threshold)
 
@@ -344,22 +370,216 @@ normal speech (conversational levels sit well under 0.25 of full scale), which
 is also why the `AudioSettings` mic-test meter uses it instead of a bare
 `rms * constant` multiplier.
 
-`services/voiceActivation.ts`'s `startVoiceActivation(stream, threshold,
-onGateChange)` runs its own analyser loop against the local mic stream and
-calls back whenever the live level crosses `threshold` (converted from the
-stored 0-100 preference to 0..1 by `webrtc.ts`). `threshold <= 0` short-circuits
-before ever touching `AudioContext`/`requestAnimationFrame` — the zero-cost
-path for the default "always on" case.
+**The threshold is live, not captured once at join time.** `stores/
+index.ts`'s `useMicSensitivity` (`{ threshold, closeGap, autoGainControl }`) is
+the single shared, reactive source of truth — deliberately its own store, not
+part of `useVoice`, because `useVoice.reset()` runs on every `leaveVoice()` and
+these values have to survive across calls (they're persisted device
+preferences, not per-call ephemeral state). `AudioSettings.tsx` writes to it on
+load and on every slider/select/toggle change; `useVoiceChannel`'s `join()`
+seeds it from the fetched device preference in case Settings was never visited
+this session. `services/voiceActivation.ts`'s `startVoiceActivation(stream,
+getThresholds, onGateChange)` takes a **getter**, re-read on every tick, not a
+plain value — so a change reaches an already-running call immediately. An
+earlier version captured the threshold as a fixed value at join time; that
+version could never react to a later Settings change without leaving and
+rejoining the call, which was a real bug, not just a documentation gap. Don't
+reintroduce a plain non-getter parameter here.
 
-`webrtc.ts` tracks this as `gateOpen` (module-level, alongside `localStream`),
-kept deliberately independent of `useVoice.selfMuted` — an explicit mute
-always wins. `applyTrackState()` is the single place that reconciles both:
-`track.enabled = !selfMuted && gateOpen`. Both `setMuted()` and the activation
-gate's `onGateChange` callback go through it, so unmuting while the gate is
-currently closed (quiet) does not force the track on, and the gate reopening
-while manually muted does not un-mute. If a future change touches muting or
-the activation gate, keep both funneling through `applyTrackState()` rather
-than writing `track.enabled` directly from either path.
+The `AudioSettings.tsx` "Test Microphone" loopback now also actually gates on
+the live thresholds (muting the loopback `<audio>` element when below the
+open threshold, per the hysteresis rules below), reading `useMicSensitivity`
+fresh on every tick the same way `webrtc.ts` does — previously the marker line
+on the meter was purely cosmetic and moving the slider had no effect on what
+played back, which made the control impossible to verify from the Settings
+page itself.
+
+### Hysteresis (Close threshold)
+
+A single fixed threshold "chatters" — rapidly flips open/closed — when the
+level hovers right at the boundary, since real audio naturally fluctuates
+even during sustained speech. `VoiceDevicePreference.close_threshold_gap`
+(one of `0`/`10`/`20`/`30`, default `20`/Medium) adds a gap: the level needed
+to *open* the gate stays `send_threshold`, but once open, the level has to
+drop all the way down to `send_threshold - close_threshold_gap` (clamped at
+0) before it closes again. `0` ("Off") reproduces the original
+single-threshold behavior exactly.
+
+`services/voiceActivation.ts` models this as a `ThresholdPair` (`{ open,
+close }`, both 0..1) rather than a single number. `nextGateState(currentlyOpen,
+level, thresholds)` is the pure state-transition function — exported
+separately from `startVoiceActivation` specifically so a caller that already
+owns an analyser loop for another purpose (`AudioSettings.tsx`'s mic-test
+meter) can reuse the exact same decision without a second `AudioContext`
+tapping the same stream. `computeThresholds({ threshold, closeGap,
+autoGainControl })` converts the raw 0-100/0-30 preference values into a
+`ThresholdPair`.
+
+`AudioSettings.tsx`'s "Hysteresis band" select (the field itself and every
+other reference in this doc still call it "close threshold" — only the
+Settings-page label reads "Hysteresis band") deliberately shows *labels*
+(Large/Medium/Small/Off), not percentages — the mapping (Large=30,
+Medium=20, Small=10) describes how large the gap between the two thresholds
+is, not a literal number the user needs to reason about. The meter's marker
+is a translucent band spanning from the close threshold to the open
+threshold (a solid border at the open edge) rather than a single line, so
+the gap is visible directly instead of needing the numbers explained. This
+band is hidden entirely while `auto_gain_control` is on (see below) since
+there's no manual threshold to show.
+
+Remote-participant speaking detection (`webrtc.ts`'s `SPEAKING_THRESHOLD`)
+passes the same fixed value as both `open` and `close` — no hysteresis there,
+since it's a fixed, non-user-configurable threshold with no chattering
+concern serious enough to justify it.
+
+### Peak hold — why a single `computeLevel()` reading isn't enough
+
+A `computeLevel()` call is an *instantaneous* RMS over one small (512-sample,
+~10ms) analyser window, sampled once per animation frame (~16ms at 60fps).
+Real speech varies enormously frame-to-frame — syllable boundaries, brief
+consonant gaps, natural pauses — so a genuine, audible spike can land
+entirely between two sampled windows and never register at all, and a
+sustained word can dip under a threshold for a single frame purely from
+sampling luck, not because the person actually stopped talking. Reported
+symptom this caused: the level meter visibly failing to reach the sensitivity
+marker even when the mic clearly picked up a spike, and — more subtly — the
+open/close hysteresis appearing to only ever respect the (lower) close
+threshold, because the (higher) open threshold's bar was inconsistently
+sampled.
+
+`services/audioLevel.ts`'s `createPeakHold(decayPerSecond)` is a fast-attack/
+slow-decay peak-hold, the same technique real VU meters use: `update(instantLevel,
+deltaSeconds)` immediately jumps to a new, louder reading, but only decays
+back down gradually (`DEFAULT_DECAY_PER_SECOND = 1.2` — roughly 0.83s to
+fully decay from a full-scale peak) when the instant reading is quieter. Both
+`services/voiceActivation.ts`'s `startVoiceActivation` (the real gate) and
+`AudioSettings.tsx`'s mic-test tick loop run the *same* raw `computeLevel()`
+reading through their own `createPeakHold()` instance before doing anything
+else with it — feeding the held level, not the raw instant one, into both
+`nextGateState()` and the meter's displayed value. This is why the meter
+itself now visibly holds a spike for a moment instead of only ever showing
+whatever the current frame's instant reading happens to be, and why the gate
+no longer perceives a mid-word dip as "you stopped talking."
+
+Timestamps for decay come from `requestAnimationFrame`'s own
+`DOMHighResTimeStamp` argument (milliseconds) — both tick loops track
+`lastTimestamp` and skip decay (`deltaSeconds = 0`) until there are two real
+timestamps to diff, since the very first tick (called synchronously, with no
+timestamp) has nothing to compare against yet. This only delays when decay
+starts mattering by one frame in production; tests drive it by calling the
+mocked `requestAnimationFrame` callback with explicit millisecond values (see
+`voiceActivation.test.ts`'s `stubAudioContext().nextFrame(timestamp)`) — the
+first `nextFrame()` call after construction always establishes the baseline
+(`deltaSeconds = 0` regardless of the value passed), so a test needs *two*
+calls to observe real decay.
+
+Peak hold itself has no debounce/timeout — its decay is level-based math
+driven by real elapsed time, not a fixed delay before acting. (A genuine,
+user-facing timeout was added later — see "Close threshold timeout" below —
+but it sits on top of hysteresis as an independent force-close condition,
+not inside `createPeakHold`.)
+
+### Close threshold timeout (hang time) — for continuous background noise
+
+Hysteresis alone assumes the level eventually drops below the close
+threshold on its own. It doesn't help against a *continuous* noise source
+(a fan, an AC unit, keyboard clatter) that sits steady somewhere inside the
+hysteresis band — loud enough to have opened the gate once, never quiet
+enough to close it again — which would otherwise keep the mic open
+indefinitely. `VoiceDevicePreference.close_threshold_timeout_ms` (one of
+`500`/`1000`/.../`5000` in 500ms steps, or `null` for "Off", default `2000`)
+adds an independent, time-based force-close: once open, if the level hasn't
+touched the *open* threshold again within this many milliseconds, the gate
+force-closes even though hysteresis alone would keep it open. Touching the
+open threshold at any point resets the clock. `null` disables this entirely
+and hysteresis behaves exactly as described above with no timeout.
+
+`services/voiceActivation.ts`'s `createHangTimeGate()` implements this as a
+thin wrapper around the existing pure `nextGateState()` — it never overrides
+a legitimate level-based close, it only ever forces an *additional* close
+`nextGateState()` wouldn't have made on its own:
+
+```ts
+update(level, thresholds, timeoutMs, timestamp) {
+    if (level >= thresholds.open && timestamp !== undefined) lastOpenHitAt = timestamp
+    const hysteresisOpen = nextGateState(open, level, thresholds)
+    const timedOut = open && timeoutMs !== null && lastOpenHitAt !== null && timestamp !== undefined
+        && timestamp - lastOpenHitAt > timeoutMs
+    open = hysteresisOpen && !timedOut
+    return open
+}
+```
+
+Both `startVoiceActivation` (the real gate) and `AudioSettings.tsx`'s
+mic-test tick loop construct one `createHangTimeGate()` and feed it the
+peak-held level plus the current `timeoutMs` (from `useMicSensitivity`) every
+frame, the same way they already shared `nextGateState()`/`createPeakHold()`.
+`useMicSensitivity.timeoutMs` (`number | null`) round-trips through
+`useVoiceChannel.join()` (seeded from the fetched device preference,
+including an explicit `null` for "Off") and `AudioSettings.tsx`'s new
+"Close threshold timeout" slider — 500ms increments, its rightmost step
+(`max + step`, i.e. one step past 5000) represents "Off" and persists as
+`null`, not a literal large number.
+
+On the backend, `null` is a meaningful *stored* value ("Off"), not "field
+omitted" — `Api\VoiceDevicePreferenceController::update()` uses
+`array_key_exists('close_threshold_timeout_ms', $validated)` rather than `??`
+to tell "the request didn't send this field" (defaults to `2000`) apart from
+"the request explicitly sent `null`" (stays `null`). A naive `??` would
+silently coerce an explicit "Off" back to the 2000ms default.
+
+### Auto Gain Control disables sensitivity without erasing it
+
+`auto_gain_control: true` (the default) collapses the *effective* thresholds
+to `{ open: 0, close: 0 }` (see `computeThresholds`) — always-on, regardless
+of whatever `send_threshold`/`close_threshold_gap` are stored. Critically,
+**it does not reset the stored preference values** — `AudioSettings.tsx`'s
+`updateProcessingToggle()` only calls `useMicSensitivity.getState().
+setAutoGainControl(value)`, never `setThreshold(0)`. The Mic Sensitivity
+slider, the Hysteresis band select, and the Close threshold timeout slider
+all render `disabled` (and at reduced opacity — `disabled:opacity-50`) while
+AGC is on (same condition, `preference.auto_gain_control`) but keep
+displaying whatever value is stored, so turning AGC back off resumes with
+exactly what was set before — nothing to remember or re-configure. An
+earlier version reset `send_threshold` to 0 when AGC was enabled; that was
+real but avoidable data loss for a value the user had deliberately set, not a
+necessary side effect — don't reintroduce it. The meter's hysteresis-band
+marker (the `[aria-hidden]` translucent band) is hidden outright rather than
+just dimmed while AGC is on, since there's no manual threshold for it to
+represent.
+
+The mic-test level meter itself renders unconditionally in `AudioSettings.tsx`
+— even before "Start Test" is clicked, or after "Stop Test" — so the
+threshold/hysteresis markers stay visible as a reference while adjusting the
+sliders. Only the live moving level (`aria-valuenow`) depends on the test
+actually running; it sits at `0` the rest of the time.
+
+`webrtc.ts` tracks the gate's open/closed state as `gateOpen` (module-level,
+alongside `localStream`), kept deliberately independent of
+`useVoice.selfMuted` — an explicit mute always wins. `applyTrackState()` is
+the single place that reconciles both: `track.enabled = !selfMuted &&
+gateOpen`. Both `setMuted()` and the activation gate's `onGateChange` callback
+go through it, so unmuting while the gate is currently closed (quiet) does not
+force the track on, and the gate reopening while manually muted does not
+un-mute. If a future change touches muting or the activation gate, keep both
+funneling through `applyTrackState()` rather than writing `track.enabled`
+directly from either path.
+
+**What this fixes, and what's still unverified.** This corrects two concrete,
+code-level bugs found by reading the source (threshold never reactive; the
+loopback test never gated at all) — both are real regardless of hardware.
+What it does *not* do is guarantee the gate behaves well against real
+microphone input: `computeLevel()`'s dB floor/scale was tuned for the level
+*meter* (task: make normal speech look adequately loud), and reusing the same
+function for a gating *threshold* is a different job with different needs —
+in particular, ambient room noise may still read a non-trivial fraction of
+the 0-100 scale even with `autoGainControl` off, which could make the
+threshold's practical useful range narrower than the slider implies. This has
+not been confirmed against a real microphone in this environment (no browser
+available in this sandbox — see `## Testing`'s "Manual/live verification"
+section) and should not be assumed correct just because the unit tests
+(which exercise the wiring with synthetic signals, not real hardware/DSP
+behavior) pass.
 
 ## TURN credentials
 

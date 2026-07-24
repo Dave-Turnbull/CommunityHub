@@ -62,7 +62,7 @@ describe('VoiceChannelSidebarItem', () => {
         useVoice.getState().reset()
         useVoiceRoster.setState({ rosters: {} })
         vi.mocked(api.fetchVoiceDevicePreference).mockResolvedValue({
-            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null, send_threshold: 0,
+            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null, send_threshold: 0, close_threshold_gap: 0, close_threshold_timeout_ms: 2000, echo_cancellation: true, noise_suppression: true, auto_gain_control: false,
         })
     })
 
@@ -79,7 +79,7 @@ describe('VoiceChannelSidebarItem', () => {
         expect(webrtc.joinVoice).toHaveBeenCalledWith(
             'channel', 'chan-1',
             { id: 'user-1', displayName: 'Alice', avatarUrl: null },
-            { inputDeviceId: 'mic-1', connectionMode: 'auto', sendThreshold: 0 }
+            { inputDeviceId: 'mic-1', connectionMode: 'auto', echoCancellation: true, noiseSuppression: true, autoGainControl: false }
         )
     })
 
@@ -109,7 +109,7 @@ describe('VoiceChannelSidebarItem', () => {
         expect(webrtc.joinVoice).toHaveBeenCalledWith(
             'channel', 'chan-1',
             { id: 'user-1', displayName: 'Alice', avatarUrl: null },
-            { inputDeviceId: 'mic-1', connectionMode: 'auto', sendThreshold: 0 }
+            { inputDeviceId: 'mic-1', connectionMode: 'auto', echoCancellation: true, noiseSuppression: true, autoGainControl: false }
         )
     })
 

@@ -20,7 +20,7 @@ export default function SettingsIndex({ user }: Props) {
         <>
             <Head title="Settings" />
 
-            <div className="min-h-screen bg-surface-600 overflow-y-auto">
+            <div className="h-screen bg-surface-600 overflow-y-auto">
                 <div className="max-w-2xl mx-auto px-6 py-12">
                     <div className="flex items-center justify-between mb-8">
                         <h1 className="text-2xl font-bold text-text-primary">Settings</h1>

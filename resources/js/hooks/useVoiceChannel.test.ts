@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useVoiceChannel } from '@/hooks/useVoiceChannel'
-import { useVoice, useVoiceRoster, useSpeaking, useConnectionQuality } from '@/stores'
+import { useVoice, useVoiceRoster, useSpeaking, useConnectionQuality, useMicSensitivity } from '@/stores'
 import * as api from '@/services/api'
 import * as webrtc from '@/services/webrtc'
 import type { User } from '@/types'
@@ -35,8 +35,9 @@ describe('useVoiceChannel', () => {
         useVoiceRoster.setState({ rosters: {} })
         useSpeaking.setState({ speaking: {} })
         useConnectionQuality.setState({ quality: {} })
+        useMicSensitivity.setState({ threshold: 0, closeGap: 0, timeoutMs: null, autoGainControl: false })
         vi.mocked(api.fetchVoiceDevicePreference).mockResolvedValue({
-            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null, send_threshold: 0,
+            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null, send_threshold: 0, close_threshold_gap: 0, close_threshold_timeout_ms: 2000, echo_cancellation: true, noise_suppression: true, auto_gain_control: false,
         })
     })
 
@@ -55,8 +56,68 @@ describe('useVoiceChannel', () => {
         expect(webrtc.joinVoice).toHaveBeenCalledWith(
             'channel', 'chan-1',
             { id: 'user-1', displayName: 'Alice', avatarUrl: null },
-            { inputDeviceId: 'mic-1', connectionMode: 'auto', sendThreshold: 0 }
+            { inputDeviceId: 'mic-1', connectionMode: 'auto', echoCancellation: true, noiseSuppression: true, autoGainControl: false }
         )
+    })
+
+    it('join hands the fetched audio-processing toggles through to webrtc.joinVoice', async () => {
+        vi.mocked(api.fetchVoiceDevicePreference).mockResolvedValue({
+            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null, send_threshold: 0, close_threshold_gap: 0, close_threshold_timeout_ms: 2000,
+            echo_cancellation: false, noise_suppression: false, auto_gain_control: true,
+        })
+        const { result } = renderHook(() => useVoiceChannel('channel', 'chan-1', currentUser, 'auto'))
+
+        await act(async () => {
+            await result.current.join()
+        })
+
+        expect(webrtc.joinVoice).toHaveBeenCalledWith(
+            'channel', 'chan-1',
+            { id: 'user-1', displayName: 'Alice', avatarUrl: null },
+            { inputDeviceId: 'mic-1', connectionMode: 'auto', echoCancellation: false, noiseSuppression: false, autoGainControl: true }
+        )
+    })
+
+    it('join seeds the live useMicSensitivity store from the fetched send_threshold', async () => {
+        vi.mocked(api.fetchVoiceDevicePreference).mockResolvedValue({
+            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null, send_threshold: 55, close_threshold_gap: 0, close_threshold_timeout_ms: 2000, echo_cancellation: true, noise_suppression: true, auto_gain_control: false,
+        })
+        const { result } = renderHook(() => useVoiceChannel('channel', 'chan-1', currentUser, 'auto'))
+
+        await act(async () => {
+            await result.current.join()
+        })
+
+        expect(useMicSensitivity.getState().threshold).toBe(55)
+    })
+
+    it('join seeds the live useMicSensitivity store\'s closeGap and autoGainControl from the fetched preference', async () => {
+        vi.mocked(api.fetchVoiceDevicePreference).mockResolvedValue({
+            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null, send_threshold: 55,
+            close_threshold_gap: 20, close_threshold_timeout_ms: 2000, echo_cancellation: true, noise_suppression: true, auto_gain_control: true,
+        })
+        const { result } = renderHook(() => useVoiceChannel('channel', 'chan-1', currentUser, 'auto'))
+
+        await act(async () => {
+            await result.current.join()
+        })
+
+        expect(useMicSensitivity.getState().closeGap).toBe(20)
+        expect(useMicSensitivity.getState().autoGainControl).toBe(true)
+    })
+
+    it('join seeds the live useMicSensitivity store\'s timeoutMs from the fetched preference, including an explicit null (Off)', async () => {
+        vi.mocked(api.fetchVoiceDevicePreference).mockResolvedValue({
+            client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null, send_threshold: 55,
+            close_threshold_gap: 20, close_threshold_timeout_ms: null, echo_cancellation: true, noise_suppression: true, auto_gain_control: true,
+        })
+        const { result } = renderHook(() => useVoiceChannel('channel', 'chan-1', currentUser, 'auto'))
+
+        await act(async () => {
+            await result.current.join()
+        })
+
+        expect(useMicSensitivity.getState().timeoutMs).toBeNull()
     })
 
     it('leave delegates to webrtc.leaveVoice', () => {

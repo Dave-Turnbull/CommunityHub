@@ -1,9 +1,9 @@
 import { fetchIceServers } from '@/services/api'
 import { rosterKey, subscribeVoiceRoster } from '@/services/voicePresence'
 import { announceJoin, guardAgainstOtherTabsJoining } from '@/services/voiceCallGuard'
-import { startVoiceActivation, type VoiceActivationHandle } from '@/services/voiceActivation'
+import { startVoiceActivation, computeThresholds, type VoiceActivationHandle } from '@/services/voiceActivation'
 import { startConnectionQualityMonitor, type ConnectionQualityHandle } from '@/services/connectionQuality'
-import { useVoice, useVoiceRoster, useSpeaking, useRemoteStreamVersion, useConnectionQuality } from '@/stores'
+import { useVoice, useVoiceRoster, useSpeaking, useRemoteStreamVersion, useConnectionQuality, useMicSensitivity } from '@/stores'
 import type { VoiceConnectionMode } from '@/types'
 
 interface SignalPayload {
@@ -109,9 +109,13 @@ function createPeerConnection(remoteUserId: string): PeerEntry {
             remoteStreams.set(remoteUserId, streams[0])
             useRemoteStreamVersion.getState().bump()
             speakingHandles.get(remoteUserId)?.stop()
-            speakingHandles.set(remoteUserId, startVoiceActivation(streams[0], SPEAKING_THRESHOLD, (speaking) => {
-                useSpeaking.getState().setSpeaking(remoteUserId, speaking)
-            }))
+            speakingHandles.set(remoteUserId, startVoiceActivation(
+                streams[0],
+                () => ({ open: SPEAKING_THRESHOLD, close: SPEAKING_THRESHOLD }), // no hysteresis for remote speaking detection
+                (speaking) => {
+                    useSpeaking.getState().setSpeaking(remoteUserId, speaking)
+                }
+            ))
         }
     }
 
@@ -209,9 +213,11 @@ export interface VoiceSelf {
 export interface JoinVoiceOptions {
     inputDeviceId?: string | null
     connectionMode: VoiceConnectionMode
-    // 0-100; 0 (the default) means voice activation is off and the mic
-    // always transmits — see services/voiceActivation.ts.
-    sendThreshold?: number
+    // getUserMedia audio-processing constraints — default to the previous
+    // hardcoded values (see VoiceDevicePreference) if not provided.
+    echoCancellation?: boolean
+    noiseSuppression?: boolean
+    autoGainControl?: boolean
 }
 
 export async function joinVoice(
@@ -246,17 +252,22 @@ export async function joinVoice(
     localStream = await navigator.mediaDevices.getUserMedia({
         audio: {
             ...(options.inputDeviceId ? { deviceId: { exact: options.inputDeviceId } } : {}),
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
+            echoCancellation: options.echoCancellation ?? true,
+            noiseSuppression: options.noiseSuppression ?? true,
+            autoGainControl: options.autoGainControl ?? false,
         },
     })
 
     gateOpen = true
-    voiceActivation = startVoiceActivation(localStream, (options.sendThreshold ?? 0) / 100, (open) => {
-        gateOpen = open
-        applyTrackState()
-    })
+    voiceActivation = startVoiceActivation(
+        localStream,
+        () => computeThresholds(useMicSensitivity.getState()),
+        (open) => {
+            gateOpen = open
+            applyTrackState()
+        },
+        () => useMicSensitivity.getState().timeoutMs
+    )
 
     const { channel, leave } = subscribeVoiceRoster(scopeType, scopeId)
     voiceChannel = channel

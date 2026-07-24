@@ -47,18 +47,46 @@ class UserSettingsService
         $preference = VoiceDevicePreference::forClient($user->id, $clientId);
 
         return [
-            'client_id'        => $clientId,
-            'input_device_id'  => $preference->input_device_id ?? null,
-            'output_device_id' => $preference->output_device_id ?? null,
-            'send_threshold'   => $preference->send_threshold ?? 0,
+            'client_id'                   => $clientId,
+            'input_device_id'             => $preference->input_device_id ?? null,
+            'output_device_id'            => $preference->output_device_id ?? null,
+            'send_threshold'              => $preference->send_threshold ?? 0,
+            'close_threshold_gap'         => $preference->close_threshold_gap ?? 20,
+            // null is a real, meaningful stored value ("Off") here, distinct
+            // from "no row exists yet" — ?? would silently overwrite an
+            // explicit off with the default, so this only falls back to the
+            // default when there is truly no row at all.
+            'close_threshold_timeout_ms'  => $preference ? $preference->close_threshold_timeout_ms : 2000,
+            'echo_cancellation'           => $preference->echo_cancellation ?? true,
+            'noise_suppression'           => $preference->noise_suppression ?? true,
+            'auto_gain_control'           => $preference->auto_gain_control ?? true,
         ];
     }
 
-    public function updateDevicePreference(User $user, string $clientId, ?string $inputDeviceId, ?string $outputDeviceId, int $sendThreshold = 0): VoiceDevicePreference
-    {
+    public function updateDevicePreference(
+        User $user,
+        string $clientId,
+        ?string $inputDeviceId,
+        ?string $outputDeviceId,
+        int $sendThreshold = 0,
+        int $closeThresholdGap = 20,
+        ?int $closeThresholdTimeoutMs = 2000,
+        bool $echoCancellation = true,
+        bool $noiseSuppression = true,
+        bool $autoGainControl = true,
+    ): VoiceDevicePreference {
         return VoiceDevicePreference::updateOrCreate(
             ['user_id' => $user->id, 'client_id' => $clientId],
-            ['input_device_id' => $inputDeviceId, 'output_device_id' => $outputDeviceId, 'send_threshold' => $sendThreshold],
+            [
+                'input_device_id'            => $inputDeviceId,
+                'output_device_id'           => $outputDeviceId,
+                'send_threshold'             => $sendThreshold,
+                'close_threshold_gap'        => $closeThresholdGap,
+                'close_threshold_timeout_ms' => $closeThresholdTimeoutMs,
+                'echo_cancellation'          => $echoCancellation,
+                'noise_suppression'          => $noiseSuppression,
+                'auto_gain_control'          => $autoGainControl,
+            ],
         );
     }
 }
