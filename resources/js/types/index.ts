@@ -199,6 +199,22 @@ export interface VoiceDevicePreference {
     output_device_id: string | null
     // 0-100; 0 means voice activation is off and the mic always transmits.
     send_threshold: number
+    // 0/10/20/30 — hysteresis gap subtracted from send_threshold to get the
+    // "close" threshold; 0 means no gap (single-threshold behavior).
+    close_threshold_gap: number
+    // 500-5000 (step 500) or null ("Off") — forces the gate closed if the
+    // level hasn't hit the open threshold again within this many ms, even if
+    // still above the close threshold (handles continuous background noise
+    // sitting in the hysteresis band). null is a real, meaningful stored
+    // value here, not "unset" — see services/voiceActivation.ts's
+    // createHangTimeGate and docs/voice.md.
+    close_threshold_timeout_ms: number | null
+    // getUserMedia audio-processing constraints — applied at the next
+    // getUserMedia call (join or mic test), not live-reactive like
+    // send_threshold, since they're fixed at stream-acquisition time.
+    echo_cancellation: boolean
+    noise_suppression: boolean
+    auto_gain_control: boolean
 }
 
 export interface VoiceParticipant {

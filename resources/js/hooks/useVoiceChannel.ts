@@ -3,7 +3,7 @@ import { fetchVoiceDevicePreference } from '@/services/api'
 import { getClientId } from '@/services/clientId'
 import { rosterKey, subscribeVoiceRoster } from '@/services/voicePresence'
 import { joinVoice, leaveVoice, setMuted } from '@/services/webrtc'
-import { useVoice, useVoiceRoster, useSpeaking, useConnectionQuality } from '@/stores'
+import { useVoice, useVoiceRoster, useSpeaking, useConnectionQuality, useMicSensitivity } from '@/stores'
 import type { User, VoiceConnectionMode } from '@/types'
 
 export function useVoiceChannel(
@@ -39,6 +39,13 @@ export function useVoiceChannel(
 
         try {
             const devicePreference = await fetchVoiceDevicePreference(getClientId())
+            // Seeds the live store services/webrtc.ts's gate reads from — in
+            // case this session never visited Settings, the fetched
+            // preference is still the source of truth for the starting value.
+            useMicSensitivity.getState().setThreshold(devicePreference.send_threshold)
+            useMicSensitivity.getState().setCloseGap(devicePreference.close_threshold_gap)
+            useMicSensitivity.getState().setTimeoutMs(devicePreference.close_threshold_timeout_ms)
+            useMicSensitivity.getState().setAutoGainControl(devicePreference.auto_gain_control)
             await joinVoice(
                 scopeType,
                 scopeId,
@@ -46,7 +53,9 @@ export function useVoiceChannel(
                 {
                     inputDeviceId: devicePreference.input_device_id,
                     connectionMode,
-                    sendThreshold: devicePreference.send_threshold,
+                    echoCancellation: devicePreference.echo_cancellation,
+                    noiseSuppression: devicePreference.noise_suppression,
+                    autoGainControl: devicePreference.auto_gain_control,
                 }
             )
         } finally {

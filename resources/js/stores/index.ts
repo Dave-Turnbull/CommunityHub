@@ -233,6 +233,46 @@ export const useVoice = create<VoiceStore>((set) => ({
     reset: () => set(VOICE_INITIAL_STATE),
 }))
 
+// ── Mic sensitivity (send threshold) ────────────────────────────────────
+// A live, shared mirror of VoiceDevicePreference's send_threshold (0-100),
+// close_threshold_gap (0/10/20/30 — the hysteresis gap, see
+// services/voiceActivation.ts's ThresholdPair), close_threshold_timeout_ms
+// (the hang-time timeout, null = "Off" — see createHangTimeGate), and
+// auto_gain_control — deliberately its own store, NOT part of useVoice,
+// because useVoice.reset() runs on every leaveVoice() and these values must
+// survive across calls (they're persisted device preferences, not per-call
+// ephemeral state like selfMuted/deafened). Both AudioSettings.tsx (on load
+// and on every slider/select/toggle change) and useVoiceChannel's join()
+// (from the fetched device preference) write to this; services/webrtc.ts's
+// voice activation gate and AudioSettings.tsx's mic-test loopback both read
+// it live on every tick (via services/voiceActivation.ts's
+// computeThresholds/createHangTimeGate), so a change takes effect
+// immediately without needing to leave and rejoin a call — see docs/voice.md.
+// Initial defaults here match VoiceDevicePreference's own column defaults,
+// for the brief window before a fetched preference seeds this store.
+
+interface MicSensitivityStore {
+    threshold: number
+    closeGap: number
+    timeoutMs: number | null
+    autoGainControl: boolean
+    setThreshold: (threshold: number) => void
+    setCloseGap: (closeGap: number) => void
+    setTimeoutMs: (timeoutMs: number | null) => void
+    setAutoGainControl: (autoGainControl: boolean) => void
+}
+
+export const useMicSensitivity = create<MicSensitivityStore>((set) => ({
+    threshold: 0,
+    closeGap: 20,
+    timeoutMs: 2000,
+    autoGainControl: true,
+    setThreshold: (threshold) => set({ threshold }),
+    setCloseGap: (closeGap) => set({ closeGap }),
+    setTimeoutMs: (timeoutMs) => set({ timeoutMs }),
+    setAutoGainControl: (autoGainControl) => set({ autoGainControl }),
+}))
+
 // ── Voice roster ─────────────────────────────────────────────────────────
 // "Who is currently ACTUALLY IN this channel/conversation's call" — shared,
 // observable state, keyed by `${scopeType}.${scopeId}`, independent of

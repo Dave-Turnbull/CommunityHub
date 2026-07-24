@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useChannels, useConnectionQuality, useMessages, useNotifications, usePresence, useRemoteStreamVersion, useSpeaking, useUI, useVoice, useVoiceRoster, useVoiceVolume } from '@/stores'
+import { useChannels, useConnectionQuality, useMessages, useMicSensitivity, useNotifications, usePresence, useRemoteStreamVersion, useSpeaking, useUI, useVoice, useVoiceRoster, useVoiceVolume } from '@/stores'
 import type { AppNotification, Channel, Message, VoiceParticipant } from '@/types'
 
 const makeMessage = (overrides: Partial<Message> = {}): Message => ({
@@ -358,6 +358,39 @@ describe('useRemoteStreamVersion', () => {
         useRemoteStreamVersion.getState().bump()
 
         expect(useRemoteStreamVersion.getState().version).toBe(2)
+    })
+})
+
+describe('useMicSensitivity', () => {
+    beforeEach(() => {
+        useMicSensitivity.setState({ threshold: 0, closeGap: 0, autoGainControl: false })
+    })
+
+    it('defaults to threshold 0, closeGap 0, autoGainControl false', () => {
+        expect(useMicSensitivity.getState()).toMatchObject({
+            threshold: 0, closeGap: 0, autoGainControl: false,
+        })
+    })
+
+    it('setThreshold updates only the threshold field', () => {
+        useMicSensitivity.getState().setThreshold(40)
+
+        expect(useMicSensitivity.getState().threshold).toBe(40)
+        expect(useMicSensitivity.getState().closeGap).toBe(0)
+    })
+
+    it('setCloseGap updates only the closeGap field', () => {
+        useMicSensitivity.getState().setCloseGap(20)
+
+        expect(useMicSensitivity.getState().closeGap).toBe(20)
+        expect(useMicSensitivity.getState().threshold).toBe(0)
+    })
+
+    it('setAutoGainControl updates only the autoGainControl field', () => {
+        useMicSensitivity.getState().setAutoGainControl(true)
+
+        expect(useMicSensitivity.getState().autoGainControl).toBe(true)
+        expect(useMicSensitivity.getState().threshold).toBe(0)
     })
 })
 

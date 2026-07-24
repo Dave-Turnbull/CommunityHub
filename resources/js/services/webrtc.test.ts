@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useVoice, useVoiceRoster, useSpeaking, useRemoteStreamVersion, useConnectionQuality } from '@/stores'
+import { useVoice, useVoiceRoster, useSpeaking, useRemoteStreamVersion, useConnectionQuality, useMicSensitivity } from '@/stores'
 import * as api from '@/services/api'
 import * as voicePresence from '@/services/voicePresence'
 import * as voiceCallGuard from '@/services/voiceCallGuard'
@@ -38,13 +38,26 @@ vi.mock('@/services/voiceCallGuard', () => ({
 // onGateChange callback directly and assert on how webrtc.ts reacts,
 // without needing to fake AudioContext/requestAnimationFrame too.
 const voiceActivationStop = vi.fn()
-const voiceActivationCalls: { threshold: number; onGateChange: (open: boolean) => void }[] = []
+const voiceActivationCalls: { getThreshold: () => unknown; onGateChange: (open: boolean) => void; getTimeoutMs?: () => number | null }[] = []
 
 vi.mock('@/services/voiceActivation', () => ({
-    startVoiceActivation: vi.fn((_stream: unknown, threshold: number, onGateChange: (open: boolean) => void) => {
-        voiceActivationCalls.push({ threshold, onGateChange })
+    startVoiceActivation: vi.fn((
+        _stream: unknown,
+        getThreshold: () => unknown,
+        onGateChange: (open: boolean) => void,
+        getTimeoutMs?: () => number | null
+    ) => {
+        voiceActivationCalls.push({ getThreshold, onGateChange, getTimeoutMs })
         return { stop: voiceActivationStop }
     }),
+    // A trimmed-down stand-in for the real (thoroughly unit-tested elsewhere,
+    // see voiceActivation.test.ts) computeThresholds — just enough for these
+    // tests to assert on the resulting open/close pair.
+    computeThresholds: ({ threshold, closeGap, autoGainControl }: { threshold: number; closeGap: number; autoGainControl: boolean }) => {
+        if (autoGainControl) return { open: 0, close: 0 }
+        const open = threshold / 100
+        return { open, close: Math.max(0, open - closeGap / 100) }
+    },
 }))
 
 // connectionQuality.ts's own getStats parsing/classification is covered by
@@ -119,6 +132,7 @@ describe('webrtc service', () => {
         useSpeaking.setState({ speaking: {} })
         useRemoteStreamVersion.setState({ version: 0 })
         useConnectionQuality.setState({ quality: {} })
+        useMicSensitivity.setState({ threshold: 0, closeGap: 0, timeoutMs: null, autoGainControl: false })
         voiceActivationCalls.length = 0
         connectionQualityCalls.length = 0
         vi.mocked(api.fetchIceServers).mockResolvedValue({
@@ -386,14 +400,30 @@ describe('webrtc service', () => {
         })
     })
 
-    it('requests explicit echoCancellation/noiseSuppression/autoGainControl constraints', async () => {
+    it('requests explicit echoCancellation/noiseSuppression constraints, with autoGainControl deliberately off, when not overridden', async () => {
         mockGetUserMedia()
         const { joinVoice } = await import('@/services/webrtc')
 
         await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
 
         expect(vi.mocked(navigator.mediaDevices.getUserMedia)).toHaveBeenCalledWith({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+        })
+    })
+
+    it('honors explicit per-user overrides for echoCancellation/noiseSuppression/autoGainControl', async () => {
+        mockGetUserMedia()
+        const { joinVoice } = await import('@/services/webrtc')
+
+        await joinVoice('channel', 'chan-1', selfInfo, {
+            connectionMode: 'auto',
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: true,
+        })
+
+        expect(vi.mocked(navigator.mediaDevices.getUserMedia)).toHaveBeenCalledWith({
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
         })
     })
 
@@ -408,34 +438,87 @@ describe('webrtc service', () => {
                 deviceId: { exact: 'mic-42' },
                 echoCancellation: true,
                 noiseSuppression: true,
-                autoGainControl: true,
+                autoGainControl: false,
             },
         })
     })
 
     describe('voice activation (send threshold)', () => {
-        it('passes the send threshold into voice activation as a 0..1 fraction', async () => {
+        it('passes a getter reading the live useMicSensitivity store as a 0..1 fraction', async () => {
             mockGetUserMedia()
+            useMicSensitivity.setState({ threshold: 40 })
             const { joinVoice } = await import('@/services/webrtc')
 
-            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
 
-            expect(voiceActivationCalls[0].threshold).toBeCloseTo(0.4)
+            expect(voiceActivationCalls[0].getThreshold()).toEqual({ open: 0.4, close: 0.4 })
         })
 
-        it('defaults the threshold to 0 (always-on) when not provided', async () => {
+        it('the getter re-reads useMicSensitivity live, so a later change takes effect without rejoining', async () => {
+            mockGetUserMedia()
+            useMicSensitivity.setState({ threshold: 40 })
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            useMicSensitivity.setState({ threshold: 70 })
+
+            expect(voiceActivationCalls[0].getThreshold()).toEqual({ open: 0.7, close: 0.7 })
+        })
+
+        it('passes a getter reading the live close_threshold_timeout_ms from useMicSensitivity', async () => {
+            mockGetUserMedia()
+            useMicSensitivity.setState({ timeoutMs: 1500 })
+            const { joinVoice } = await import('@/services/webrtc')
+
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            expect(voiceActivationCalls[0].getTimeoutMs?.()).toBe(1500)
+        })
+
+        it('the timeout getter re-reads useMicSensitivity live too', async () => {
+            mockGetUserMedia()
+            useMicSensitivity.setState({ timeoutMs: 1500 })
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            useMicSensitivity.setState({ timeoutMs: null })
+
+            expect(voiceActivationCalls[0].getTimeoutMs?.()).toBeNull()
+        })
+
+        it('includes the live close_threshold_gap as the close threshold', async () => {
+            mockGetUserMedia()
+            useMicSensitivity.setState({ threshold: 50, closeGap: 20 })
+            const { joinVoice } = await import('@/services/webrtc')
+
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            expect(voiceActivationCalls[0].getThreshold()).toEqual({ open: 0.5, close: 0.3 })
+        })
+
+        it('collapses to always-on when autoGainControl is live-enabled, regardless of threshold', async () => {
+            mockGetUserMedia()
+            useMicSensitivity.setState({ threshold: 50, closeGap: 20, autoGainControl: true })
+            const { joinVoice } = await import('@/services/webrtc')
+
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            expect(voiceActivationCalls[0].getThreshold()).toEqual({ open: 0, close: 0 })
+        })
+
+        it('defaults the threshold to 0 (always-on) when useMicSensitivity has not been set', async () => {
             mockGetUserMedia()
             const { joinVoice } = await import('@/services/webrtc')
 
             await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
 
-            expect(voiceActivationCalls[0].threshold).toBe(0)
+            expect(voiceActivationCalls[0].getThreshold()).toEqual({ open: 0, close: 0 })
         })
 
         it('disables the local audio track when the gate closes', async () => {
             const track = mockGetUserMedia()
             const { joinVoice } = await import('@/services/webrtc')
-            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
 
             voiceActivationCalls[0].onGateChange(false)
 
@@ -445,7 +528,7 @@ describe('webrtc service', () => {
         it('re-enables the local audio track when the gate reopens, if not manually muted', async () => {
             const track = mockGetUserMedia()
             const { joinVoice } = await import('@/services/webrtc')
-            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
             voiceActivationCalls[0].onGateChange(false)
 
             voiceActivationCalls[0].onGateChange(true)
@@ -456,7 +539,7 @@ describe('webrtc service', () => {
         it('a manual mute stays in effect even while the gate is open', async () => {
             const track = mockGetUserMedia()
             const { joinVoice, setMuted } = await import('@/services/webrtc')
-            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
 
             setMuted(true)
             voiceActivationCalls[0].onGateChange(true)
@@ -467,7 +550,7 @@ describe('webrtc service', () => {
         it('unmuting respects the current (closed) gate state instead of forcing the track on', async () => {
             const track = mockGetUserMedia()
             const { joinVoice, setMuted } = await import('@/services/webrtc')
-            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
 
             setMuted(true)
             voiceActivationCalls[0].onGateChange(false)
@@ -479,7 +562,7 @@ describe('webrtc service', () => {
         it('unmuting re-enables the track immediately when the gate is open', async () => {
             const track = mockGetUserMedia()
             const { joinVoice, setMuted } = await import('@/services/webrtc')
-            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
 
             setMuted(true)
             voiceActivationCalls[0].onGateChange(true)
@@ -491,7 +574,7 @@ describe('webrtc service', () => {
         it('stops voice activation on leave', async () => {
             mockGetUserMedia()
             const { joinVoice, leaveVoice } = await import('@/services/webrtc')
-            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto', sendThreshold: 40 })
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
 
             leaveVoice()
 
@@ -510,7 +593,7 @@ describe('webrtc service', () => {
             instances[0].ontrack?.({ streams: [{} as MediaStream] })
 
             expect(voiceActivationCalls).toHaveLength(1)
-            expect(voiceActivationCalls[0].threshold).toBeCloseTo(0.15)
+            expect(voiceActivationCalls[0].getThreshold()).toEqual({ open: 0.15, close: 0.15 })
         })
 
         it('marks a remote participant as speaking when their gate opens', async () => {

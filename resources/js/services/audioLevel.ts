@@ -22,3 +22,36 @@ export function rmsToLevel(value: number): number {
 export function computeLevel(samples: Uint8Array): number {
     return rmsToLevel(rms(samples))
 }
+
+export interface PeakHold {
+    /**
+     * Feeds a new instantaneous level reading and returns the current
+     * held/decaying peak. `deltaSeconds` is the time elapsed since the
+     * previous call (0 for the very first).
+     */
+    update(instantLevel: number, deltaSeconds: number): number
+}
+
+// Fast attack (jumps to a new peak immediately), slow release (decays this
+// many level-units per second otherwise). A single `computeLevel()` reading
+// is an instantaneous RMS over one small (512-sample, ~10ms) analyser
+// window sampled once per animation frame — real speech varies enough
+// frame-to-frame (syllable boundaries, brief pauses, consonants) that a
+// short, real spike can land entirely between two sampled windows and never
+// show up at all. Peak-hold keeps a spike visible/usable for a brief window
+// afterward instead of only ever reflecting whatever the instant of the
+// current frame happens to be — used for both the level meter's display and
+// the voice-activation gate's decision, so what you see is what triggers it.
+const DEFAULT_DECAY_PER_SECOND = 1.2
+
+export function createPeakHold(decayPerSecond: number = DEFAULT_DECAY_PER_SECOND): PeakHold {
+    let peak = 0
+
+    return {
+        update(instantLevel, deltaSeconds) {
+            const decayed = peak - decayPerSecond * deltaSeconds
+            peak = Math.max(instantLevel, decayed, 0)
+            return peak
+        },
+    }
+}

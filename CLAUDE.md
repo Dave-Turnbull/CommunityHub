@@ -231,7 +231,8 @@ resources/
     stores/                   Zustand: useMessages, usePresence, useUI, useNotifications,
                                useChannels (see docs/capabilities-and-channel-types.md),
                                useVoice, useVoiceRoster, useSpeaking, useVoiceVolume,
-                               useRemoteStreamVersion, useConnectionQuality (see docs/voice.md)
+                               useRemoteStreamVersion, useConnectionQuality, useMicSensitivity
+                               (send-threshold hysteresis + live AGC override — see docs/voice.md)
     types/                    all shared interfaces + Inertia page-prop types;
                                `ChannelType` is `string`, not a closed union
     test/setup.ts             Vitest setup — @testing-library/jest-dom matchers
@@ -812,6 +813,90 @@ of proving a change works and needs nothing installed:
     alongside `status`, or a second write path that doesn't go through
     `UserStatusService::setStatus()`, don't — that reintroduces the exact shape of
     bug this rebuild removed. See `docs/status.md`.
+42. **A value captured once at `joinVoice()` time is not "live" just because a
+    Settings page can change it** — the mic-sensitivity threshold
+    (`VoiceDevicePreference.send_threshold`) was originally passed into
+    `startVoiceActivation()` as a plain `number` argument, baked in at join time.
+    Adjusting the slider in `AudioSettings` while already in a call did nothing —
+    not a bug in the gating math, just nothing left to read the new value until
+    the user left and rejoined. Separately, `AudioSettings.tsx`'s "Test Microphone"
+    loopback rendered the same threshold as a marker line on the meter but never
+    actually gated the loopback `<audio>` playback on it — the marker was purely
+    cosmetic, so testing the slider from that panel looked broken regardless of
+    whether the real gate worked. Both were reported by a user as "the sensitivity
+    slider clearly isn't working," which two rounds of fixing OTHER things
+    (logarithmic meter math, `autoGainControl: false`) didn't touch, because
+    neither was actually the threshold-reactivity problem. Fixed by
+    `stores/index.ts`'s `useMicSensitivity` (a live, shared store, deliberately
+    *not* part of `useVoice` since `useVoice.reset()` on every `leaveVoice()`
+    would wipe a persisted preference) and changing `startVoiceActivation()`'s
+    signature to take a `getThresholds: () => ThresholdPair` re-read every tick
+    (later extended to a `{ open, close }` pair for hysteresis — see
+    `docs/voice.md`). The general lesson: when a "live adjustable" control is
+    threaded through a value captured at connection/session start, and a user
+    reports "changing it does nothing," check for exactly this shape of bug
+    before assuming the underlying feature is broken — and don't declare a
+    hardware/audio-behavior bug fixed from passing unit tests alone; unit tests
+    here exercise wiring with synthetic signals, not real microphone/DSP
+    behavior, which nothing in this repo's toolchain can verify without a real
+    browser and mic (no browser automation is available in this sandbox — see
+    `## Testing`'s "Manual/live verification" section).
+43. **`min-h-screen` does not make a page scrollable — `h-screen` does.**
+    `Settings/Index.tsx` used `min-h-screen bg-surface-600 overflow-y-auto` as its
+    root div, and as the Voice settings tab grew (device pickers, audio-processing
+    toggles, mic test, sensitivity controls) the page silently stopped scrolling to
+    reveal the overflow. `min-height` has no upper bound, so the div just grows
+    taller than the viewport instead of ever exceeding *its own* height — and
+    `overflow-y-auto` only ever activates when an element's content exceeds that
+    same element's own bounded height. The actual clip happens further up, at
+    `body` (`resources/css/app.css`'s `overflow-hidden` combined with
+    `app.blade.php`'s `html`/`body` both being `h-full`) — `body` silently cuts off
+    anything taller than the viewport before the inner `overflow-y-auto` div ever
+    gets a chance to engage. Every other page in this app follows the convention
+    documented in `## Conventions`'s `RoomRail` bullet — root `flex flex-col
+    h-screen` (a real, fixed height matching `body`), then `flex flex-1 min-h-0`
+    for the row underneath — specifically so the scrollable region has a real
+    bound to overflow against; `Settings/Index.tsx` was the one page that didn't
+    follow it. Fixed by changing `min-h-screen` to `h-screen`. If a future page
+    (a modal, a settings-style panel) isn't scrolling when its content should
+    overflow, check for exactly this `min-h-screen`-instead-of-`h-screen` shape
+    before assuming the content itself or `overflow-y-auto` placement is wrong.
+44. **A single per-frame `computeLevel()` reading is not a substitute for peak
+    tracking, and removing the peak-hold layer to "simplify" the level meter or
+    gate would reintroduce a real, reported bug.** `computeLevel()` is an
+    instantaneous RMS over one small (~10ms) analyser window, sampled once per
+    animation frame (~16ms) — real speech varies enormously frame-to-frame
+    (syllable boundaries, brief consonant gaps), so a genuine spike can land
+    entirely between two sampled windows and never register, and a sustained
+    word can dip under a threshold for a single frame from sampling luck alone.
+    Reported symptom: the mic-test level meter visibly failing to reach the
+    sensitivity marker on a real spike, and — more subtly — voice-activation
+    hysteresis (see trap #42) appearing to only ever respect the lower close
+    threshold, because the higher open threshold's bar was inconsistently
+    sampled. `services/audioLevel.ts`'s `createPeakHold()` (fast-attack,
+    slow-decay — the same technique real VU meters use) sits between every
+    `computeLevel()` call and its consumer in both `services/voiceActivation.ts`
+    and `AudioSettings.tsx`'s mic-test tick loop — see docs/voice.md's "Peak
+    hold" section for the full mechanics, including why decay needs two real
+    `requestAnimationFrame` timestamps before it can apply at all (the very
+    first tick, called synchronously, has none to diff against). Don't strip
+    this back to a bare `computeLevel()` call thinking it's redundant
+    indirection — it's the fix for a real, user-reported failure mode, not
+    speculative hardening.
+45. **`null` is a meaningful stored value for `close_threshold_timeout_ms`
+    ("Off"), not "field omitted" — `??`/`?:` coalescing would silently erase
+    it.** Same shape as trap #35's boolean `Rule::exists()` gotcha: a falsy-ish
+    value that PHP's short-circuit operators treat as "absent." Both
+    `Api\VoiceDevicePreferenceController::update()` (`array_key_exists(...)`
+    instead of `$validated['close_threshold_timeout_ms'] ?? 2000`) and
+    `UserSettingsService::devicePreference()` (`$preference ? $preference->
+    close_threshold_timeout_ms : 2000`, not `$preference?->
+    close_threshold_timeout_ms ?? 2000`) have to distinguish "no request field
+    / no stored row" (→ default `2000`) from "the value is explicitly `null`"
+    (→ stays `null`, meaning the hang-time force-close is off). If a future
+    nullable preference field is added, check whether `null` is a real state
+    (like this one and `close_threshold_timeout_ms`) or genuinely means
+    "unset" before reaching for `??`.
 
 ## Adding things — quick recipes
 
