@@ -78,8 +78,8 @@ export function MessageInput({
     return (
         <div className="px-4 pb-6 pt-1 flex-shrink-0">
             {replyTo && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-500 rounded-t-lg
-                                border-b border-surface-400 text-xs text-text-muted">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-raised rounded-t-lg
+                                border-b border-surface-subtle text-xs text-text-muted">
                     <span>
                         Replying to{' '}
                         <strong className="text-text-secondary">
@@ -96,7 +96,7 @@ export function MessageInput({
             )}
 
             {!!files.length && (
-                <div className="flex gap-2 flex-wrap px-3 py-2 bg-surface-500 border-b border-surface-400">
+                <div className="flex gap-2 flex-wrap px-3 py-2 bg-surface-raised border-b border-surface-subtle">
                     {files.map((f, i) => (
                         <div key={i} className="relative group/file">
                             {f.type.startsWith('image/') ? (
@@ -106,7 +106,7 @@ export function MessageInput({
                                     className="h-16 w-16 rounded object-cover"
                                 />
                             ) : (
-                                <div className="h-16 w-24 grid place-items-center bg-surface-400 rounded
+                                <div className="h-16 w-24 grid place-items-center bg-surface-subtle rounded
                                                 text-[10px] text-text-muted p-1 text-center">
                                     {f.name}
                                 </div>
@@ -114,7 +114,7 @@ export function MessageInput({
                             <button
                                 onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
                                 className="absolute -top-1 -right-1 w-4 h-4 grid place-items-center rounded-full
-                                           bg-danger text-white text-[9px] opacity-0 group-hover/file:opacity-100"
+                                           bg-danger text-inverse text-[9px] opacity-0 group-hover/file:opacity-100"
                             >
                                 ✕
                             </button>
@@ -126,7 +126,7 @@ export function MessageInput({
             <div
                 {...getRootProps()}
                 className={clsx(
-                    'flex items-end bg-surface-500 rounded-lg',
+                    'flex items-end bg-surface-raised rounded-lg',
                     (replyTo || files.length) && 'rounded-t-none',
                     isDragActive && 'ring-2 ring-brand',
                 )}
@@ -170,7 +170,7 @@ export function MessageInput({
                     <button
                         onClick={send}
                         disabled={busy}
-                        className="m-2 px-3 py-1.5 rounded bg-brand hover:bg-brand-hover text-white
+                        className="m-2 px-3 py-1.5 rounded bg-brand hover:bg-brand-hover text-inverse
                                    text-sm disabled:opacity-50"
                     >
                         {busy ? '…' : 'Send'}

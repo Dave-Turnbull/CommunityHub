@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { AppNotification, Channel, Message, ReactionSummary, UserStatus, VoiceParticipant } from '@/types'
 import type { ConnectionQuality } from '@/services/connectionQuality'
+import { DEFAULT_PRESET } from '@/services/theme'
 
 // ── Channels ─────────────────────────────────────────────────────────────
 // Keyed by roomId, mirroring useMessages' scopeId-keyed shape. Seeded from
@@ -410,4 +411,31 @@ export const useConnectionQuality = create<ConnectionQualityStore>((set) => ({
             if (s.quality[userId] === quality) return s
             return { quality: { ...s.quality, [userId]: quality } }
         }),
+}))
+
+// ── Theme ────────────────────────────────────────────────────────────────
+// The Appearance panel's current preset + per-variable overrides — see
+// services/theme.ts for what those mean and resources/js/components/
+// settings/AppearanceSettings.tsx for the only place that writes to this
+// store. Pure data, same as useMicSensitivity: applying a value to the DOM
+// (services/theme.ts's applyThemeValues()) is a side effect the component/
+// app.tsx bootstrap triggers explicitly, not something this store does
+// itself on every set — keeps this store trivially testable without a DOM.
+
+interface ThemeStore {
+    preset: string
+    overrides: Record<string, string>
+
+    hydrate: (preset: string, overrides: Record<string, string>) => void
+    setPreset: (preset: string) => void
+    setOverride: (key: string, value: string) => void
+}
+
+export const useTheme = create<ThemeStore>((set) => ({
+    preset: DEFAULT_PRESET,
+    overrides: {},
+
+    hydrate: (preset, overrides) => set({ preset, overrides }),
+    setPreset: (preset) => set({ preset, overrides: {} }),
+    setOverride: (key, value) => set((s) => ({ overrides: { ...s.overrides, [key]: value } })),
 }))

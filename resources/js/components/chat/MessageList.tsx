@@ -69,11 +69,11 @@ export function MessageList({
                     <div key={m.id}>
                         {newDay && (
                             <div className="flex items-center gap-3 px-4 my-4">
-                                <div className="flex-1 h-px bg-surface-400" />
+                                <div className="flex-1 h-px bg-surface-subtle" />
                                 <span className="text-xs font-medium text-text-muted">
                                     {dayLabel(m.created_at)}
                                 </span>
-                                <div className="flex-1 h-px bg-surface-400" />
+                                <div className="flex-1 h-px bg-surface-subtle" />
                             </div>
                         )}
 

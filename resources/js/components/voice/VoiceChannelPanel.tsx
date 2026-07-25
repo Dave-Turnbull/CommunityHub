@@ -39,19 +39,19 @@ export function VoiceChannelPanel({ channel, currentUser }: Props) {
                 <div className="flex gap-3">
                     <button
                         onClick={toggleMute}
-                        className="rounded bg-surface-500 hover:bg-surface-400 px-4 py-2 text-sm font-medium text-text-primary transition-colors duration-100"
+                        className="rounded bg-surface-raised hover:bg-surface-subtle px-4 py-2 text-sm font-medium text-text-primary transition-colors duration-100"
                     >
                         {selfMuted ? 'Unmute' : 'Mute'}
                     </button>
                     <button
                         onClick={toggleDeafen}
-                        className="rounded bg-surface-500 hover:bg-surface-400 px-4 py-2 text-sm font-medium text-text-primary transition-colors duration-100"
+                        className="rounded bg-surface-raised hover:bg-surface-subtle px-4 py-2 text-sm font-medium text-text-primary transition-colors duration-100"
                     >
                         {deafened ? 'Undeafen' : 'Deafen'}
                     </button>
                     <button
                         onClick={leave}
-                        className="rounded bg-danger hover:opacity-90 px-4 py-2 text-sm font-medium text-white transition-opacity duration-100"
+                        className="rounded bg-danger hover:opacity-90 px-4 py-2 text-sm font-medium text-inverse transition-opacity duration-100"
                     >
                         Leave Voice
                     </button>
@@ -59,7 +59,7 @@ export function VoiceChannelPanel({ channel, currentUser }: Props) {
             ) : (
                 <button
                     onClick={join}
-                    className="rounded bg-brand hover:bg-brand-hover px-6 py-2 text-sm font-medium text-white transition-colors duration-100"
+                    className="rounded bg-brand hover:bg-brand-hover px-6 py-2 text-sm font-medium text-inverse transition-colors duration-100"
                 >
                     {connectionState === 'connecting' ? 'Joining…' : 'Join Voice'}
                 </button>

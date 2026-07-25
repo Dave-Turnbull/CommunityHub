@@ -37,8 +37,8 @@ export default function DMShow({
                         activeConversationId={conversation.id}
                     />
 
-                    <main className="flex-1 flex flex-col bg-surface-600 min-w-0">
-                        <header className="h-12 px-4 flex items-center gap-3 border-b border-surface-800 flex-shrink-0">
+                    <main className="flex-1 flex flex-col bg-surface-canvas min-w-0">
+                        <header className="h-12 px-4 flex items-center gap-3 border-b border-surface-inset flex-shrink-0">
                             {conversation.type === 'dm' && other?.user ? (
                                 <Avatar user={other.user} size="sm" showStatus />
                             ) : (

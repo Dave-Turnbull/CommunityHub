@@ -19,12 +19,12 @@ export function Toggle({ checked, onChange, label, disabled }: Props) {
             className={clsx(
                 'relative w-9 h-5 rounded-full flex-shrink-0 transition-colors duration-150',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
-                checked ? 'bg-brand' : 'bg-surface-400',
+                checked ? 'bg-brand' : 'bg-surface-subtle',
             )}
         >
             <span
                 className={clsx(
-                    'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-150',
+                    'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-inverse transition-transform duration-150',
                     checked && 'translate-x-4',
                 )}
             />

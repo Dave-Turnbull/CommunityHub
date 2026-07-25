@@ -3,15 +3,16 @@
 namespace App\Services;
 
 use App\Models\NotificationPreference;
+use App\Models\ThemePreference;
 use App\Models\User;
 use App\Models\VoiceDevicePreference;
 
 /**
- * Notification and voice-device preferences — both always self-service, no
- * capability/permission check beyond auth (every call site already only
- * ever operates on $request->user()). Consolidates
- * NotificationPreferenceController's and VoiceDevicePreferenceController's
- * previously-inline logic.
+ * Notification, voice-device, and theme preferences — all always
+ * self-service, no capability/permission check beyond auth (every call site
+ * already only ever operates on $request->user()). Consolidates
+ * NotificationPreferenceController's, VoiceDevicePreferenceController's, and
+ * ThemePreferenceController's previously-inline logic.
  */
 class UserSettingsService
 {
@@ -87,6 +88,25 @@ class UserSettingsService
                 'noise_suppression'          => $noiseSuppression,
                 'auto_gain_control'          => $autoGainControl,
             ],
+        );
+    }
+
+    /** The effective theme: a preset name plus the variables the user has tweaked away from it. */
+    public function themePreference(User $user): array
+    {
+        $preference = ThemePreference::where('user_id', $user->id)->first();
+
+        return [
+            'preset'    => $preference->preset ?? ThemePreference::DEFAULT_PRESET,
+            'overrides' => $preference->overrides ?? [],
+        ];
+    }
+
+    public function updateThemePreference(User $user, string $preset, array $overrides): ThemePreference
+    {
+        return ThemePreference::updateOrCreate(
+            ['user_id' => $user->id],
+            ['preset' => $preset, 'overrides' => $overrides],
         );
     }
 }

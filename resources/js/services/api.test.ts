@@ -19,7 +19,9 @@ import {
     sendChannelMessage,
     sendConversationMessage,
     startConversation,
+    fetchThemePreference,
     updateNotificationPreference,
+    updateThemePreference,
     uploadFile,
 } from '@/services/api'
 
@@ -188,6 +190,23 @@ describe('api service', () => {
         await updateNotificationPreference(preference)
 
         expect(mockedAxios.put).toHaveBeenCalledWith('/api/notification-preferences', preference)
+    })
+
+    it('fetchThemePreference hits the theme-preference endpoint', async () => {
+        mockedAxios.get.mockResolvedValue({ data: { preset: 'classic', overrides: {} } })
+
+        await fetchThemePreference()
+
+        expect(mockedAxios.get).toHaveBeenCalledWith('/api/theme-preference')
+    })
+
+    it('updateThemePreference puts the preset/overrides payload', async () => {
+        const preference = { preset: 'midnight', overrides: { '--color-brand': '1 2 3' } }
+        mockedAxios.put.mockResolvedValue({ data: preference })
+
+        await updateThemePreference(preference)
+
+        expect(mockedAxios.put).toHaveBeenCalledWith('/api/theme-preference', preference)
     })
 
     it('fetchConversationCandidates hits the candidates endpoint with a query', async () => {

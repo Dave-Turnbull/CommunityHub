@@ -46,14 +46,14 @@ export function DMSidebar({ conversations, currentUser, recentCustomStatuses, ac
                             className={clsx(
                                 'flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors duration-100',
                                 c.id === activeConversationId
-                                    ? 'bg-surface-400 text-text-primary'
-                                    : 'text-text-secondary hover:text-text-primary hover:bg-surface-500',
+                                    ? 'bg-surface-subtle text-text-primary'
+                                    : 'text-text-secondary hover:text-text-primary hover:bg-surface-raised',
                             )}
                         >
                             {c.type === 'dm' && other?.user ? (
                                 <Avatar user={other.user} size="sm" showStatus />
                             ) : (
-                                <span className="w-8 h-8 grid place-items-center rounded-full bg-surface-400">
+                                <span className="w-8 h-8 grid place-items-center rounded-full bg-surface-subtle">
                                     👥
                                 </span>
                             )}
@@ -68,7 +68,7 @@ export function DMSidebar({ conversations, currentUser, recentCustomStatuses, ac
                             </div>
 
                             {c.unread_count > 0 && (
-                                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-xxs font-bold bg-danger text-white leading-none">
+                                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-xxs font-bold bg-danger text-inverse leading-none">
                                     {c.unread_count}
                                 </span>
                             )}
@@ -80,8 +80,8 @@ export function DMSidebar({ conversations, currentUser, recentCustomStatuses, ac
     }
 
     return (
-        <div className="w-sidebar-channel bg-surface-700 flex flex-col flex-shrink-0">
-            <div className="h-12 px-3 flex items-center justify-between border-b border-surface-800 flex-shrink-0">
+        <div className="w-sidebar-channel bg-surface-panel flex flex-col flex-shrink-0">
+            <div className="h-12 px-3 flex items-center justify-between border-b border-surface-inset flex-shrink-0">
                 <span className="font-semibold text-text-primary">Messages</span>
                 <button
                     onClick={() => setComposing(true)}

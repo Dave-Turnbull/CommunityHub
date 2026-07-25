@@ -26,7 +26,7 @@ export default function Register() {
                 value={data[key] as string}
                 onChange={(e) => setData(key, e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && submit()}
-                className="w-full bg-surface-800 border border-surface-400 rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
             />
             {hint && !errors[key] && (
                 <p className="text-[11px] text-text-muted mt-1">{hint}</p>
@@ -41,13 +41,13 @@ export default function Register() {
         <>
             <Head title="Register" />
 
-            <div className="min-h-screen grid place-items-center bg-surface-900 px-4 py-12">
+            <div className="min-h-screen grid place-items-center bg-surface-app px-4 py-12">
                 <div className="w-full max-w-md">
                     <div className="text-center mb-8">
                         <h1 className="text-3xl font-bold text-text-primary">Create an account</h1>
                     </div>
 
-                    <div className="bg-surface-700 rounded-lg p-8 shadow-2xl">
+                    <div className="bg-surface-panel rounded-lg p-8 shadow-2xl">
                         <div className="space-y-4">
                             {field('username', 'Username', 'text', 'Lowercase letters, numbers, _ and . only')}
                             {field('display_name', 'Display Name')}
@@ -58,7 +58,7 @@ export default function Register() {
                             <button
                                 onClick={submit}
                                 disabled={processing}
-                                className="w-full px-4 py-2 rounded bg-brand hover:bg-brand-hover text-white text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {processing ? 'Creating…' : 'Continue'}
                             </button>
@@ -66,7 +66,7 @@ export default function Register() {
 
                         <p className="text-sm text-text-muted mt-6">
                             Already have an account?{' '}
-                            <Link href="/login" className="text-text-link hover:underline">
+                            <Link href="/login" className="text-text-link hover:text-text-link-hover hover:underline">
                                 Log in
                             </Link>
                         </p>

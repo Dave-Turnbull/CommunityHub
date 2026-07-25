@@ -88,7 +88,7 @@ function RoleCard({
     const availableOptions = memberOptions.filter((m) => !assignedIds.has(m.id))
 
     return (
-        <div className="bg-surface-700 rounded-lg p-5 mb-4">
+        <div className="bg-surface-panel rounded-lg p-5 mb-4">
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                     {onMove && (
@@ -113,18 +113,18 @@ function RoleCard({
                     )}
                     <h3 className="font-semibold text-text-primary">{role.name}</h3>
                     {role.is_system && !role.is_default && (
-                        <span className="text-[10px] uppercase tracking-wide bg-surface-500 text-text-muted px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] uppercase tracking-wide bg-surface-raised text-text-muted px-1.5 py-0.5 rounded">
                             System
                         </span>
                     )}
                     {role.is_default && (
-                        <span className="text-[10px] uppercase tracking-wide bg-surface-500 text-text-muted px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] uppercase tracking-wide bg-surface-raised text-text-muted px-1.5 py-0.5 rounded">
                             Default
                         </span>
                     )}
                     {!isOwnerTier && !canManage && (
                         <span
-                            className="text-[10px] uppercase tracking-wide bg-surface-500 text-text-muted px-1.5 py-0.5 rounded"
+                            className="text-[10px] uppercase tracking-wide bg-surface-raised text-text-muted px-1.5 py-0.5 rounded"
                             title="This role's rank is equal to or higher than your own — you can't manage it"
                         >
                             🔒 Locked
@@ -177,7 +177,7 @@ function RoleCard({
                         <button
                             onClick={savePermissions}
                             disabled={saving}
-                            className="px-3 py-1.5 rounded bg-brand hover:bg-brand-hover text-white text-xs font-medium transition-colors duration-100 disabled:opacity-50 mb-4"
+                            className="px-3 py-1.5 rounded bg-brand hover:bg-brand-hover text-inverse text-xs font-medium transition-colors duration-100 disabled:opacity-50 mb-4"
                         >
                             {saving ? 'Saving…' : 'Save permissions'}
                         </button>
@@ -205,7 +205,7 @@ function RoleCard({
                     <select
                         value={addingUserId}
                         onChange={(e) => setAddingUserId(e.target.value)}
-                        className="flex-1 bg-surface-800 border border-surface-400 rounded px-2 py-1 text-sm text-text-primary"
+                        className="flex-1 bg-surface-inset border border-surface-subtle rounded px-2 py-1 text-sm text-text-primary"
                     >
                         <option value="">Add a member…</option>
                         {availableOptions.map((m) => (
@@ -215,7 +215,7 @@ function RoleCard({
                     <button
                         onClick={addMember}
                         disabled={!addingUserId}
-                        className="px-3 py-1 rounded bg-surface-500 hover:bg-surface-400 text-text-secondary text-xs font-medium transition-colors duration-100 disabled:opacity-50"
+                        className="px-3 py-1 rounded bg-surface-raised hover:bg-surface-subtle text-text-secondary text-xs font-medium transition-colors duration-100 disabled:opacity-50"
                     >
                         Add
                     </button>
@@ -304,7 +304,7 @@ export default function RoomRoles({ auth, rooms, room }: RoomRolesPageProps) {
             <div className="flex flex-col h-screen">
                 <RoomRail rooms={rooms} currentUserId={auth.user.id} activeRoomId={room.id} />
 
-                <main className="flex-1 min-h-0 overflow-y-auto bg-surface-600 px-6 py-6">
+                <main className="flex-1 min-h-0 overflow-y-auto bg-surface-canvas px-6 py-6">
                     <div className="max-w-2xl mx-auto">
                         <Link href={`/rooms/${room.id}`} className="text-sm text-text-muted hover:text-text-primary">
                             ← Back to {room.name}
@@ -327,12 +327,12 @@ export default function RoomRoles({ auth, rooms, room }: RoomRolesPageProps) {
                                 placeholder="New role name"
                                 onChange={(e) => setNewRoleName(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && addRole()}
-                                className="flex-1 bg-surface-800 border border-surface-400 rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                                className="flex-1 bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
                             />
                             <button
                                 onClick={addRole}
                                 disabled={creating || !newRoleName.trim()}
-                                className="px-4 py-2 rounded bg-brand hover:bg-brand-hover text-white text-sm font-medium transition-colors duration-100 disabled:opacity-50"
+                                className="px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50"
                             >
                                 {creating ? 'Creating…' : 'New role'}
                             </button>
