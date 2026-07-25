@@ -12,6 +12,8 @@ use App\Models\Message;
 use App\Models\Notification;
 use App\Models\User;
 use App\Support\ChannelFocus;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 /**
@@ -32,32 +34,97 @@ class TextMessageService
         return new self($entity);
     }
 
-    public function list(User $user, ?string $before): array
+    /**
+     * One page of history, always returned oldest-first, walking away from a
+     * cursor in exactly one direction: `$before` for older messages,
+     * `$after` for newer ones, neither for the live tail. Both directions
+     * report whether more exists on each side (`has_older`/`has_newer`), which
+     * is what lets the client hold a trimmed window of history and page back
+     * toward the present — see docs/messages-and-pagination.md.
+     */
+    public function list(User $user, ?string $before = null, ?string $after = null): array
     {
         $this->assertMember($user);
         abort_unless($this->entity->hasCapability('text.read'), 422, 'This channel has no text chat.');
+        abort_if(
+            filled($before) && filled($after),
+            422,
+            'Page in one direction at a time — pass before or after, not both.'
+        );
 
-        $query = $this->entity->messages();
+        $messages = filled($after)
+            ? $this->pageAfter($after)
+            : $this->pageBefore($before);
 
-        if ($before && $pivot = Message::find($before)) {
-            $query->where('created_at', '<', $pivot->created_at);
-        }
-
-        $messages = $query
-            ->with(['author:id,username,display_name,avatar_url,status', 'attachments', 'replyTo.author:id,display_name,avatar_url'])
-            ->latest()
-            ->limit(self::PAGE_SIZE + 1)
-            ->get();
-
-        $hasMore  = $messages->count() > self::PAGE_SIZE;
-        $messages = $messages->take(self::PAGE_SIZE)->reverse()->values();
         $messages->each(fn ($m) => $m->setAttribute('reactions', $m->reactionSummary($user->id)));
 
+        return $this->describeWindow($messages);
+    }
+
+    /** @return \Illuminate\Support\Collection<int, Message> */
+    private function pageBefore(?string $before): Collection
+    {
+        $query = $this->hydratedQuery();
+
+        if (filled($before)) {
+            $query->where('created_at', '<', $this->cursorTimestamp($before));
+        }
+
+        return $query->latest()->limit(self::PAGE_SIZE)->get()->reverse()->values();
+    }
+
+    /** @return \Illuminate\Support\Collection<int, Message> */
+    private function pageAfter(string $after): Collection
+    {
+        return $this->hydratedQuery()
+            ->where('created_at', '>', $this->cursorTimestamp($after))
+            ->oldest()
+            ->limit(self::PAGE_SIZE)
+            ->get()
+            ->values();
+    }
+
+    /**
+     * withTrashed() deliberately — a cursor is whichever message sits at the
+     * edge of the client's window, and that message may since have been
+     * deleted. Resolving it anyway keeps paging past a deleted edge working;
+     * an id that resolves to nothing at all is a client bug worth surfacing,
+     * since silently falling back to the tail would serve a wrong page.
+     */
+    private function cursorTimestamp(string $cursor): string
+    {
+        $pivot = Message::withTrashed()->find($cursor);
+
+        abort_unless($pivot, 422, 'Unknown message cursor.');
+
+        return $pivot->created_at;
+    }
+
+    /** @param \Illuminate\Support\Collection<int, Message> $messages */
+    private function describeWindow(Collection $messages): array
+    {
+        $hasOlder = $messages->isNotEmpty()
+            && $this->entity->messages()->where('created_at', '<', $messages->first()->created_at)->exists();
+
+        $hasNewer = $messages->isNotEmpty()
+            && $this->entity->messages()->where('created_at', '>', $messages->last()->created_at)->exists();
+
         return [
-            'data'        => $messages,
-            'has_more'    => $hasMore,
-            'next_cursor' => $hasMore ? $messages->first()?->id : null,
+            'data'         => $messages,
+            'has_older'    => $hasOlder,
+            'older_cursor' => $hasOlder ? $messages->first()->id : null,
+            'has_newer'    => $hasNewer,
+            'newer_cursor' => $hasNewer ? $messages->last()->id : null,
         ];
+    }
+
+    private function hydratedQuery(): HasMany
+    {
+        return $this->entity->messages()->with([
+            'author:id,username,display_name,avatar_url,status',
+            'attachments',
+            'replyTo.author:id,display_name,avatar_url',
+        ]);
     }
 
     public function send(User $user, array $validated): Message

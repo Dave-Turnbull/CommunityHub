@@ -26,16 +26,29 @@ export function TextChannelContent({
     scopeId, scopeType, currentUser, initialMessages, placeholder, emptyState,
 }: Props) {
     const [replyTo, setReplyTo] = useState<Message | null>(null)
+    // Bumped per jump so MessageList re-pins to the bottom even when two jumps
+    // in a row resolve to the same window.
+    const [jumpToken, setJumpToken] = useState(0)
 
-    const { messages, loadMore, hasMore } = useChat({ scopeId, scopeType, initial: initialMessages })
+    const { messages, hasOlder, hasNewer, loadOlder, loadNewer, jumpToPresent, commitSent } =
+        useChat({ scopeId, scopeType, initial: initialMessages })
+
+    const jump = () => {
+        setJumpToken((t) => t + 1)
+        jumpToPresent()
+    }
 
     return (
         <>
             <MessageList
                 messages={messages}
+                scopeId={scopeId}
                 currentUser={currentUser}
-                hasMore={hasMore}
-                onLoadMore={loadMore}
+                hasOlder={hasOlder}
+                hasNewer={hasNewer}
+                onLoadOlder={loadOlder}
+                onLoadNewer={loadNewer}
+                jumpToken={jumpToken}
                 onReply={setReplyTo}
                 emptyState={emptyState}
             />
@@ -46,6 +59,19 @@ export function TextChannelContent({
                 placeholder={placeholder}
                 replyTo={replyTo}
                 onClearReply={() => setReplyTo(null)}
+                onSent={commitSent}
+                // Only while the window has been trimmed away from the live
+                // tail — i.e. exactly when there are messages below the ones
+                // on screen that this tab isn't holding. See useChat.
+                leading={hasNewer && (
+                    <button
+                        onClick={jump}
+                        className="mb-0.5 px-3 py-2 rounded-lg bg-fifth border-panel border-panel-border
+                                   text-xs text-text-secondary hover:text-text-primary whitespace-nowrap"
+                    >
+                        ↓ Jump to present
+                    </button>
+                )}
             />
         </>
     )

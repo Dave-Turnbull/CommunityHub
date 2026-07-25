@@ -36,9 +36,12 @@ Bound to a specific `Channel|Conversation` via `TextMessageService::for($entity)
 `list()`/`send()` are naturally scoped to one entity per call, so binding once up front
 avoids re-passing it to every method.
 
-- `list(User $user, ?string $before): array` — checks membership
-  (`hasMember`/`hasParticipant`) and `hasCapability('text.read')`, then cursor-paginates
-  (50/page, walking backwards from the given message id).
+- `list(User $user, ?string $before = null, ?string $after = null): array` — checks
+  membership (`hasMember`/`hasParticipant`) and `hasCapability('text.read')`, then
+  returns one page (50) of history walking away from a cursor in one direction —
+  `$before` for older, `$after` for newer, neither for the live tail, both is a 422 —
+  along with a flag and cursor per edge. See `docs/messages-and-pagination.md` for the
+  full contract and the client-side window it exists to serve.
 - `send(User $user, array $validated): Message` — checks membership and capability,
   then `authorizeSend()`s the specific pieces of the payload (`text.send_text` for
   content, `text.send_images`/`text.send_video` per attachment by mime type), creates

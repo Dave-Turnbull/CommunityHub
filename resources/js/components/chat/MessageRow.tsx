@@ -3,11 +3,12 @@ import { clsx } from 'clsx'
 import { Avatar } from '@/components/ui/Avatar'
 import { DropdownMenu } from '@/components/ui/DropdownMenu'
 import { EmojiPicker } from '@/components/emoji/EmojiPicker'
-import { addReaction, removeReaction, deleteMessage, editMessage } from '@/services/api'
+import { removeMessage, saveEdit, toggleReaction } from '@/services/messageActions'
 import type { Message, User } from '@/types'
 
 interface Props {
     message: Message
+    scopeId: string
     grouped: boolean          // same author as previous → hide avatar/header
     currentUser: User
     onReply: (m: Message) => void
@@ -21,23 +22,26 @@ const fullTime = (iso: string) =>
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     })
 
-export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
+export function MessageRow({ message, scopeId, grouped, currentUser, onReply }: Props) {
     const [editing, setEditing] = useState(false)
     const [draft, setDraft] = useState(message.content ?? '')
 
     const isMine = message.author_id === currentUser.id
 
-    const toggleReaction = (emoji: string) => {
-        const r = message.reactions?.find((x) => x.emoji === emoji)
-        r?.reacted ? removeReaction(message.id, emoji) : addReaction(message.id, emoji)
+    const react = (emoji: string) => {
+        toggleReaction(scopeId, message, emoji).catch(() => {})
     }
 
-    const save = async () => {
+    // Closes on submit rather than on the server's answer — saveEdit puts the
+    // old content back if the save fails, and the editor comes back with the
+    // draft still in it so the attempt isn't lost.
+    const save = () => {
         const trimmed = draft.trim()
-        if (trimmed && trimmed !== message.content) {
-            await editMessage(message.id, trimmed)
-        }
         setEditing(false)
+
+        if (!trimmed || trimmed === message.content) return
+
+        saveEdit(scopeId, message, trimmed).catch(() => setEditing(true))
     }
 
     return (
@@ -135,7 +139,7 @@ export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
                             {message.reactions.map((r) => (
                                 <button
                                     key={r.emoji}
-                                    onClick={() => toggleReaction(r.emoji)}
+                                    onClick={() => react(r.emoji)}
                                     className={clsx(
                                         'flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors',
                                         r.reacted
@@ -153,7 +157,7 @@ export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
 
                 {/* Hover actions */}
                 <div className="opacity-0 group-hover:opacity-100 flex items-start gap-0.5 transition-opacity">
-                    <EmojiPicker onSelect={(e) => addReaction(message.id, e)}>
+                    <EmojiPicker onSelect={react}>
                         <button className="p-1 rounded hover:bg-sixth text-text-muted hover:text-text-primary">
                             😀
                         </button>
@@ -179,7 +183,12 @@ export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
                             className="min-w-[160px] p-1 rounded-md bg-fourth border border-sixth shadow-xl text-sm"
                         >
                             <DropdownMenu.Item onSelect={() => setEditing(true)}>Edit</DropdownMenu.Item>
-                            <DropdownMenu.Item onSelect={() => deleteMessage(message.id)} danger>Delete</DropdownMenu.Item>
+                            <DropdownMenu.Item
+                                onSelect={() => { removeMessage(scopeId, message).catch(() => {}) }}
+                                danger
+                            >
+                                Delete
+                            </DropdownMenu.Item>
                         </DropdownMenu>
                     )}
                 </div>

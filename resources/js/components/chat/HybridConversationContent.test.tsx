@@ -40,7 +40,7 @@ const conversation: Conversation = {
     ],
 }
 
-const initial: PaginatedMessages = { data: [], has_more: false, next_cursor: null }
+const initial: PaginatedMessages = { data: [], has_older: false, older_cursor: null, has_newer: false, newer_cursor: null }
 
 describe('HybridConversationContent', () => {
     beforeEach(() => {

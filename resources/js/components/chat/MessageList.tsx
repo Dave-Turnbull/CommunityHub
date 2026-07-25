@@ -1,13 +1,18 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { MessageRow } from './MessageRow'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import type { Message, User } from '@/types'
 
 interface Props {
     messages: Message[]
+    scopeId: string
     currentUser: User
-    hasMore: boolean
-    onLoadMore: () => void
+    hasOlder: boolean
+    hasNewer: boolean
+    onLoadOlder: () => void
+    onLoadNewer: () => void
+    /** Increment to send the view back to the live tail — see TextChannelContent. */
+    jumpToken?: number
     onReply: (m: Message) => void
     emptyState?: React.ReactNode
 }
@@ -32,32 +37,115 @@ function dayLabel(iso: string): string {
     return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
+/**
+ * The topmost row still in view. Binary search over offsetTop rather than a
+ * walk with getBoundingClientRect: rows are in DOM order with increasing
+ * offsets, and a window holds up to MAX_WINDOW_MESSAGES of them on a path that
+ * runs on every scroll event.
+ */
+function firstVisibleRow(container: HTMLElement): HTMLElement | null {
+    const rows = container.querySelectorAll<HTMLElement>('[data-message-id]')
+    if (!rows.length) return null
+
+    let low = 0
+    let high = rows.length - 1
+    let found: HTMLElement | null = null
+
+    while (low <= high) {
+        const mid = (low + high) >> 1
+        const row = rows[mid]
+
+        if (row.offsetTop + row.offsetHeight > container.scrollTop) {
+            found = row
+            high = mid - 1
+        } else {
+            low = mid + 1
+        }
+    }
+
+    return found
+}
+
 export function MessageList({
-    messages, currentUser, hasMore, onLoadMore, onReply, emptyState,
+    messages, scopeId, currentUser, hasOlder, hasNewer, onLoadOlder, onLoadNewer, jumpToken = 0,
+    onReply, emptyState,
 }: Props) {
-    const { ref, onScroll } = useAutoScroll(messages.length)
-    const sentinel = useRef<HTMLDivElement>(null)
+    const { ref, onScroll, stickToBottom } = useAutoScroll(messages.length, !hasNewer)
+    const topSentinel = useRef<HTMLDivElement>(null)
+    const bottomSentinel = useRef<HTMLDivElement>(null)
 
-    // Load older messages when the top sentinel scrolls into view
+    // Which message the reader is looking at, and how far below the top edge
+    // it sits — kept current by every scroll event so it is never stale by the
+    // time a page load lands. Restoring *an element's* position instead of
+    // doing scrollTop arithmetic is what makes prepending, appending and
+    // trimming (any two of which can land in one update) all behave; see
+    // docs/messages-and-pagination.md.
+    const anchor = useRef<{ id: string; offset: number } | null>(null)
+    const firstId = useRef<string | undefined>(messages[0]?.id)
+
+    const captureAnchor = () => {
+        const el = ref.current
+        if (!el) return
+
+        const row = firstVisibleRow(el)
+        anchor.current = row
+            ? { id: row.dataset.messageId!, offset: row.offsetTop - el.scrollTop }
+            : null
+    }
+
+    // Only when the list gained or lost rows *above* the viewport — a live
+    // message arriving at the bottom must be left to useAutoScroll instead.
+    useLayoutEffect(() => {
+        const previousFirst = firstId.current
+        firstId.current = messages[0]?.id
+
+        const pending = anchor.current
+        const el = ref.current
+        if (!pending || !el || previousFirst === firstId.current) return
+
+        const row = el.querySelector<HTMLElement>(`[data-message-id="${pending.id}"]`)
+        if (row) el.scrollTop = row.offsetTop - pending.offset
+    }, [messages])
+
     useEffect(() => {
-        if (!hasMore || !sentinel.current) return
+        if (jumpToken) stickToBottom()
+    }, [jumpToken])
 
-        const obs = new IntersectionObserver(
-            ([entry]) => entry.isIntersecting && onLoadMore(),
-            { root: ref.current, threshold: 0.1 },
-        )
-        obs.observe(sentinel.current)
+    // One observer per direction: older history above, and — once the window
+    // has trimmed its tail — the messages it dropped below.
+    useEffect(() => {
+        const load = (sentinel: HTMLDivElement | null, onLoad: () => void) => {
+            if (!sentinel) return undefined
 
-        return () => obs.disconnect()
-    }, [hasMore, onLoadMore])
+            const obs = new IntersectionObserver(
+                ([entry]) => entry.isIntersecting && onLoad(),
+                { root: ref.current, threshold: 0.1 },
+            )
+            obs.observe(sentinel)
+
+            return () => obs.disconnect()
+        }
+
+        const stopTop = hasOlder ? load(topSentinel.current, onLoadOlder) : undefined
+        const stopBottom = hasNewer ? load(bottomSentinel.current, onLoadNewer) : undefined
+
+        return () => { stopTop?.(); stopBottom?.() }
+    }, [hasOlder, hasNewer, onLoadOlder, onLoadNewer])
 
     if (!messages.length && emptyState) {
         return <div className="flex-1 grid place-items-center">{emptyState}</div>
     }
 
     return (
-        <div ref={ref} onScroll={onScroll} className="flex-1 overflow-y-auto min-h-0 pb-4">
-            <div ref={sentinel} className="h-px" />
+        <div
+            ref={ref}
+            onScroll={() => { onScroll(); captureAnchor() }}
+            // `relative` is load-bearing: it makes this element the rows'
+            // offsetParent, so the offsetTop the scroll anchoring reads is
+            // measured from the top of the scrollable content and nothing else.
+            className="relative flex-1 overflow-y-auto min-h-0 pb-4"
+        >
+            <div ref={topSentinel} className="h-px" />
 
             {messages.map((m, i) => {
                 const prev = messages[i - 1]
@@ -66,7 +154,7 @@ export function MessageList({
                     new Date(m.created_at).toDateString() !== new Date(prev.created_at).toDateString()
 
                 return (
-                    <div key={m.id}>
+                    <div key={m.id} data-message-id={m.id}>
                         {newDay && (
                             <div className="flex items-center gap-3 px-4 my-4">
                                 <div className="flex-1 h-px bg-sixth" />
@@ -79,6 +167,7 @@ export function MessageList({
 
                         <MessageRow
                             message={m}
+                            scopeId={scopeId}
                             grouped={!newDay && isGrouped(prev, m)}
                             currentUser={currentUser}
                             onReply={onReply}
@@ -86,6 +175,8 @@ export function MessageList({
                     </div>
                 )
             })}
+
+            <div ref={bottomSentinel} className="h-px" />
         </div>
     )
 }

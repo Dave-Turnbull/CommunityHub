@@ -18,6 +18,10 @@ run commands, testing, known traps), see `CLAUDE.md` at the project root.
   resolution, default roles, the per-room rank hierarchy, and every enforcement point.
 - [notifications.md](notifications.md) — the notification model, producers, focus
   suppression, preferences, and the delivery surface.
+- [messages-and-pagination.md](messages-and-pagination.md) — the two-way cursor
+  endpoint, the trimmed client-side message window and its jump-to-present
+  affordance, the contiguous-run message cache and its driver seam, and the
+  optimistic edit/reaction/delete path.
 - [conversations-and-invites.md](conversations-and-invites.md) — message scoping,
   conversation creation/deduplication, group participants, and room invite mechanisms.
 - [status.md](status.md) — the status/custom-status/color schema, `StatusFeature`,

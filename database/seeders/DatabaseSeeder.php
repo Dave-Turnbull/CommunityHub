@@ -17,7 +17,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // ── Users ────────────────────────────────────────────────────────
-        $alice = User::create([
+        $dave = User::create([
             'username'     => 'dave',
             'display_name' => 'Dave',
             'email'        => 'dave@example.com',
@@ -26,7 +26,7 @@ class DatabaseSeeder extends Seeder
             'bio'          => 'Building cool things',
         ]);
 
-        $bob = User::create([
+        $bove = User::create([
             'username'     => 'bove',
             'display_name' => 'Bove',
             'email'        => 'bove@example.com',
@@ -42,16 +42,18 @@ class DatabaseSeeder extends Seeder
             'status'       => 'offline',
         ]);
 
+        $authors = ['d' => $dave, 'b' => $bove, 'p' => $peve];
+
         // ── Room ─────────────────────────────────────────────────────────
         $room = Room::create([
             'name'        => 'Demo Room',
-            'owner_id'    => $alice->id,
+            'owner_id'    => $dave->id,
             'invite_code' => 'demo1234',
         ]);
 
         Role::seedDefaultsForRoom($room);
-        $room->addMember($alice, asOwner: true);
-        $room->addMember($bob);
+        $room->addMember($dave, asOwner: true);
+        $room->addMember($bove);
         $room->addMember($peve);
 
         // ── Channels ─────────────────────────────────────────────────────
@@ -70,7 +72,7 @@ class DatabaseSeeder extends Seeder
             'position'  => 1,
         ]);
 
-        Channel::create([
+        $offTopic = Channel::create([
             'room_id'   => $room->id,
             'name'      => 'off-topic',
             'type'      => 'text',
@@ -78,30 +80,32 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // ── Messages ─────────────────────────────────────────────────────
-        Message::create([
-            'channel_id' => $general->id,
-            'author_id'  => $alice->id,
-            'content'    => 'Hey everyone, welcome to the room! 👋',
+        // Weeks of backlog in #general, several pages deep — see
+        // DemoConversationSeeder, which can also be run on its own.
+        $conversation = new DemoConversationSeeder();
+        $conversation->seed($general, $authors);
+
+        $conversation->conversation($offTopic, [
+            ['b', 'Anyone tried the coffee place that opened next to the office?'],
+            ['p', 'Twice. The filter is great, the pastries are a scam.'],
+            ['d', 'Strong endorsement of a scam, love it.'],
+            ['b', 'I will take pastry-scam over the machine in the kitchen.'],
+            ['p', 'That machine has produced exactly one good cup and nobody witnessed it.'],
+            ['d', 'It was me. I have no proof.'],
         ]);
 
-        $last = Message::create([
-            'channel_id' => $general->id,
-            'author_id'  => $bob->id,
-            'content'    => 'Thanks Alice! Looks great so far 🎉',
-        ]);
+        $offTopic->update(['last_message_id' => $offTopic->messages()->latest()->first()?->id]);
 
-        $general->update(['last_message_id' => $last->id]);
-
-        // ── DM between alice and bob ─────────────────────────────────────
+        // ── DM between dave and bove ─────────────────────────────────────
         $dm = Conversation::create(['type' => 'dm']);
 
-        ConversationParticipant::create(['conversation_id' => $dm->id, 'user_id' => $alice->id]);
-        ConversationParticipant::create(['conversation_id' => $dm->id, 'user_id' => $bob->id]);
+        ConversationParticipant::create(['conversation_id' => $dm->id, 'user_id' => $dave->id]);
+        ConversationParticipant::create(['conversation_id' => $dm->id, 'user_id' => $bove->id]);
 
         $dmMsg = Message::create([
             'conversation_id' => $dm->id,
-            'author_id'       => $alice->id,
-            'content'         => 'Hey Bob, DMs work too!',
+            'author_id'       => $dave->id,
+            'content'         => 'Hey Bove, DMs work too!',
         ]);
 
         $dm->update(['last_message_id' => $dmMsg->id]);

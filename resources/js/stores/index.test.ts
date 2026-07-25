@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useChannels, useConnectionQuality, useMessages, useMicSensitivity, useNotifications, usePresence, useRemoteStreamVersion, useSpeaking, useUI, useVoice, useVoiceRoster, useVoiceVolume } from '@/stores'
-import type { AppNotification, Channel, Message, VoiceParticipant } from '@/types'
+import { MAX_WINDOW_MESSAGES, useChannels, useConnectionQuality, useMessages, useMicSensitivity, useNotifications, usePresence, useRemoteStreamVersion, useSpeaking, useUI, useVoice, useVoiceRoster, useVoiceVolume } from '@/stores'
+import type { AppNotification, Channel, Message, PaginatedMessages, VoiceParticipant } from '@/types'
 
 const makeMessage = (overrides: Partial<Message> = {}): Message => ({
     id: 'msg-1',
@@ -16,20 +16,45 @@ const makeMessage = (overrides: Partial<Message> = {}): Message => ({
     ...overrides,
 })
 
+const makePage = (messages: Message[], overrides: Partial<PaginatedMessages> = {}): PaginatedMessages => ({
+    data: messages,
+    has_older: false,
+    older_cursor: null,
+    has_newer: false,
+    newer_cursor: null,
+    ...overrides,
+})
+
+// A contiguous stretch of messages with ids '<from>'..'<from+count-1>', in
+// chronological order — enough of them to push a window past its cap.
+const run = (from: number, count: number): Message[] =>
+    Array.from({ length: count }, (_, i) =>
+        makeMessage({
+            id: String(from + i),
+            created_at: `2026-01-01T00:00:${String(from + i).padStart(2, '0')}Z`,
+        })
+    )
+
 describe('useMessages', () => {
     beforeEach(() => {
-        useMessages.setState({ messages: {}, typing: {} })
+        useMessages.setState({ messages: {}, windows: {}, typing: {} })
     })
 
-    it('setMessages seeds a scope', () => {
+    it('setWindow seeds a scope and its window flags', () => {
         const msg = makeMessage()
-        useMessages.getState().setMessages('scope-1', [msg])
+        useMessages.getState().setWindow('scope-1', makePage([msg], { has_older: true, older_cursor: 'msg-1' }))
 
         expect(useMessages.getState().messages['scope-1']).toEqual([msg])
+        expect(useMessages.getState().windows['scope-1']).toEqual({
+            hasOlder: true,
+            olderCursor: 'msg-1',
+            hasNewer: false,
+            newerCursor: null,
+        })
     })
 
     it('add appends a message to a scope', () => {
-        useMessages.getState().setMessages('scope-1', [makeMessage({ id: 'msg-1' })])
+        useMessages.getState().setWindow('scope-1', makePage([makeMessage({ id: 'msg-1' })]))
         useMessages.getState().add('scope-1', makeMessage({ id: 'msg-2' }))
 
         expect(useMessages.getState().messages['scope-1'].map((m) => m.id)).toEqual(['msg-1', 'msg-2'])
@@ -37,41 +62,118 @@ describe('useMessages', () => {
 
     it('add guards against duplicate ids', () => {
         const msg = makeMessage({ id: 'msg-1' })
-        useMessages.getState().setMessages('scope-1', [msg])
+        useMessages.getState().setWindow('scope-1', makePage([msg]))
         useMessages.getState().add('scope-1', msg)
 
         expect(useMessages.getState().messages['scope-1']).toHaveLength(1)
     })
 
-    it('prepend adds older messages before existing ones', () => {
-        useMessages.getState().setMessages('scope-1', [makeMessage({ id: 'new' })])
-        useMessages.getState().prepend('scope-1', [makeMessage({ id: 'old' })])
+    it('add ignores a live message while the window is detached from the tail', () => {
+        useMessages.getState().setWindow(
+            'scope-1',
+            makePage([makeMessage({ id: 'msg-1' })], { has_newer: true, newer_cursor: 'msg-1' })
+        )
+        useMessages.getState().add('scope-1', makeMessage({ id: 'msg-2' }))
+
+        expect(useMessages.getState().messages['scope-1'].map((m) => m.id)).toEqual(['msg-1'])
+    })
+
+    it('prependOlder adds older messages before existing ones and takes their window flags', () => {
+        useMessages.getState().setWindow(
+            'scope-1',
+            makePage([makeMessage({ id: 'new' })], { has_older: true, older_cursor: 'new' })
+        )
+        useMessages.getState().prependOlder(
+            'scope-1',
+            makePage([makeMessage({ id: 'old' })], { has_older: true, older_cursor: 'old' })
+        )
 
         expect(useMessages.getState().messages['scope-1'].map((m) => m.id)).toEqual(['old', 'new'])
+        expect(useMessages.getState().windows['scope-1'].olderCursor).toBe('old')
+        expect(useMessages.getState().windows['scope-1'].hasNewer).toBe(false)
+    })
+
+    it('prependOlder past the window cap drops the newest rows and records them as re-fetchable', () => {
+        useMessages.getState().setWindow('scope-1', makePage(run(100, 100), { has_older: true, older_cursor: '100' }))
+        useMessages.getState().prependOlder('scope-1', makePage(run(0, 100), { has_older: true, older_cursor: '0' }))
+
+        const { messages, windows } = useMessages.getState()
+
+        expect(messages['scope-1']).toHaveLength(MAX_WINDOW_MESSAGES)
+        expect(messages['scope-1'][0].id).toBe('0')
+        expect(messages['scope-1'][MAX_WINDOW_MESSAGES - 1].id).toBe(String(MAX_WINDOW_MESSAGES - 1))
+        expect(windows['scope-1'].hasNewer).toBe(true)
+        expect(windows['scope-1'].newerCursor).toBe(String(MAX_WINDOW_MESSAGES - 1))
+    })
+
+    it('appendNewer past the window cap drops the oldest rows instead', () => {
+        useMessages.getState().setWindow(
+            'scope-1',
+            makePage(run(0, 100), { has_newer: true, newer_cursor: '99' })
+        )
+        useMessages.getState().appendNewer('scope-1', makePage(run(100, 100)))
+
+        const { messages, windows } = useMessages.getState()
+
+        expect(messages['scope-1']).toHaveLength(MAX_WINDOW_MESSAGES)
+        expect(messages['scope-1'][0].id).toBe(String(200 - MAX_WINDOW_MESSAGES))
+        expect(messages['scope-1'][MAX_WINDOW_MESSAGES - 1].id).toBe('199')
+        expect(windows['scope-1'].hasOlder).toBe(true)
+        expect(windows['scope-1'].olderCursor).toBe(String(200 - MAX_WINDOW_MESSAGES))
+        expect(windows['scope-1'].hasNewer).toBe(false)
+    })
+
+    it('a page that fits leaves both ends of the window alone', () => {
+        useMessages.getState().setWindow('scope-1', makePage(run(50, 50), { has_older: true, older_cursor: '50' }))
+        useMessages.getState().prependOlder('scope-1', makePage(run(0, 50)))
+
+        expect(useMessages.getState().messages['scope-1']).toHaveLength(100)
+        expect(useMessages.getState().windows['scope-1']).toEqual({
+            hasOlder: false,
+            olderCursor: null,
+            hasNewer: false,
+            newerCursor: null,
+        })
+    })
+
+    it('a page overlapping the window is not duplicated', () => {
+        useMessages.getState().setWindow('scope-1', makePage(run(5, 5), { has_older: true, older_cursor: '5' }))
+        useMessages.getState().prependOlder('scope-1', makePage(run(0, 7)))
+
+        expect(useMessages.getState().messages['scope-1'].map((m) => m.id))
+            .toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
+    })
+
+    it('insert puts a message back in chronological order rather than at the end', () => {
+        useMessages.getState().setWindow('scope-1', makePage(run(0, 3)))
+        useMessages.getState().remove('scope-1', '1')
+        useMessages.getState().insert('scope-1', run(1, 1)[0])
+
+        expect(useMessages.getState().messages['scope-1'].map((m) => m.id)).toEqual(['0', '1', '2'])
     })
 
     it('update replaces a message by id', () => {
-        useMessages.getState().setMessages('scope-1', [makeMessage({ id: 'msg-1', content: 'original' })])
+        useMessages.getState().setWindow('scope-1', makePage([makeMessage({ id: 'msg-1', content: 'original' })]))
         useMessages.getState().update('scope-1', makeMessage({ id: 'msg-1', content: 'edited' }))
 
         expect(useMessages.getState().messages['scope-1'][0].content).toBe('edited')
     })
 
     it('remove deletes a message by id', () => {
-        useMessages.getState().setMessages('scope-1', [
+        useMessages.getState().setWindow('scope-1', makePage([
             makeMessage({ id: 'msg-1' }),
             makeMessage({ id: 'msg-2' }),
-        ])
+        ]))
         useMessages.getState().remove('scope-1', 'msg-1')
 
         expect(useMessages.getState().messages['scope-1'].map((m) => m.id)).toEqual(['msg-2'])
     })
 
     it('setReactions attaches reactions to the matching message only', () => {
-        useMessages.getState().setMessages('scope-1', [
+        useMessages.getState().setWindow('scope-1', makePage([
             makeMessage({ id: 'msg-1' }),
             makeMessage({ id: 'msg-2' }),
-        ])
+        ]))
         useMessages.getState().setReactions('scope-1', 'msg-1', [{ emoji: '👍', count: 1, reacted: true }])
 
         const [m1, m2] = useMessages.getState().messages['scope-1']
@@ -80,8 +182,8 @@ describe('useMessages', () => {
     })
 
     it('keeps scopes independent so channels and DMs do not clobber each other', () => {
-        useMessages.getState().setMessages('channel-1', [makeMessage({ id: 'a' })])
-        useMessages.getState().setMessages('conversation-1', [makeMessage({ id: 'b' })])
+        useMessages.getState().setWindow('channel-1', makePage([makeMessage({ id: 'a' })]))
+        useMessages.getState().setWindow('conversation-1', makePage([makeMessage({ id: 'b' })]))
 
         expect(useMessages.getState().messages['channel-1'].map((m) => m.id)).toEqual(['a'])
         expect(useMessages.getState().messages['conversation-1'].map((m) => m.id)).toEqual(['b'])

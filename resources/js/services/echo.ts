@@ -1,6 +1,7 @@
 import Echo from 'laravel-echo'
 import Pusher from 'pusher-js'
 import { useChannels, useMessages, useNotifications, usePresence } from '@/stores'
+import * as cache from '@/services/messageCache'
 import type { AppNotification, Channel, Message, ReactionSummary, UserStatus } from '@/types'
 
 declare global {
@@ -38,12 +39,27 @@ export function subscribe(
 
     const chan = scopeType === 'channel' ? e.join(name) : e.private(name)
 
-    chan.listen('.MessageSent',    (ev: { message: Message })    => store.add(scopeId, ev.message))
-    chan.listen('.MessageUpdated', (ev: { message: Message })    => store.update(scopeId, ev.message))
-    chan.listen('.MessageDeleted', (ev: { message_id: string })  => store.remove(scopeId, ev.message_id))
-    chan.listen('.ReactionChanged', (ev: { message_id: string; reactions: ReactionSummary[] }) =>
+    // Every live change is applied to the visible window AND to the cached run
+    // behind it — a message edited or deleted while it sits outside the window
+    // would otherwise page back in with its old content (see
+    // services/messageCache.ts). The cache decides for itself what it can
+    // safely take; the store's own window rules are independent of it.
+    chan.listen('.MessageSent', (ev: { message: Message }) => {
+        store.add(scopeId, ev.message)
+        cache.appendLive(scopeId, ev.message)
+    })
+    chan.listen('.MessageUpdated', (ev: { message: Message }) => {
+        store.update(scopeId, ev.message)
+        cache.patchMessage(scopeId, ev.message)
+    })
+    chan.listen('.MessageDeleted', (ev: { message_id: string }) => {
+        store.remove(scopeId, ev.message_id)
+        cache.dropMessage(scopeId, ev.message_id)
+    })
+    chan.listen('.ReactionChanged', (ev: { message_id: string; reactions: ReactionSummary[] }) => {
         store.setReactions(scopeId, ev.message_id, ev.reactions)
-    )
+        cache.patchReactions(scopeId, ev.message_id, ev.reactions)
+    })
 
     return () => e.leave(name)
 }

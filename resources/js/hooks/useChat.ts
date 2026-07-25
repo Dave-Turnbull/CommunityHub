@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useMessages } from '@/stores'
 import { subscribe } from '@/services/echo'
 import { fetchChannelMessages, fetchConversationMessages } from '@/services/api'
+import * as cache from '@/services/messageCache'
 import type { Message, PaginatedMessages } from '@/types'
+import type { MessageCursor } from '@/services/api'
 
 interface Options {
     scopeId: string
@@ -18,25 +20,41 @@ interface Options {
 // trips React's "getSnapshot should be cached" warning.
 const EMPTY_MESSAGES: Message[] = []
 
+// Matches TextMessageService::PAGE_SIZE — the cache serves whole pages or
+// nothing (see services/messageCache.ts), so it has to agree with the server
+// about how big one is.
+const PAGE_SIZE = 50
+
 /**
- * Seeds the message store with the server-rendered first page, subscribes to
- * websocket events, and exposes a loadMore() for infinite scroll upward.
+ * Owns one scope's message window: seeds it from the server-rendered first
+ * page, keeps it live over the websocket, and pages it in both directions —
+ * older on scroll-up, newer on scroll-down after the window trimmed its tail.
+ * `hasNewer` is the "not looking at the present" signal that drives the
+ * jump-to-present affordance. See docs/messages-and-pagination.md.
  */
 export function useChat({ scopeId, scopeType, initial, enabled = true }: Options) {
-    const messages    = useMessages((s) => s.messages[scopeId] ?? EMPTY_MESSAGES)
-    const setMessages = useMessages((s) => s.setMessages)
-    const prepend     = useMessages((s) => s.prepend)
+    const messages     = useMessages((s) => s.messages[scopeId] ?? EMPTY_MESSAGES)
+    const windowState  = useMessages((s) => s.windows[scopeId])
+    const setWindow    = useMessages((s) => s.setWindow)
+    const prependOlder = useMessages((s) => s.prependOlder)
+    const appendNewer  = useMessages((s) => s.appendNewer)
 
-    const cursor  = useRef(initial.next_cursor)
-    const hasMore = useRef(initial.has_more)
     const loading = useRef(false)
 
-    // Seed store on mount / scope change
+    const fetchPage = useCallback(
+        (cursor: MessageCursor) => scopeType === 'channel'
+            ? fetchChannelMessages(scopeId, cursor)
+            : fetchConversationMessages(scopeId, cursor),
+        [scopeId, scopeType],
+    )
+
+    // Seed store on mount / scope change. The Inertia prop is a page the
+    // server rendered for this navigation, so it always wins over the cache;
+    // the cache exists to answer paging, not first paint.
     useEffect(() => {
         if (!enabled) return
-        setMessages(scopeId, initial.data)
-        cursor.current  = initial.next_cursor
-        hasMore.current = initial.has_more
+        setWindow(scopeId, initial)
+        cache.seedRun(scopeId, initial)
     }, [scopeId, enabled])
 
     // Websocket subscription
@@ -45,22 +63,87 @@ export function useChat({ scopeId, scopeType, initial, enabled = true }: Options
         return subscribe(scopeId, scopeType)
     }, [scopeId, scopeType, enabled])
 
-    const loadMore = useCallback(async () => {
-        if (!enabled || !hasMore.current || loading.current) return
+    const loadOlder = useCallback(async () => {
+        if (!enabled || loading.current) return
+
+        const { hasOlder, olderCursor } = useMessages.getState().windows[scopeId] ?? {}
+        if (!hasOlder || !olderCursor) return
 
         loading.current = true
         try {
-            const page = scopeType === 'channel'
-                ? await fetchChannelMessages(scopeId, cursor.current ?? undefined)
-                : await fetchConversationMessages(scopeId, cursor.current ?? undefined)
+            const cached = await cache.readOlder(scopeId, olderCursor, PAGE_SIZE)
+            const page = cached ?? await fetchPage({ before: olderCursor })
 
-            prepend(scopeId, page.data)
-            cursor.current  = page.next_cursor
-            hasMore.current = page.has_more
+            prependOlder(scopeId, page)
+            if (!cached) await cache.extendRun(scopeId, page, 'older')
         } finally {
             loading.current = false
         }
-    }, [scopeId, scopeType, prepend, enabled])
+    }, [scopeId, fetchPage, prependOlder, enabled])
 
-    return { messages: enabled ? messages : EMPTY_MESSAGES, loadMore, hasMore: enabled && hasMore.current }
+    const loadNewer = useCallback(async () => {
+        if (!enabled || loading.current) return
+
+        const { hasNewer, newerCursor } = useMessages.getState().windows[scopeId] ?? {}
+        if (!hasNewer || !newerCursor) return
+
+        loading.current = true
+        try {
+            const cached = await cache.readNewer(scopeId, newerCursor, PAGE_SIZE)
+            const page = cached ?? await fetchPage({ after: newerCursor })
+
+            appendNewer(scopeId, page)
+            if (!cached) await cache.extendRun(scopeId, page, 'newer')
+        } finally {
+            loading.current = false
+        }
+    }, [scopeId, fetchPage, appendNewer, enabled])
+
+    /**
+     * Back to the live tail in one step. Deliberately a fresh tail fetch
+     * rather than paging forward or just scrolling: everything between the
+     * window and the present is unfetched, and the tail is the only page whose
+     * position is known without walking there.
+     */
+    const jumpToPresent = useCallback(async () => {
+        if (!enabled) return
+
+        loading.current = true
+        try {
+            const page = await fetchPage({})
+            setWindow(scopeId, page)
+            await cache.seedRun(scopeId, page)
+        } finally {
+            loading.current = false
+        }
+    }, [scopeId, fetchPage, setWindow, enabled])
+
+    /**
+     * A message this tab just sent. While detached, appending it would put it
+     * on the far side of the window's gap (the store refuses, see
+     * useMessages.add) — the reader plainly wants to be at the present, so go
+     * there instead of silently dropping their own message.
+     */
+    const commitSent = useCallback(
+        (message: Message) => {
+            if (useMessages.getState().windows[scopeId]?.hasNewer) {
+                jumpToPresent()
+                return
+            }
+
+            useMessages.getState().add(scopeId, message)
+            cache.appendLive(scopeId, message)
+        },
+        [scopeId, jumpToPresent],
+    )
+
+    return {
+        messages: enabled ? messages : EMPTY_MESSAGES,
+        hasOlder: enabled && (windowState?.hasOlder ?? false),
+        hasNewer: enabled && (windowState?.hasNewer ?? false),
+        loadOlder,
+        loadNewer,
+        jumpToPresent,
+        commitSent,
+    }
 }

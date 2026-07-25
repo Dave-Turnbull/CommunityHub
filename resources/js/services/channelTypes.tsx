@@ -40,6 +40,14 @@ export interface ChannelTypeDescriptor {
     SidebarItem?: ComponentType<{ channel: Channel; active: boolean; currentUser: User }>
 }
 
+const EMPTY_PAGE: PaginatedMessages = {
+    data: [],
+    has_older: false,
+    older_cursor: null,
+    has_newer: false,
+    newer_cursor: null,
+}
+
 function TextChannelTypeContent({
     channel, currentUser, initialMessages,
 }: {
@@ -52,7 +60,7 @@ function TextChannelTypeContent({
             scopeId={channel.id}
             scopeType="channel"
             currentUser={currentUser}
-            initialMessages={initialMessages ?? { data: [], has_more: false, next_cursor: null }}
+            initialMessages={initialMessages ?? EMPTY_PAGE}
             placeholder={`Message #${channel.name}`}
             emptyState={
                 <div className="text-center">
