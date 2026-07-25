@@ -43,7 +43,7 @@ export function NotificationPreferences() {
     }
 
     return (
-        <div className="bg-surface-panel rounded-lg divide-y divide-surface-raised">
+        <div className="bg-second rounded-lg divide-y divide-fifth">
             <div className="grid grid-cols-[1fr,auto,auto] gap-4 px-6 py-3 text-xxs font-semibold uppercase tracking-wide text-text-muted">
                 <span>Category</span>
                 <span className="w-12 text-center">Email</span>

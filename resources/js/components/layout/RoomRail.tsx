@@ -16,7 +16,7 @@ export function RoomRail({ rooms, currentUserId, activeRoomId }: Props) {
     const { unreadCount } = useNotifications(currentUserId)
 
     return (
-        <nav className="h-room-rail w-full bg-surface-inset flex items-center gap-2 px-3
+        <nav className="h-room-rail w-full bg-third border-b-panel border-panel-border flex items-center gap-2 px-3
                         overflow-x-auto flex-shrink-0">
             <Tooltip content="Messages" side="bottom">
                 <Link
@@ -24,8 +24,8 @@ export function RoomRail({ rooms, currentUserId, activeRoomId }: Props) {
                     className={clsx(
                         'relative w-10 h-10 grid place-items-center text-xl transition-all duration-200 flex-shrink-0',
                         onHome
-                            ? 'rounded-2xl bg-brand'
-                            : 'rounded-full bg-surface-canvas hover:rounded-2xl hover:bg-brand',
+                            ? 'rounded-2xl bg-accent-primary'
+                            : 'rounded-full bg-primary hover:rounded-2xl hover:bg-accent-primary',
                     )}
                 >
                     💬
@@ -38,7 +38,7 @@ export function RoomRail({ rooms, currentUserId, activeRoomId }: Props) {
                 </Link>
             </Tooltip>
 
-            <div className="h-8 w-px bg-surface-raised flex-shrink-0" />
+            <div className="h-8 w-px bg-fifth flex-shrink-0" />
 
             {rooms.map((r) => {
                 const active = r.id === activeRoomId
@@ -51,8 +51,8 @@ export function RoomRail({ rooms, currentUserId, activeRoomId }: Props) {
                                 'group relative w-10 h-10 grid place-items-center overflow-hidden flex-shrink-0',
                                 'font-bold text-base transition-all duration-200',
                                 active
-                                    ? 'rounded-2xl bg-brand text-inverse'
-                                    : 'rounded-full bg-surface-canvas text-text-primary hover:rounded-2xl hover:bg-brand',
+                                    ? 'rounded-2xl bg-accent-primary text-inverse'
+                                    : 'rounded-full bg-primary text-text-primary hover:rounded-2xl hover:bg-accent-primary',
                             )}
                         >
                             {r.icon_url
@@ -72,7 +72,7 @@ export function RoomRail({ rooms, currentUserId, activeRoomId }: Props) {
             <Tooltip content="Add a Room" side="bottom">
                 <Link
                     href="/rooms/create"
-                    className="w-10 h-10 grid place-items-center rounded-full bg-surface-canvas flex-shrink-0
+                    className="w-10 h-10 grid place-items-center rounded-full bg-primary flex-shrink-0
                                text-success text-xl font-light
                                hover:rounded-2xl hover:bg-success hover:text-inverse transition-all duration-200"
                 >

@@ -41,7 +41,7 @@ export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
     }
 
     return (
-        <div className={clsx('px-4 hover:bg-surface-raised transition-colors duration-75 group', grouped ? 'py-0.5' : 'pt-4 pb-0.5')}>
+        <div className={clsx('px-4 hover:bg-fifth transition-colors duration-75 group', grouped ? 'py-0.5' : 'pt-4 pb-0.5')}>
             <div className="flex gap-3">
                 {/* Gutter: avatar, or hover-timestamp when grouped */}
                 <div className="w-10 flex-shrink-0">
@@ -68,7 +68,7 @@ export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
 
                     {/* Reply context */}
                     {message.reply_to && (
-                        <div className="flex items-center gap-1.5 mb-1 pl-2 border-l-2 border-surface-subtle text-xs text-text-muted">
+                        <div className="flex items-center gap-1.5 mb-1 pl-2 border-l-2 border-sixth text-xs text-text-muted">
                             <span className="font-medium text-text-secondary">
                                 {message.reply_to.author?.display_name}
                             </span>
@@ -86,7 +86,7 @@ export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
                                     if (e.key === 'Escape') setEditing(false)
                                 }}
                                 autoFocus
-                                className="w-full bg-surface-inset rounded p-2 text-sm resize-none focus:outline-none"
+                                className="w-full bg-third rounded p-2 text-sm resize-none focus:outline-none"
                                 rows={2}
                             />
                             <p className="text-[11px] text-text-muted mt-1">
@@ -119,7 +119,7 @@ export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
                                         key={a.id}
                                         href={a.url}
                                         download
-                                        className="px-3 py-2 bg-surface-raised border border-surface-subtle rounded text-xs
+                                        className="px-3 py-2 bg-fifth border border-sixth rounded text-xs
                                                    text-text-secondary hover:text-text-primary"
                                     >
                                         📎 {a.filename}
@@ -139,8 +139,8 @@ export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
                                     className={clsx(
                                         'flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors',
                                         r.reacted
-                                            ? 'bg-brand/20 border-brand text-text-primary'
-                                            : 'bg-surface-raised border-surface-subtle text-text-secondary hover:border-brand',
+                                            ? 'bg-accent-primary/20 border-accent-primary text-text-primary'
+                                            : 'bg-fifth border-sixth text-text-secondary hover:border-accent-primary',
                                     )}
                                 >
                                     <span>{r.emoji}</span>
@@ -154,14 +154,14 @@ export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
                 {/* Hover actions */}
                 <div className="opacity-0 group-hover:opacity-100 flex items-start gap-0.5 transition-opacity">
                     <EmojiPicker onSelect={(e) => addReaction(message.id, e)}>
-                        <button className="p-1 rounded hover:bg-surface-subtle text-text-muted hover:text-text-primary">
+                        <button className="p-1 rounded hover:bg-sixth text-text-muted hover:text-text-primary">
                             😀
                         </button>
                     </EmojiPicker>
 
                     <button
                         onClick={() => onReply(message)}
-                        className="p-1 rounded hover:bg-surface-subtle text-text-muted hover:text-text-primary"
+                        className="p-1 rounded hover:bg-sixth text-text-muted hover:text-text-primary"
                         title="Reply"
                     >
                         ↩
@@ -170,13 +170,13 @@ export function MessageRow({ message, grouped, currentUser, onReply }: Props) {
                     {isMine && (
                         <DropdownMenu
                             trigger={
-                                <button className="p-1 rounded hover:bg-surface-subtle text-text-muted hover:text-text-primary">
+                                <button className="p-1 rounded hover:bg-sixth text-text-muted hover:text-text-primary">
                                     ⋯
                                 </button>
                             }
                             align="end"
                             sideOffset={4}
-                            className="min-w-[160px] p-1 rounded-md bg-surface-app border border-surface-subtle shadow-xl text-sm"
+                            className="min-w-[160px] p-1 rounded-md bg-fourth border border-sixth shadow-xl text-sm"
                         >
                             <DropdownMenu.Item onSelect={() => setEditing(true)}>Edit</DropdownMenu.Item>
                             <DropdownMenu.Item onSelect={() => deleteMessage(message.id)} danger>Delete</DropdownMenu.Item>

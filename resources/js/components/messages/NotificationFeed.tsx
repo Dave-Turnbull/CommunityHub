@@ -40,8 +40,8 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
             className={clsx(
                 'px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors duration-100',
                 active
-                    ? 'bg-brand text-inverse'
-                    : 'bg-surface-panel text-text-secondary hover:text-text-primary hover:bg-surface-raised',
+                    ? 'bg-accent-primary text-inverse'
+                    : 'bg-second text-text-secondary hover:text-text-primary hover:bg-fifth',
             )}
         >
             {children}
@@ -58,12 +58,12 @@ function Row({ notification, onRead }: { notification: AppNotification; onRead: 
             href={href}
             onClick={() => unread && onRead(notification.id)}
             className={clsx(
-                'block px-6 py-3 border-b border-surface-inset hover:bg-surface-raised transition-colors',
-                unread && 'bg-surface-panel',
+                'block px-6 py-3 border-b border-third hover:bg-fifth transition-colors',
+                unread && 'bg-second',
             )}
         >
             <div className="flex items-center gap-1.5">
-                {unread && <span className="w-1.5 h-1.5 rounded-full bg-brand flex-shrink-0" />}
+                {unread && <span className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" />}
                 <p className="text-sm font-medium text-text-primary truncate">{title}</p>
                 <span className="ml-auto text-[11px] text-text-muted flex-shrink-0">
                     {time(notification.created_at)}
@@ -93,17 +93,17 @@ export function NotificationFeed({ userId }: { userId: string }) {
     const filtered = filter === 'all' ? visible : visible.filter((n) => n.type === filter)
 
     return (
-        <div className="flex-1 flex flex-col min-h-0 bg-surface-canvas">
-            <div className="h-12 px-6 flex items-center justify-between border-b border-surface-inset flex-shrink-0">
+        <div className="flex-1 flex flex-col min-h-0 bg-primary">
+            <div className="h-12 px-6 flex items-center justify-between border-b border-third flex-shrink-0">
                 <span className="font-semibold text-text-primary">Notifications</span>
                 {unreadCount > 0 && (
-                    <button onClick={() => markAllRead()} className="text-xs text-brand hover:underline">
+                    <button onClick={() => markAllRead()} className="text-xs text-accent-primary hover:underline">
                         Mark all read
                     </button>
                 )}
             </div>
 
-            <div className="flex items-center gap-2 px-6 py-3 border-b border-surface-inset overflow-x-auto flex-shrink-0">
+            <div className="flex items-center gap-2 px-6 py-3 border-b border-third overflow-x-auto flex-shrink-0">
                 <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>All</FilterChip>
                 {enabledCategories.map((category) => (
                     <FilterChip key={category} active={filter === category} onClick={() => setFilter(category)}>

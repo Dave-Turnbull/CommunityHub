@@ -86,7 +86,7 @@ export function NewConversationModal({ onClose }: Props) {
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
             <div
-                className="w-full max-w-md bg-surface-panel rounded-lg p-6 shadow-2xl"
+                className="w-full max-w-md bg-second rounded-lg p-6 shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
             >
                 {step === 'picking' && (
@@ -101,7 +101,7 @@ export function NewConversationModal({ onClose }: Props) {
                                 value={name}
                                 placeholder="Group name (optional)"
                                 onChange={(e) => setName(e.target.value)}
-                                className="w-full mt-3 bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                                className="w-full mt-3 bg-third border border-sixth rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary transition-colors duration-100"
                             />
                         )}
 
@@ -110,14 +110,14 @@ export function NewConversationModal({ onClose }: Props) {
                         <div className="flex gap-2 mt-5">
                             <button
                                 onClick={onClose}
-                                className="flex-1 px-4 py-2 rounded bg-surface-raised hover:bg-surface-subtle text-text-secondary text-sm font-medium transition-colors duration-100"
+                                className="flex-1 px-4 py-2 rounded bg-fifth hover:bg-sixth text-text-secondary text-sm font-medium transition-colors duration-100"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={continueFromPicking}
                                 disabled={!selected.length || busy}
-                                className="flex-1 px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-1 px-4 py-2 rounded bg-accent-primary hover:bg-accent-secondary text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {busy ? 'Checking…' : 'Continue'}
                             </button>
@@ -135,13 +135,13 @@ export function NewConversationModal({ onClose }: Props) {
                         <div className="flex gap-2">
                             <button
                                 onClick={() => goToConversation(matchedGroup.id)}
-                                className="flex-1 px-4 py-2 rounded bg-surface-raised hover:bg-surface-subtle text-text-secondary text-sm font-medium transition-colors duration-100"
+                                className="flex-1 px-4 py-2 rounded bg-fifth hover:bg-sixth text-text-secondary text-sm font-medium transition-colors duration-100"
                             >
                                 Go to existing
                             </button>
                             <button
                                 onClick={() => { setConfirmDuplicate(true); setStep('compose') }}
-                                className="flex-1 px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100"
+                                className="flex-1 px-4 py-2 rounded bg-accent-primary hover:bg-accent-secondary text-inverse text-sm font-medium transition-colors duration-100"
                             >
                                 Create new anyway
                             </button>

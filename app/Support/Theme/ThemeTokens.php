@@ -19,13 +19,18 @@ namespace App\Support\Theme;
  */
 class ThemeTokens
 {
-    public const PRESETS = ['classic', 'midnight', 'ocean', 'light'];
+    public const PRESETS = ['classic', 'midnight', 'ocean', 'light', 'black'];
 
-    /** "R G B" triples, e.g. "88 101 242" — see app.css's comment on why not #hex. */
+    /**
+     * "R G B" triples, e.g. "88 101 242" — see app.css's comment on why not
+     * #hex. `--primary`..`--sixth` are the background scale, named by
+     * prominence (largest-covered-area first) rather than by component or
+     * elevation metaphor — see docs/theming.md.
+     */
     public const COLOR_KEYS = [
-        '--color-brand', '--color-brand-hover', '--color-brand-muted',
-        '--surface-app', '--surface-inset', '--surface-panel',
-        '--surface-canvas', '--surface-raised', '--surface-subtle',
+        '--color-accent-primary', '--color-accent-secondary', '--color-accent-tertiary',
+        '--primary', '--second', '--third', '--fourth', '--fifth', '--sixth',
+        '--panel-border-color',
         '--text-primary', '--text-secondary', '--text-muted',
         '--text-link', '--text-link-hover',
         '--status-online', '--status-idle', '--status-dnd', '--status-offline',
@@ -36,6 +41,16 @@ class ThemeTokens
     public const PX_KEYS = [
         '--radius-sm', '--radius-md', '--radius-lg', '--radius-xl', '--radius-2xl', '--radius-3xl',
         '--border-width-default', '--border-width-thick',
+    ];
+
+    /**
+     * Pixels with up to two decimal places, e.g. "0.25px" — `--panel-border-width`
+     * is a quarter-pixel slider (the outer edge of a major chrome region:
+     * sidebar/top bar/member list), fine enough that whole-pixel `PX_KEYS`
+     * precision would reject its own default value. See docs/theming.md.
+     */
+    public const DECIMAL_PX_KEYS = [
+        '--panel-border-width',
     ];
 
     /** Decimal rem, e.g. "1.125rem". */
@@ -72,6 +87,7 @@ class ThemeTokens
         return [
             ...self::COLOR_KEYS,
             ...self::PX_KEYS,
+            ...self::DECIMAL_PX_KEYS,
             ...self::REM_KEYS,
             ...self::WEIGHT_KEYS,
             self::FONT_FAMILY_KEY,
@@ -91,6 +107,10 @@ class ThemeTokens
 
         if (in_array($key, self::PX_KEYS, true)) {
             return (bool) preg_match('/^\d{1,3}px$/', $value);
+        }
+
+        if (in_array($key, self::DECIMAL_PX_KEYS, true)) {
+            return (bool) preg_match('/^\d{1,3}(\.\d{1,2})?px$/', $value);
         }
 
         if (in_array($key, self::REM_KEYS, true)) {

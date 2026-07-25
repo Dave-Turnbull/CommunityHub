@@ -5,7 +5,7 @@
  * instead of a literal value, so a theme is just a set of `--variable` overrides
  * scoped to `[data-theme="..."]` — see docs/theming.md. The `rgb(var(...) /
  * <alpha-value>)` form is required (not a plain `var(...)`) so Tailwind's opacity
- * modifiers (e.g. `bg-surface-app/50`) keep working.
+ * modifiers (e.g. `bg-primary/50`) keep working.
  */
 function withOpacity(variable) {
     return `rgb(var(${variable}) / <alpha-value>)`
@@ -19,22 +19,34 @@ export default {
     theme: {
         extend: {
             colors: {
-                brand: {
-                    DEFAULT: withOpacity('--color-brand'),
-                    hover:   withOpacity('--color-brand-hover'),
-                    muted:   withOpacity('--color-brand-muted'),
+                // The one saturated accent color family — primary/secondary/
+                // tertiary, not "DEFAULT/hover/muted", since `secondary`
+                // shows up as more than just a hover state (e.g. the active
+                // room-rail indicator) — see docs/theming.md.
+                accent: {
+                    primary:   withOpacity('--color-accent-primary'),
+                    secondary: withOpacity('--color-accent-secondary'),
+                    tertiary:  withOpacity('--color-accent-tertiary'),
                 },
-                // Generic surface elevation scale — not tied to any one component.
-                // Every screen composes its panels from these six tones; see
-                // docs/theming.md for which role is used where.
-                surface: {
-                    app:    withOpacity('--surface-app'),
-                    inset:  withOpacity('--surface-inset'),
-                    panel:  withOpacity('--surface-panel'),
-                    canvas: withOpacity('--surface-canvas'),
-                    raised: withOpacity('--surface-raised'),
-                    subtle: withOpacity('--surface-subtle'),
-                },
+                // Generic background scale — not tied to any one component.
+                // Named by prominence, largest-covered-area first (primary is
+                // the main content pane, sixth is borders/dividers) rather
+                // than by component or elevation metaphor — see
+                // docs/theming.md for which role each one plays.
+                primary: withOpacity('--primary'),
+                second:  withOpacity('--second'),
+                third:   withOpacity('--third'),
+                fourth:  withOpacity('--fourth'),
+                fifth:   withOpacity('--fifth'),
+                sixth:   withOpacity('--sixth'),
+                // The outer-edge border of a major chrome region (sidebar/top
+                // bar/member list) — paired with the `panel` borderWidth key
+                // below (`border-r-panel border-panel-border`, etc.). Kept
+                // separate from `sixth` (the generic divider/border color) so
+                // a theme can make chrome borders more prominent than
+                // ordinary dividers without changing every divider in the
+                // app — see docs/theming.md.
+                'panel-border': withOpacity('--panel-border-color'),
                 text: {
                     primary:    withOpacity('--text-primary'),
                     secondary:  withOpacity('--text-secondary'),
@@ -95,6 +107,13 @@ export default {
                 2: 'var(--border-width-thick)',
                 4: '4px',
                 8: '8px',
+                // A theme-controlled width for chrome-region outer borders
+                // (`border-r-panel`, `border-b-panel`, ...) — independent of
+                // the generic default/thick scale above so a "panel border"
+                // toggle doesn't also have to change every hairline divider
+                // in the app. 0 in every preset except `black` — see
+                // docs/theming.md.
+                panel: 'var(--panel-border-width)',
             },
             keyframes: {
                 'fade-in': {

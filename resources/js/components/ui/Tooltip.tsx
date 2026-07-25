@@ -16,11 +16,11 @@ export function Tooltip({ content, side = 'top', children }: Props) {
                     <RadixTooltip.Content
                         side={side}
                         sideOffset={8}
-                        className="z-50 px-2 py-1 rounded text-xs font-medium bg-surface-app
-                                   text-text-primary shadow-lg border border-surface-subtle animate-fade-in"
+                        className="z-50 px-2 py-1 rounded text-xs font-medium bg-fourth
+                                   text-text-primary shadow-lg border border-sixth animate-fade-in"
                     >
                         {content}
-                        <RadixTooltip.Arrow className="fill-surface-app" />
+                        <RadixTooltip.Arrow className="fill-fourth" />
                     </RadixTooltip.Content>
                 </RadixTooltip.Portal>
             </RadixTooltip.Root>

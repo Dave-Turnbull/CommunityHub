@@ -12,14 +12,14 @@ export default function Login({ appName }: SharedProps) {
         <>
             <Head title="Log in" />
 
-            <div className="min-h-screen grid place-items-center bg-surface-app px-4">
+            <div className="min-h-screen grid place-items-center bg-fourth px-4">
                 <div className="w-full max-w-md">
                     <div className="text-center mb-8">
                         <h1 className="text-3xl font-bold text-text-primary">{appName}</h1>
                         <p className="text-sm text-text-muted mt-1">Welcome back.</p>
                     </div>
 
-                    <div className="bg-surface-panel rounded-lg p-8 shadow-2xl">
+                    <div className="bg-second rounded-lg p-8 shadow-2xl">
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1.5">
@@ -31,7 +31,7 @@ export default function Login({ appName }: SharedProps) {
                                     value={data.login}
                                     onChange={(e) => setData('login', e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && post('/login')}
-                                    className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                                    className="w-full bg-third border border-sixth rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary transition-colors duration-100"
                                     autoFocus
                                 />
                                 {errors.login && (
@@ -48,7 +48,7 @@ export default function Login({ appName }: SharedProps) {
                                     value={data.password}
                                     onChange={(e) => setData('password', e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && post('/login')}
-                                    className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                                    className="w-full bg-third border border-sixth rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary transition-colors duration-100"
                                 />
                                 {errors.password && (
                                     <p className="text-xs text-danger mt-1">{errors.password}</p>
@@ -60,7 +60,7 @@ export default function Login({ appName }: SharedProps) {
                                     type="checkbox"
                                     checked={data.remember}
                                     onChange={(e) => setData('remember', e.target.checked)}
-                                    className="rounded border-surface-subtle bg-surface-inset text-brand focus:ring-brand"
+                                    className="rounded border-sixth bg-third text-accent-primary focus:ring-accent-primary"
                                 />
                                 Remember me
                             </label>
@@ -68,7 +68,7 @@ export default function Login({ appName }: SharedProps) {
                             <button
                                 onClick={() => post('/login')}
                                 disabled={processing}
-                                className="w-full px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full px-4 py-2 rounded bg-accent-primary hover:bg-accent-secondary text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {processing ? 'Logging in…' : 'Log In'}
                             </button>

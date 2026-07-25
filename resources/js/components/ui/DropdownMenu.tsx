@@ -41,7 +41,7 @@ function Item({ onSelect, danger, children }: ItemProps) {
                 'px-2 py-1.5 rounded cursor-pointer outline-none',
                 danger
                     ? 'text-danger hover:bg-danger hover:text-inverse'
-                    : 'text-text-secondary hover:bg-brand hover:text-inverse',
+                    : 'text-text-secondary hover:bg-accent-primary hover:text-inverse',
             )}
         >
             {children}

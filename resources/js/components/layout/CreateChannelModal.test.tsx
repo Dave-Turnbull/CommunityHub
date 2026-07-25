@@ -26,7 +26,7 @@ describe('CreateChannelModal', () => {
     it('defaults to the first known channel type', () => {
         render(<CreateChannelModal room={room} onClose={vi.fn()} onCreated={vi.fn()} />)
 
-        expect(screen.getByRole('button', { name: /announcement/i })).toHaveClass('border-brand')
+        expect(screen.getByRole('button', { name: /announcement/i })).toHaveClass('border-accent-primary')
     })
 
     it('creates a channel with the selected type and calls onCreated', async () => {

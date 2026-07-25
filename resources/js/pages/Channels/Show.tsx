@@ -37,21 +37,21 @@ export default function ChannelShow({
                         canManageRoles={can_manage_roles}
                     />
 
-                    <main className="flex-1 flex flex-col bg-surface-canvas min-w-0">
-                        <header className="h-12 px-4 flex items-center gap-3 border-b border-surface-inset flex-shrink-0">
+                    <main className="flex-1 flex flex-col bg-primary min-w-0">
+                        <header className="h-12 px-4 flex items-center gap-3 border-b border-third flex-shrink-0">
                             <span className="text-text-muted font-bold text-lg">{descriptor.icon}</span>
                             <span className="font-semibold text-text-primary">{channel.name}</span>
 
                             {channel.topic && (
                                 <>
-                                    <span className="w-px h-4 bg-surface-subtle" />
+                                    <span className="w-px h-4 bg-sixth" />
                                     <span className="text-sm text-text-muted truncate">{channel.topic}</span>
                                 </>
                             )}
 
                             <button
                                 onClick={toggleMemberList}
-                                className="ml-auto p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-surface-raised"
+                                className="ml-auto p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-fifth"
                                 title="Toggle member list"
                             >
                                 👥

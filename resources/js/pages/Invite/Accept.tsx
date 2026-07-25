@@ -19,23 +19,23 @@ export default function Accept({ invalid, room, inviter, email, has_account, app
         <>
             <Head title="Accept invite" />
 
-            <div className="min-h-screen grid place-items-center bg-surface-app px-4 py-12">
+            <div className="min-h-screen grid place-items-center bg-fourth px-4 py-12">
                 <div className="w-full max-w-md">
                     {invalid ? (
-                        <div className="bg-surface-panel rounded-lg p-8 shadow-2xl text-center">
+                        <div className="bg-second rounded-lg p-8 shadow-2xl text-center">
                             <h1 className="text-xl font-bold text-text-primary mb-2">This invite is no longer valid</h1>
                             <p className="text-sm text-text-muted mb-6">
                                 It may have expired or already been used.
                             </p>
                             <a
                                 href="/"
-                                className="inline-block px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100"
+                                className="inline-block px-4 py-2 rounded bg-accent-primary hover:bg-accent-secondary text-inverse text-sm font-medium transition-colors duration-100"
                             >
                                 Go home
                             </a>
                         </div>
                     ) : (
-                        <div className="bg-surface-panel rounded-lg p-8 shadow-2xl">
+                        <div className="bg-second rounded-lg p-8 shadow-2xl">
                             <div className="text-center mb-6">
                                 <h1 className="text-xl font-bold text-text-primary">
                                     Join {room?.name}
@@ -55,7 +55,7 @@ export default function Accept({ invalid, room, inviter, email, has_account, app
                                             type="email"
                                             value={login.data.login}
                                             readOnly
-                                            className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-muted"
+                                            className="w-full bg-third border border-sixth rounded px-3 py-2 text-sm text-text-muted"
                                         />
                                     </div>
                                     <div>
@@ -67,7 +67,7 @@ export default function Accept({ invalid, room, inviter, email, has_account, app
                                             value={login.data.password}
                                             onChange={(e) => login.setData('password', e.target.value)}
                                             onKeyDown={(e) => e.key === 'Enter' && login.post('/login')}
-                                            className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-brand transition-colors duration-100"
+                                            className="w-full bg-third border border-sixth rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent-primary transition-colors duration-100"
                                             autoFocus
                                         />
                                         {login.errors.login && (
@@ -77,7 +77,7 @@ export default function Accept({ invalid, room, inviter, email, has_account, app
                                     <button
                                         onClick={() => login.post('/login')}
                                         disabled={login.processing}
-                                        className="w-full px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="w-full px-4 py-2 rounded bg-accent-primary hover:bg-accent-secondary text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {login.processing ? 'Joining…' : 'Log in and join'}
                                     </button>
@@ -101,7 +101,7 @@ export default function Accept({ invalid, room, inviter, email, has_account, app
                                                 value={register.data[key]}
                                                 onChange={(e) => register.setData(key, e.target.value)}
                                                 onKeyDown={(e) => e.key === 'Enter' && register.post('/register')}
-                                                className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-brand transition-colors duration-100"
+                                                className="w-full bg-third border border-sixth rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent-primary transition-colors duration-100"
                                             />
                                             {register.errors[key] && (
                                                 <p className="text-xs text-danger mt-1">{register.errors[key]}</p>
@@ -116,13 +116,13 @@ export default function Accept({ invalid, room, inviter, email, has_account, app
                                             type="email"
                                             value={register.data.email}
                                             readOnly
-                                            className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-muted"
+                                            className="w-full bg-third border border-sixth rounded px-3 py-2 text-sm text-text-muted"
                                         />
                                     </div>
                                     <button
                                         onClick={() => register.post('/register')}
                                         disabled={register.processing}
-                                        className="w-full px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="w-full px-4 py-2 rounded bg-accent-primary hover:bg-accent-secondary text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {register.processing ? 'Joining…' : 'Create account and join'}
                                     </button>

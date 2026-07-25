@@ -78,8 +78,8 @@ export function MessageInput({
     return (
         <div className="px-4 pb-6 pt-1 flex-shrink-0">
             {replyTo && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-raised rounded-t-lg
-                                border-b border-surface-subtle text-xs text-text-muted">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-fifth rounded-t-lg
+                                border-b border-sixth text-xs text-text-muted">
                     <span>
                         Replying to{' '}
                         <strong className="text-text-secondary">
@@ -96,7 +96,7 @@ export function MessageInput({
             )}
 
             {!!files.length && (
-                <div className="flex gap-2 flex-wrap px-3 py-2 bg-surface-raised border-b border-surface-subtle">
+                <div className="flex gap-2 flex-wrap px-3 py-2 bg-fifth border-b border-sixth">
                     {files.map((f, i) => (
                         <div key={i} className="relative group/file">
                             {f.type.startsWith('image/') ? (
@@ -106,7 +106,7 @@ export function MessageInput({
                                     className="h-16 w-16 rounded object-cover"
                                 />
                             ) : (
-                                <div className="h-16 w-24 grid place-items-center bg-surface-subtle rounded
+                                <div className="h-16 w-24 grid place-items-center bg-sixth rounded
                                                 text-[10px] text-text-muted p-1 text-center">
                                     {f.name}
                                 </div>
@@ -126,9 +126,9 @@ export function MessageInput({
             <div
                 {...getRootProps()}
                 className={clsx(
-                    'flex items-end bg-surface-raised rounded-lg',
+                    'flex items-end bg-fifth rounded-lg border-panel border-panel-border',
                     (replyTo || files.length) && 'rounded-t-none',
-                    isDragActive && 'ring-2 ring-brand',
+                    isDragActive && 'ring-2 ring-accent-primary',
                 )}
             >
                 <input {...getInputProps()} />
@@ -170,7 +170,7 @@ export function MessageInput({
                     <button
                         onClick={send}
                         disabled={busy}
-                        className="m-2 px-3 py-1.5 rounded bg-brand hover:bg-brand-hover text-inverse
+                        className="m-2 px-3 py-1.5 rounded bg-accent-primary hover:bg-accent-secondary text-inverse
                                    text-sm disabled:opacity-50"
                     >
                         {busy ? '…' : 'Send'}

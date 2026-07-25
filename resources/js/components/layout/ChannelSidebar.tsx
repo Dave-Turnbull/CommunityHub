@@ -28,8 +28,8 @@ function DefaultChannelRow({ channel, active }: { channel: Channel; active: bool
             className={clsx(
                 'flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors duration-100',
                 active
-                    ? 'bg-surface-subtle text-text-primary'
-                    : 'text-text-secondary hover:text-text-primary hover:bg-surface-raised',
+                    ? 'bg-sixth text-text-primary'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-fifth',
             )}
         >
             <span className="text-text-muted">{descriptor.icon}</span>
@@ -56,8 +56,8 @@ export function ChannelSidebar({
     useEffect(() => subscribeRoomChannels(room.id), [room.id])
 
     return (
-        <div className="w-sidebar-channel bg-surface-panel flex flex-col flex-shrink-0">
-            <div className="h-12 px-4 flex items-center justify-between gap-2 border-b border-surface-inset flex-shrink-0">
+        <div className="w-sidebar-channel bg-second border-r-panel border-panel-border flex flex-col flex-shrink-0">
+            <div className="h-12 px-4 flex items-center justify-between gap-2 border-b border-third flex-shrink-0">
                 <span className="font-semibold text-text-primary truncate">{room.name}</span>
                 <div className="flex items-center gap-3 flex-shrink-0">
                     {canManageRoles && (

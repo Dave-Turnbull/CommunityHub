@@ -17,7 +17,7 @@ interface Props {
 export function Tabs({ tabs, defaultValue }: Props) {
     return (
         <RadixTabs.Root defaultValue={defaultValue ?? tabs[0]?.value}>
-            <RadixTabs.List className="flex gap-1 border-b border-surface-raised mb-6">
+            <RadixTabs.List className="flex gap-1 border-b border-fifth mb-6">
                 {tabs.map((tab) => (
                     <RadixTabs.Trigger
                         key={tab.value}
@@ -26,7 +26,7 @@ export function Tabs({ tabs, defaultValue }: Props) {
                             'px-3 py-2 text-sm font-medium text-text-muted border-b-2 border-transparent',
                             '-mb-px transition-colors duration-100',
                             'hover:text-text-primary',
-                            'data-[state=active]:text-text-primary data-[state=active]:border-brand',
+                            'data-[state=active]:text-text-primary data-[state=active]:border-accent-primary',
                         )}
                     >
                         {tab.label}

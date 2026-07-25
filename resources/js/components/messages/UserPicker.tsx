@@ -33,7 +33,7 @@ export function UserPicker({ selected, onChange }: Props) {
                     {selected.map((user) => (
                         <span
                             key={user.id}
-                            className="inline-flex items-center gap-1 pl-1 pr-2 py-1 rounded-full bg-surface-raised text-xs text-text-secondary"
+                            className="inline-flex items-center gap-1 pl-1 pr-2 py-1 rounded-full bg-fifth text-xs text-text-secondary"
                         >
                             <Avatar user={user} size="xs" />
                             {user.display_name}
@@ -53,7 +53,7 @@ export function UserPicker({ selected, onChange }: Props) {
                 value={query}
                 placeholder="Search people you share a room with…"
                 onChange={(e) => setQuery(e.target.value)}
-                className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100 mb-2"
+                className="w-full bg-third border border-sixth rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary transition-colors duration-100 mb-2"
             />
 
             <div className="max-h-48 overflow-y-auto">
@@ -64,13 +64,13 @@ export function UserPicker({ selected, onChange }: Props) {
                 {results.map((user) => (
                     <label
                         key={user.id}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-raised cursor-pointer"
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-fifth cursor-pointer"
                     >
                         <input
                             type="checkbox"
                             checked={isSelected(user)}
                             onChange={() => toggle(user)}
-                            className="accent-brand"
+                            className="accent-[rgb(var(--color-accent-primary))]"
                         />
                         <Avatar user={user} size="sm" />
                         <span className="text-sm text-text-secondary truncate">{user.display_name}</span>

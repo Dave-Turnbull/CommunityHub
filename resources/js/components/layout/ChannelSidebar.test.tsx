@@ -75,7 +75,7 @@ describe('ChannelSidebar', () => {
 
         render(<ChannelSidebar room={room} channels={channels} activeChannelId="c-text" currentUser={user} recentCustomStatuses={[]} />)
 
-        expect(screen.getByText('general').closest('a')).toHaveClass('bg-surface-subtle')
+        expect(screen.getByText('general').closest('a')).toHaveClass('bg-sixth')
     })
 
     it('shows who is currently in a voice channel below it, muted or not', () => {

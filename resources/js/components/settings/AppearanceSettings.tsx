@@ -14,7 +14,7 @@ import {
     type ThemeVariable,
 } from '@/services/theme'
 
-const PRESET_SWATCH_KEYS = ['--surface-app', '--surface-panel', '--color-brand', '--text-primary']
+const PRESET_SWATCH_KEYS = ['--primary', '--second', '--color-accent-primary', '--text-primary']
 
 export function AppearanceSettings() {
     const preset = useTheme((s) => s.preset)
@@ -81,15 +81,15 @@ export function AppearanceSettings() {
                                 type="button"
                                 onClick={() => applyPreset(meta.key)}
                                 className={clsx(
-                                    'text-left rounded-lg border p-3 transition-colors duration-100 bg-surface-panel',
-                                    active ? 'border-brand' : 'border-surface-subtle hover:border-brand',
+                                    'text-left rounded-lg border p-3 transition-colors duration-100 bg-second',
+                                    active ? 'border-accent-primary' : 'border-sixth hover:border-accent-primary',
                                 )}
                             >
                                 <div className="flex gap-1 mb-2">
                                     {PRESET_SWATCH_KEYS.map((key) => (
                                         <span
                                             key={key}
-                                            className="w-5 h-5 rounded-full border border-surface-subtle"
+                                            className="w-5 h-5 rounded-full border border-sixth"
                                             style={{ backgroundColor: tripletToHex(swatch[key]) }}
                                         />
                                     ))}
@@ -103,7 +103,7 @@ export function AppearanceSettings() {
             </div>
 
             {THEME_GROUPS.map((group) => (
-                <div key={group} className="bg-surface-panel rounded-lg p-5">
+                <div key={group} className="bg-second rounded-lg p-5">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-4">
                         {group}
                     </h3>
@@ -142,7 +142,7 @@ function ThemeVariableControl({ variable, value, onChange }: ControlProps) {
                         value={hex}
                         onChange={(e) => onChange(hexToTriplet(e.target.value))}
                         aria-label={variable.label}
-                        className="w-8 h-8 rounded border border-surface-subtle bg-surface-inset cursor-pointer"
+                        className="w-8 h-8 rounded border border-sixth bg-third cursor-pointer"
                     />
                     <span className="text-xs text-text-muted font-mono w-16">{hex}</span>
                 </span>
@@ -158,7 +158,7 @@ function ThemeVariableControl({ variable, value, onChange }: ControlProps) {
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
                     aria-label={variable.label}
-                    className="bg-surface-inset border border-surface-subtle rounded px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-brand transition-colors duration-100"
+                    className="bg-third border border-sixth rounded px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent-primary transition-colors duration-100"
                 >
                     {variable.options?.map((option) => (
                         <option key={option.value} value={option.value}>{option.label}</option>
@@ -183,11 +183,24 @@ function ThemeVariableControl({ variable, value, onChange }: ControlProps) {
                         value={numeric}
                         onChange={(e) => onChange(`${e.target.value}${variable.unit}`)}
                         aria-label={variable.label}
-                        className="w-32 accent-brand"
+                        className="w-32 accent-[rgb(var(--color-accent-primary))]"
                     />
-                    <span className="text-xs text-text-muted font-mono w-14 text-right">
-                        {numeric}{variable.unit}
-                    </span>
+                    {variable.showNumberInput ? (
+                        <input
+                            type="number"
+                            min={variable.min}
+                            max={variable.max}
+                            step={variable.step}
+                            value={numeric}
+                            onChange={(e) => onChange(`${e.target.value}${variable.unit}`)}
+                            aria-label={`${variable.label} (number)`}
+                            className="w-16 bg-third border border-sixth rounded px-2 py-1 text-xs text-text-primary text-right focus:outline-none focus:border-accent-primary transition-colors duration-100"
+                        />
+                    ) : (
+                        <span className="text-xs text-text-muted font-mono w-14 text-right">
+                            {numeric}{variable.unit}
+                        </span>
+                    )}
                 </span>
             </label>
         )
@@ -204,7 +217,7 @@ function ThemeVariableControl({ variable, value, onChange }: ControlProps) {
                 value={numeric}
                 onChange={(e) => onChange(`${e.target.value}${variable.unit}`)}
                 aria-label={variable.label}
-                className="w-20 bg-surface-inset border border-surface-subtle rounded px-2 py-1 text-sm text-text-primary text-right focus:outline-none focus:border-brand transition-colors duration-100"
+                className="w-20 bg-third border border-sixth rounded px-2 py-1 text-sm text-text-primary text-right focus:outline-none focus:border-accent-primary transition-colors duration-100"
             />
         </label>
     )

@@ -201,7 +201,7 @@ describe('api service', () => {
     })
 
     it('updateThemePreference puts the preset/overrides payload', async () => {
-        const preference = { preset: 'midnight', overrides: { '--color-brand': '1 2 3' } }
+        const preference = { preset: 'midnight', overrides: { '--color-accent-primary': '1 2 3' } }
         mockedAxios.put.mockResolvedValue({ data: preference })
 
         await updateThemePreference(preference)
