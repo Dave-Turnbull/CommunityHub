@@ -119,13 +119,15 @@ class ChannelMessageTest extends TestCase
             ->json();
 
         $this->assertCount(50, $firstPage['data']);
-        $this->assertTrue($firstPage['has_more']);
+        $this->assertTrue($firstPage['has_older']);
+        $this->assertFalse($firstPage['has_newer']);
 
         $secondPage = $this->actingAs($user)
-            ->getJson("/api/channels/{$channel->id}/messages?before={$firstPage['next_cursor']}")
+            ->getJson("/api/channels/{$channel->id}/messages?before={$firstPage['older_cursor']}")
             ->json();
 
         $this->assertCount(5, $secondPage['data']);
-        $this->assertFalse($secondPage['has_more']);
+        $this->assertFalse($secondPage['has_older']);
+        $this->assertTrue($secondPage['has_newer']);
     }
 }

@@ -57,7 +57,7 @@ vi.mock('pusher-js', () => ({ default: vi.fn() }))
 describe('echo service', () => {
     beforeEach(() => {
         vi.clearAllMocks()
-        useMessages.setState({ messages: {}, typing: {} })
+        useMessages.setState({ messages: {}, windows: {}, typing: {} })
         usePresence.setState({ statuses: {} })
         useNotifications.setState({ notifications: [] })
         useChannels.setState({ channels: {} })
@@ -96,7 +96,13 @@ describe('echo service', () => {
 
     it('dispatches MessageDeleted by removing the message from the store', async () => {
         const { subscribe } = await import('@/services/echo')
-        useMessages.getState().setMessages('chan-1', [{ id: 'msg-1' } as never])
+        useMessages.getState().setWindow('chan-1', {
+            data: [{ id: 'msg-1' } as never],
+            has_older: false,
+            older_cursor: null,
+            has_newer: false,
+            newer_cursor: null,
+        })
         subscribe('chan-1', 'channel')
 
         listeners['.MessageDeleted']({ message_id: 'msg-1' })

@@ -1,5 +1,13 @@
 import { create } from 'zustand'
-import type { AppNotification, Channel, Message, ReactionSummary, UserStatus, VoiceParticipant } from '@/types'
+import type {
+    AppNotification,
+    Channel,
+    Message,
+    PaginatedMessages,
+    ReactionSummary,
+    UserStatus,
+    VoiceParticipant,
+} from '@/types'
 import type { ConnectionQuality } from '@/services/connectionQuality'
 import { DEFAULT_PRESET } from '@/services/theme'
 
@@ -54,38 +62,156 @@ export const useChannels = create<ChannelStore>((set) => ({
 // ── Messages ─────────────────────────────────────────────────────────────
 // Keyed by scopeId (channelId or conversationId) so multiple chats can
 // live in memory at once without clobbering each other.
+//
+// `messages[scope]` is a *window* into history, not all of it: at most
+// MAX_WINDOW_MESSAGES rows, which paging past drops from the far end rather
+// than growing without bound. `windows[scope]` records what that dropping
+// left behind — whether more history exists on each side and the cursor to
+// re-fetch it with. A window with `hasNewer: true` is detached from the live
+// tail, which is what suppresses live appends (see `add`) and shows the
+// jump-to-present affordance. See docs/messages-and-pagination.md.
+
+export const MAX_WINDOW_MESSAGES = 150
+
+export interface MessageWindow {
+    hasOlder: boolean
+    olderCursor: string | null
+    hasNewer: boolean
+    newerCursor: string | null
+}
+
+const DETACHED_WINDOW: MessageWindow = {
+    hasOlder: false,
+    olderCursor: null,
+    hasNewer: false,
+    newerCursor: null,
+}
 
 interface MessageStore {
     messages: Record<string, Message[]>
+    windows: Record<string, MessageWindow>
     typing: Record<string, string[]>
 
-    setMessages: (scope: string, messages: Message[]) => void
-    prepend:     (scope: string, older: Message[]) => void
-    add:         (scope: string, message: Message) => void
-    update:      (scope: string, message: Message) => void
-    remove:      (scope: string, messageId: string) => void
-    setReactions:(scope: string, messageId: string, reactions: ReactionSummary[]) => void
+    setWindow:    (scope: string, page: PaginatedMessages) => void
+    prependOlder: (scope: string, page: PaginatedMessages) => void
+    appendNewer:  (scope: string, page: PaginatedMessages) => void
+    add:          (scope: string, message: Message) => void
+    insert:       (scope: string, message: Message) => void
+    update:       (scope: string, message: Message) => void
+    remove:       (scope: string, messageId: string) => void
+    setReactions: (scope: string, messageId: string, reactions: ReactionSummary[]) => void
+}
+
+const pageWindow = (page: PaginatedMessages): MessageWindow => ({
+    hasOlder: page.has_older,
+    olderCursor: page.older_cursor,
+    hasNewer: page.has_newer,
+    newerCursor: page.newer_cursor,
+})
+
+const dedupe = (messages: Message[]): Message[] => {
+    const seen = new Set<string>()
+    return messages.filter((m) => !seen.has(m.id) && seen.add(m.id))
+}
+
+/**
+ * Drops overflow from whichever end the reader is scrolling away from and
+ * records the boundary as a cursor, so the dropped stretch is "gone but
+ * re-fetchable" rather than indistinguishable from "does not exist".
+ */
+function trim(messages: Message[], window: MessageWindow, drop: 'newer' | 'older'): {
+    messages: Message[]
+    window: MessageWindow
+} {
+    if (messages.length <= MAX_WINDOW_MESSAGES) return { messages, window }
+
+    if (drop === 'newer') {
+        const kept = messages.slice(0, MAX_WINDOW_MESSAGES)
+        return {
+            messages: kept,
+            window: { ...window, hasNewer: true, newerCursor: kept[kept.length - 1].id },
+        }
+    }
+
+    const kept = messages.slice(messages.length - MAX_WINDOW_MESSAGES)
+    return {
+        messages: kept,
+        window: { ...window, hasOlder: true, olderCursor: kept[0].id },
+    }
 }
 
 export const useMessages = create<MessageStore>((set) => ({
     messages: {},
+    windows: {},
     typing: {},
 
-    setMessages: (scope, messages) =>
-        set((s) => ({ messages: { ...s.messages, [scope]: messages } })),
-
-    prepend: (scope, older) =>
+    setWindow: (scope, page) =>
         set((s) => ({
-            messages: { ...s.messages, [scope]: [...older, ...(s.messages[scope] ?? [])] },
+            messages: { ...s.messages, [scope]: page.data },
+            windows: { ...s.windows, [scope]: pageWindow(page) },
         })),
+
+    prependOlder: (scope, page) =>
+        set((s) => {
+            const current = s.windows[scope] ?? DETACHED_WINDOW
+            const merged = dedupe([...page.data, ...(s.messages[scope] ?? [])])
+            const { messages, window } = trim(
+                merged,
+                { ...current, hasOlder: page.has_older, olderCursor: page.older_cursor },
+                'newer',
+            )
+
+            return {
+                messages: { ...s.messages, [scope]: messages },
+                windows: { ...s.windows, [scope]: window },
+            }
+        }),
+
+    appendNewer: (scope, page) =>
+        set((s) => {
+            const current = s.windows[scope] ?? DETACHED_WINDOW
+            const merged = dedupe([...(s.messages[scope] ?? []), ...page.data])
+            const { messages, window } = trim(
+                merged,
+                { ...current, hasNewer: page.has_newer, newerCursor: page.newer_cursor },
+                'older',
+            )
+
+            return {
+                messages: { ...s.messages, [scope]: messages },
+                windows: { ...s.windows, [scope]: window },
+            }
+        }),
 
     add: (scope, message) =>
         set((s) => {
+            // A window detached from the live tail has unfetched messages
+            // between its newest row and this one — appending here would
+            // render a gap as if it were contiguous history. The forward page
+            // fetch (or jump-to-present) picks the message up instead.
+            if (s.windows[scope]?.hasNewer) return s
+
             const existing = s.messages[scope] ?? []
             // Guard against duplicates — the sender gets the message back from
             // the HTTP response AND (if not using toOthers) the websocket.
             if (existing.some((m) => m.id === message.id)) return s
             return { messages: { ...s.messages, [scope]: [...existing, message] } }
+        }),
+
+    // Puts a message back where it belongs chronologically rather than at the
+    // end — what an optimistic delete needs when the server rejects it (see
+    // services/messageActions.ts).
+    insert: (scope, message) =>
+        set((s) => {
+            const existing = s.messages[scope] ?? []
+            if (existing.some((m) => m.id === message.id)) return s
+
+            const at = existing.findIndex((m) => m.created_at > message.created_at)
+            const restored = at === -1
+                ? [...existing, message]
+                : [...existing.slice(0, at), message, ...existing.slice(at)]
+
+            return { messages: { ...s.messages, [scope]: restored } }
         }),
 
     update: (scope, message) =>

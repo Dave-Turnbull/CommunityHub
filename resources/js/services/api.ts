@@ -9,6 +9,7 @@ import type {
     NotificationPreference,
     PaginatedMessages,
     PermissionKey,
+    ReactionSummary,
     RecentCustomStatus,
     Role,
     RoomInvite,
@@ -28,22 +29,23 @@ export type SendPayload = {
 
 // ── Messages ─────────────────────────────────────────────────────────────
 
+/** One direction at a time — the endpoint rejects before+after together. */
+export type MessageCursor = { before?: string; after?: string }
+
 export async function fetchChannelMessages(
     channelId: string,
-    before?: string
+    cursor: MessageCursor = {}
 ): Promise<PaginatedMessages> {
-    const { data } = await axios.get(`/api/channels/${channelId}/messages`, {
-        params: { before },
-    })
+    const { data } = await axios.get(`/api/channels/${channelId}/messages`, { params: cursor })
     return data
 }
 
 export async function fetchConversationMessages(
     conversationId: string,
-    before?: string
+    cursor: MessageCursor = {}
 ): Promise<PaginatedMessages> {
     const { data } = await axios.get(`/api/conversations/${conversationId}/messages`, {
-        params: { before },
+        params: cursor,
     })
     return data
 }
@@ -85,12 +87,19 @@ export async function blurChannel(channelId: string): Promise<void> {
 
 // ── Reactions ────────────────────────────────────────────────────────────
 
-export async function addReaction(messageId: string, emoji: string): Promise<void> {
-    await axios.post(`/api/messages/${messageId}/reactions`, { emoji })
+// Both return the message's full, authoritative reaction summary — what
+// services/messageActions.ts reconciles its optimistic guess against.
+
+export async function addReaction(messageId: string, emoji: string): Promise<ReactionSummary[]> {
+    const { data } = await axios.post(`/api/messages/${messageId}/reactions`, { emoji })
+    return data
 }
 
-export async function removeReaction(messageId: string, emoji: string): Promise<void> {
-    await axios.delete(`/api/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`)
+export async function removeReaction(messageId: string, emoji: string): Promise<ReactionSummary[]> {
+    const { data } = await axios.delete(
+        `/api/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`
+    )
+    return data
 }
 
 // ── Uploads ──────────────────────────────────────────────────────────────

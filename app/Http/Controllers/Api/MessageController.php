@@ -17,7 +17,11 @@ class MessageController extends Controller
     public function indexChannel(Request $request, Channel $channel): JsonResponse
     {
         return response()->json(
-            TextMessageService::for($channel)->list($request->user(), $request->query('before'))
+            TextMessageService::for($channel)->list(
+                $request->user(),
+                $request->query('before'),
+                $request->query('after'),
+            )
         );
     }
 
@@ -34,7 +38,11 @@ class MessageController extends Controller
     public function indexConversation(Request $request, Conversation $conversation): JsonResponse
     {
         return response()->json(
-            TextMessageService::for($conversation)->list($request->user(), $request->query('before'))
+            TextMessageService::for($conversation)->list(
+                $request->user(),
+                $request->query('before'),
+                $request->query('after'),
+            )
         );
     }
 

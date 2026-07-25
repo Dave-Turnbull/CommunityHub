@@ -49,9 +49,9 @@ describe('api service', () => {
     })
 
     it('fetchChannelMessages hits the channel messages endpoint with a cursor', async () => {
-        mockedAxios.get.mockResolvedValue({ data: { data: [], has_more: false, next_cursor: null } })
+        mockedAxios.get.mockResolvedValue({ data: { data: [] } })
 
-        await fetchChannelMessages('chan-1', 'msg-9')
+        await fetchChannelMessages('chan-1', { before: 'msg-9' })
 
         expect(mockedAxios.get).toHaveBeenCalledWith('/api/channels/chan-1/messages', {
             params: { before: 'msg-9' },
@@ -59,12 +59,12 @@ describe('api service', () => {
     })
 
     it('fetchConversationMessages hits the conversation messages endpoint', async () => {
-        mockedAxios.get.mockResolvedValue({ data: { data: [], has_more: false, next_cursor: null } })
+        mockedAxios.get.mockResolvedValue({ data: { data: [] } })
 
-        await fetchConversationMessages('conv-1')
+        await fetchConversationMessages('conv-1', { after: 'msg-3' })
 
         expect(mockedAxios.get).toHaveBeenCalledWith('/api/conversations/conv-1/messages', {
-            params: { before: undefined },
+            params: { after: 'msg-3' },
         })
     })
 

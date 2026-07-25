@@ -163,7 +163,10 @@ config/                       hand-written; app.php has NO 'providers' key (see 
 database/
   factories/                  one factory per model, all use HasFactory
   migrations/                 timestamped 2024_01_01_0000NN_*, UUID PKs
-  seeders/DatabaseSeeder.php  demo data; never runs automatically
+  seeders/DatabaseSeeder.php  demo data; never runs automatically.
+                               DemoConversationSeeder holds the multi-week #general
+                               backlog and also runs standalone (--class=...) against
+                               an already-seeded DB — see docs/messages-and-pagination.md
 docker/
   app/Dockerfile              two-stage (composer build → fpm runtime; composer binary
                                also copied into the runtime image, see traps)
@@ -186,8 +189,13 @@ resources/
                                Rooms/Roles.tsx is the minimal room role-management page
                                — see docs/roles-and-permissions.md
     components/
-      chat/                   MessageList, MessageRow, MessageInput, TextChannelContent
-                               — see docs/capabilities-and-channel-types.md
+      chat/                   MessageList (the scroll container: a sentinel per
+                               paging direction + element-anchored scroll
+                               preservation), MessageRow, MessageInput (its
+                               `leading` slot is where the jump-to-present button
+                               renders, in line with the compose box),
+                               TextChannelContent — see docs/messages-and-pagination.md
+                               and docs/capabilities-and-channel-types.md
       layout/                 RoomRail, ChannelSidebar (renders "+ Add Channel"/"🛡
                                Roles" affordances), DMSidebar, MemberList, UserPanel
                                (the avatar+name trigger — see docs/status.md),
@@ -227,7 +235,9 @@ resources/
                                and MessageRow's edit/delete menu are built on these
                                rather than importing Radix directly; UserStatusPopover
                                is too, see docs/status.md)
-    hooks/                    useChat, useAutoScroll, useNotifications,
+    hooks/                    useChat (one scope's message window: loadOlder/
+                               loadNewer/jumpToPresent/commitSent — see docs/
+                               messages-and-pagination.md), useAutoScroll, useNotifications,
                                useChannelFocus (see docs/notifications.md),
                                useVoiceChannel (see docs/voice.md)
     services/                 api.ts (axios — the only place a component may call axios
@@ -237,6 +247,10 @@ resources/
                                webrtc.ts, voiceCallGuard.ts, voiceActivation.ts,
                                connectionQuality.ts (getStats()-based per-peer quality
                                polling, no signaling involved — see docs/voice.md),
+                               messageCache.ts (per-scope contiguous run of fetched
+                               history behind a swappable async driver) and
+                               messageActions.ts (the optimistic reaction/edit/delete
+                               path) — see docs/messages-and-pagination.md,
                                audioLevel.ts (dBFS level-meter math shared by the
                                AudioSettings mic test and voice activation — see
                                docs/voice.md), clientId.ts (localStorage-persisted
@@ -244,7 +258,8 @@ resources/
                                THEME_VARIABLES/THEME_PRESETS, resolveThemeValues/
                                applyThemeValues, hex↔"R G B" triplet conversion — see
                                docs/theming.md)
-    stores/                   Zustand: useMessages, usePresence, useUI, useNotifications,
+    stores/                   Zustand: useMessages (windowed + trimmed, see docs/
+                               messages-and-pagination.md), usePresence, useUI, useNotifications,
                                useChannels (see docs/capabilities-and-channel-types.md),
                                useVoice, useVoiceRoster, useSpeaking, useVoiceVolume,
                                useRemoteStreamVersion, useConnectionQuality, useMicSensitivity
@@ -252,7 +267,9 @@ resources/
                                useTheme (current preset + per-variable overrides — see docs/theming.md)
     types/                    all shared interfaces + Inertia page-prop types;
                                `ChannelType` is `string`, not a closed union
-    test/setup.ts             Vitest setup — @testing-library/jest-dom matchers
+    test/setup.ts             Vitest setup — @testing-library/jest-dom matchers +
+                               an IntersectionObserver stub (jsdom has none, and
+                               MessageList constructs one per paging direction)
     **/*.test.ts(x)           co-located next to the file under test
 routes/
   web.php                     guest + auth Inertia routes
@@ -308,10 +325,24 @@ assuming something is undocumented.
 - **Echo listeners use a leading dot** (`.MessageSent`) to match `broadcastAs()`
   names without the `App\Events` namespace prefix.
 - **Zustand message store is keyed by scopeId** so multiple channels/DMs coexist.
-  Reducer-style: `setMessages / prepend / add / update / remove / setReactions`.
-- **Message history is cursor-paginated**, 50/page, walking backwards from the
-  oldest loaded message. `useChat.loadMore` + an IntersectionObserver sentinel at
-  the top of `MessageList`.
+  Reducer-style: `setWindow / prependOlder / appendNewer / add / insert / update /
+  remove / setReactions`.
+- **Message history is cursor-paginated in both directions**, 50/page (`?before=`
+  for older, `?after=` for newer, never both), and what the client holds is a
+  *window* of at most 150 messages, not everything it has ever loaded — paging past
+  that cap drops rows from the far end and records a cursor to re-fetch them with.
+  A window whose `hasNewer` is true is detached from the live tail, which suppresses
+  live appends (they'd render a gap as contiguous history) and shows the
+  jump-to-present button. Already-fetched pages come from
+  `services/messageCache.ts`'s per-scope contiguous run rather than the network.
+  See `docs/messages-and-pagination.md` before touching `useChat`, `MessageList`'s
+  scroll anchoring, or either half of the cursor contract.
+- **A mutation a reader triggers is applied to the client first, then reconciled** —
+  reactions, edits and deletes all go through `services/messageActions.ts`
+  (optimistic write → await → replace with the server's payload, or restore the
+  previous state and rethrow). Don't call `api.addReaction`/`editMessage`/
+  `deleteMessage` straight from a component; that's what made these feel laggy
+  before. See `docs/messages-and-pagination.md`.
 - **File uploads** go to the `public` disk in dev; production swaps
   `FILESYSTEM_DISK=r2` (Cloudflare R2, S3-compatible) — see `config/filesystems.php`.
 - **Every color, corner radius, border width, and typography value is a themed CSS
@@ -392,7 +423,11 @@ config separate from test config). Tests are co-located as `*.test.ts` /
 - Zustand stores are plain modules; reset state with `useStore.setState(...)`
   in `beforeEach` rather than remounting providers.
 - `@testing-library/jest-dom` matchers are loaded globally via
-  `resources/js/test/setup.ts` — no per-file import needed.
+  `resources/js/test/setup.ts` — no per-file import needed. That file also stubs
+  `IntersectionObserver` (jsdom ships none, and `MessageList` constructs one per
+  paging direction, so rendering a message list at all would otherwise throw). The
+  stub observes nothing on purpose — a test that wants to prove paging happens
+  should call the load handler rather than fake an intersection.
 
 **Manual/live verification (browser-driven changes, "verify this works").** No
 `chromium-cli`/Playwright/other browser-automation tool is set up in this repo or its
@@ -946,6 +981,44 @@ of proving a change works and needs nothing installed:
     nullable preference field is added, check whether `null` is a real state
     (like this one and `close_threshold_timeout_ms`) or genuinely means
     "unset" before reaching for `??`.
+46. **A message store that drops messages must record *that* it dropped them —
+    "not loaded" and "does not exist" are different states, and conflating
+    them silently loses messages.** The client holds a 150-message window
+    (`stores/index.ts`, `docs/messages-and-pagination.md`), so paging up far
+    enough trims the newest rows out of memory. The first thing that breaks if
+    the trim isn't recorded as an explicit `hasNewer`/`newerCursor` pair is the
+    live socket: `useMessages.add` appends an arriving `MessageSent` to the end
+    of the array, which — with unfetched messages sitting between the window's
+    newest row and that one — renders a gap as though it were contiguous
+    history, with nothing anywhere reporting a problem. The same reasoning is
+    why `services/messageCache.ts` refuses to serve a partial page, refuses a
+    cursor its run doesn't contain, and refuses `appendLive` onto a run that has
+    fallen behind the tail: a cached gap is indistinguishable from cached
+    history on the next read. Any future change to windowing, the cache, or
+    live message handling needs to keep "I know I am missing something here" a
+    real, stored fact rather than something inferred from array length.
+47. **`has_more`/`next_cursor` was renamed to `has_older`/`older_cursor` +
+    `has_newer`/`newer_cursor` in one pass, deliberately.** Once the messages
+    endpoint gained an `?after=` direction (`TextMessageService::list`), a field
+    literally called `has_more` sitting next to `has_newer` is a trap — nothing
+    in the name says which direction "more" is, and a caller reading the wrong
+    one gets plausible-looking wrong behaviour rather than a type error. The
+    same rename covered `PaginatedMessages` in `types/index.ts` and every
+    caller/test, so there is no half-migrated name left; don't reintroduce a
+    direction-less name for a two-directional cursor. Related: both Inertia page
+    controllers used to hand-build this payload themselves (a third copy of the
+    "newest 51, reverse, take 50" logic) and now call `list()` like everything
+    else — the page a browser renders and the pages it fetches can't drift apart
+    that way.
+48. **`offsetTop` is only measured from the scroll container if that container
+    is the `offsetParent`.** `MessageList`'s scroll anchoring (see
+    `docs/messages-and-pagination.md`) reads `row.offsetTop` and compares it to
+    `container.scrollTop`; those are only in the same coordinate space because
+    the container carries `relative`. Without it, `offsetParent` walks up to
+    whatever positioned ancestor exists (or the body), every reading is off by a
+    constant, and the restore silently scrolls to the wrong place — no error,
+    just a jump on every page load. The `relative` on that div is load-bearing,
+    not decoration.
 
 ## Adding things — quick recipes
 
@@ -959,6 +1032,13 @@ of proving a change works and needs nothing installed:
   add the prop interface in `types/index.ts`.
 - **New /api endpoint:** add under the `auth` group in `routes/api.php`, add the
   axios wrapper in `services/api.ts` (never call axios inline in a component).
+- **New message mutation (pin, react-with-X, bulk delete, ...):** put it in
+  `services/messageActions.ts` next to the existing three, following the same
+  optimistic-write → await → reconcile-or-restore shape, and patch
+  `services/messageCache.ts` alongside the store so a message changed outside the
+  current window doesn't page back in stale. Have the endpoint return the
+  authoritative payload the reconcile step needs (both reaction endpoints return the
+  full `ReactionSummary[]` for exactly this). See `docs/messages-and-pagination.md`.
 - **New feature, either side:** add the Feature/Vitest test alongside it (see
   `## Testing`), then update the relevant `CLAUDE.md` section or `/docs/*.md`
   file in the same change (see `## Docs`).
@@ -1070,6 +1150,17 @@ mechanism this app doesn't have yet) and deserves its own explicit go-ahead.
   checks remain the only real boundary — see `docs/capabilities-and-channel-types.md`).
   Deliberately deferred from the initial capability-system build: worth adding once
   there are enough Features for this class of mistake to actually be a papercut.
+- **A persistent `MessageCacheDriver`, Capacitor/native SQLite in particular.**
+  `services/messageCache.ts` is already driver-based and async precisely for this —
+  `setMessageCacheDriver()` takes a `read`/`write`/`clear` triple, and a SQLite
+  driver would store one run per scope as a `cached_messages` table keyed by
+  `(scope_id, id)` ordered on `created_at` plus the run's two boundary flags. What
+  is *not* designed yet, and needs deciding before any code: whether a persisted run
+  may seed first paint (today the Inertia prop always wins, since it's server-fresh
+  for that navigation — an offline-capable shell wants the opposite), how a run is
+  invalidated across sessions when the server has moved on, and eviction policy for
+  scopes a user hasn't opened in weeks. See `docs/messages-and-pagination.md`'s
+  "Storage drivers" section.
 - **Push notifications** as a third delivery endpoint alongside `email`/`in_app` on
   `NotificationPreference`. Needs a device-token/subscription model (web push or a
   native path), a `push` boolean column (or a normalized per-endpoint table if a third

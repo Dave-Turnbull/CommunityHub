@@ -1,15 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MessageRow } from '@/components/chat/MessageRow'
 import * as api from '@/services/api'
+import { useMessages } from '@/stores'
 import type { Message, User } from '@/types'
 
 vi.mock('@/services/api', () => ({
-    addReaction: vi.fn(),
-    removeReaction: vi.fn(),
-    editMessage: vi.fn(),
-    deleteMessage: vi.fn(),
+    addReaction: vi.fn(async () => []),
+    removeReaction: vi.fn(async () => []),
+    editMessage: vi.fn(async (id: string, content: string) => ({ id, content, is_edited: true })),
+    deleteMessage: vi.fn(async () => {}),
 }))
 
 const author: User = {
@@ -42,20 +43,35 @@ const baseMessage: Message = {
     author,
 }
 
+// Every mutation goes through services/messageActions.ts, which writes to the
+// store first and reconciles with the API afterwards — hence the store setup.
+const seedStore = (message: Message) =>
+    useMessages.getState().setWindow('chan-1', {
+        data: [message],
+        has_older: false,
+        older_cursor: null,
+        has_newer: false,
+        newer_cursor: null,
+    })
+
 describe('MessageRow', () => {
+    beforeEach(() => {
+        useMessages.setState({ messages: {}, windows: {}, typing: {} })
+    })
+
     afterEach(() => {
         vi.clearAllMocks()
     })
 
     it('renders the author and content for an ungrouped message', () => {
-        render(<MessageRow message={baseMessage} grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
 
         expect(screen.getByText('Author Name')).toBeInTheDocument()
         expect(screen.getByText('Hello world')).toBeInTheDocument()
     })
 
     it('hides the author header when grouped with the previous message', () => {
-        render(<MessageRow message={baseMessage} grouped currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped currentUser={viewer} onReply={vi.fn()} />)
 
         expect(screen.queryByText('Author Name')).not.toBeInTheDocument()
         expect(screen.getByText('Hello world')).toBeInTheDocument()
@@ -65,6 +81,7 @@ describe('MessageRow', () => {
         render(
             <MessageRow
                 message={{ ...baseMessage, is_edited: true }}
+                scopeId="chan-1"
                 grouped={false}
                 currentUser={viewer}
                 onReply={vi.fn()}
@@ -81,6 +98,7 @@ describe('MessageRow', () => {
                     ...baseMessage,
                     reply_to: { ...baseMessage, id: 'msg-0', content: 'Original', author },
                 }}
+                scopeId="chan-1"
                 grouped={false}
                 currentUser={viewer}
                 onReply={vi.fn()}
@@ -92,7 +110,7 @@ describe('MessageRow', () => {
 
     it('calls onReply with the message when the reply button is clicked', async () => {
         const onReply = vi.fn()
-        render(<MessageRow message={baseMessage} grouped={false} currentUser={viewer} onReply={onReply} />)
+        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={onReply} />)
 
         await userEvent.click(screen.getByTitle('Reply'))
 
@@ -104,7 +122,7 @@ describe('MessageRow', () => {
             ...baseMessage,
             reactions: [{ emoji: '👍', count: 1, reacted: false }],
         }
-        render(<MessageRow message={message} grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
 
         await userEvent.click(screen.getByText('👍'))
 
@@ -117,7 +135,7 @@ describe('MessageRow', () => {
             ...baseMessage,
             reactions: [{ emoji: '👍', count: 2, reacted: true }],
         }
-        render(<MessageRow message={message} grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
 
         await userEvent.click(screen.getByText('👍'))
 
@@ -125,8 +143,33 @@ describe('MessageRow', () => {
         expect(api.addReaction).not.toHaveBeenCalled()
     })
 
+    it('counts a reaction up before the server confirms it', async () => {
+        const message: Message = { ...baseMessage, reactions: [{ emoji: '👍', count: 1, reacted: false }] }
+        seedStore(message)
+        // Never resolves — so what the store holds is purely the optimistic guess.
+        vi.mocked(api.addReaction).mockImplementation(() => new Promise(() => {}))
+
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        await userEvent.click(screen.getByText('👍'))
+
+        expect(useMessages.getState().messages['chan-1'][0].reactions)
+            .toEqual([{ emoji: '👍', count: 2, reacted: true }])
+    })
+
+    it('puts a reaction back when the server rejects it', async () => {
+        const message: Message = { ...baseMessage, reactions: [{ emoji: '👍', count: 1, reacted: false }] }
+        seedStore(message)
+        vi.mocked(api.addReaction).mockRejectedValue(new Error('nope'))
+
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        await userEvent.click(screen.getByText('👍'))
+
+        expect(useMessages.getState().messages['chan-1'][0].reactions)
+            .toEqual([{ emoji: '👍', count: 1, reacted: false }])
+    })
+
     it('does not show the edit/delete menu for someone else\'s message', () => {
-        render(<MessageRow message={baseMessage} grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
 
         expect(screen.queryByRole('button', { name: '⋯' })).not.toBeInTheDocument()
     })
@@ -135,6 +178,7 @@ describe('MessageRow', () => {
         render(
             <MessageRow
                 message={{ ...baseMessage, author_id: viewer.id }}
+                scopeId="chan-1"
                 grouped={false}
                 currentUser={viewer}
                 onReply={vi.fn()}
@@ -146,7 +190,7 @@ describe('MessageRow', () => {
 
     it('deletes the message via the dropdown menu for the author', async () => {
         const message = { ...baseMessage, author_id: viewer.id }
-        render(<MessageRow message={message} grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
 
         await userEvent.click(screen.getByRole('button', { name: '⋯' }))
         const menu = await screen.findByRole('menu')
@@ -155,9 +199,22 @@ describe('MessageRow', () => {
         expect(api.deleteMessage).toHaveBeenCalledWith('msg-1')
     })
 
+    it('removes the message from the store before the delete request resolves', async () => {
+        const message = { ...baseMessage, author_id: viewer.id }
+        seedStore(message)
+        vi.mocked(api.deleteMessage).mockImplementation(() => new Promise(() => {}))
+
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        await userEvent.click(screen.getByRole('button', { name: '⋯' }))
+        await userEvent.click(within(await screen.findByRole('menu')).getByText('Delete'))
+
+        expect(useMessages.getState().messages['chan-1']).toEqual([])
+    })
+
     it('edits the message via the dropdown menu for the author', async () => {
         const message = { ...baseMessage, author_id: viewer.id }
-        render(<MessageRow message={message} grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        seedStore(message)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
 
         await userEvent.click(screen.getByRole('button', { name: '⋯' }))
         const menu = await screen.findByRole('menu')
@@ -170,5 +227,7 @@ describe('MessageRow', () => {
         await userEvent.type(textarea, 'Updated content{enter}')
 
         expect(api.editMessage).toHaveBeenCalledWith('msg-1', 'Updated content')
+        // Applied locally and the editor closed, without waiting for the PATCH.
+        expect(useMessages.getState().messages['chan-1'][0].content).toBe('Updated content')
     })
 })

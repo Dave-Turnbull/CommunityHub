@@ -177,10 +177,17 @@ export interface Conversation {
     last_message?: Message
 }
 
+/**
+ * One page of history, always oldest-first, with a flag + cursor per
+ * direction — `has_newer` is false only for a page that reaches the live tail.
+ * See docs/messages-and-pagination.md and TextMessageService::list().
+ */
 export interface PaginatedMessages {
     data: Message[]
-    has_more: boolean
-    next_cursor: string | null
+    has_older: boolean
+    older_cursor: string | null
+    has_newer: boolean
+    newer_cursor: string | null
 }
 
 // ── Voice ─────────────────────────────────────────────────────────────────
