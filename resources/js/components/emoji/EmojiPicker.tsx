@@ -17,10 +17,10 @@ export function EmojiPicker({ onSelect, children }: Props) {
             side="top"
             align="end"
             sideOffset={8}
-            className="rounded-lg overflow-hidden shadow-2xl border border-surface-400"
+            className="rounded-lg overflow-hidden shadow-2xl border border-surface-subtle"
         >
             <Suspense fallback={
-                <div className="w-[350px] h-[400px] bg-surface-800 grid place-items-center text-text-muted">
+                <div className="w-[350px] h-[400px] bg-surface-inset grid place-items-center text-text-muted">
                     Loading…
                 </div>
             }>

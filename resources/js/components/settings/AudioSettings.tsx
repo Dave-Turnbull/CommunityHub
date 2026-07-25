@@ -237,7 +237,7 @@ export function AudioSettings() {
 
     return (
         <div className="space-y-5">
-            <div className="bg-surface-700 rounded-lg p-6 space-y-5">
+            <div className="bg-surface-panel rounded-lg p-6 space-y-5">
                 {!labelsUnlocked && (
                     <div className="flex items-center justify-between gap-4">
                         <p className="text-sm text-text-secondary">
@@ -245,7 +245,7 @@ export function AudioSettings() {
                         </p>
                         <button
                             onClick={requestMicrophoneAccess}
-                            className="flex-shrink-0 rounded bg-brand hover:bg-brand-hover px-3 py-1.5 text-sm font-medium text-white transition-colors duration-100"
+                            className="flex-shrink-0 rounded bg-brand hover:bg-brand-hover px-3 py-1.5 text-sm font-medium text-inverse transition-colors duration-100"
                         >
                             Grant Access
                         </button>
@@ -260,7 +260,7 @@ export function AudioSettings() {
                         id="voice-input-device"
                         value={preference.input_device_id ?? ''}
                         onChange={(e) => update('input_device_id', e.target.value)}
-                        className="w-full bg-surface-800 border border-surface-400 rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-brand transition-colors duration-100"
+                        className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-brand transition-colors duration-100"
                     >
                         <option value="">System default</option>
                         {inputDevices.map((d) => (
@@ -277,7 +277,7 @@ export function AudioSettings() {
                         id="voice-output-device"
                         value={preference.output_device_id ?? ''}
                         onChange={(e) => update('output_device_id', e.target.value)}
-                        className="w-full bg-surface-800 border border-surface-400 rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-brand transition-colors duration-100"
+                        className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-brand transition-colors duration-100"
                     >
                         <option value="">System default</option>
                         {outputDevices.map((d) => (
@@ -287,7 +287,7 @@ export function AudioSettings() {
                 </div>
             </div>
 
-            <div className="bg-surface-700 rounded-lg p-6 space-y-4">
+            <div className="bg-surface-panel rounded-lg p-6 space-y-4">
                 <div>
                     <p className="text-sm font-medium text-text-primary">Audio Processing</p>
                     <p className="text-xs text-text-muted mt-0.5">
@@ -343,7 +343,7 @@ export function AudioSettings() {
                 </div>
             </div>
 
-            <div className="bg-surface-700 rounded-lg p-6 space-y-3">
+            <div className="bg-surface-panel rounded-lg p-6 space-y-3">
                 <div className="flex items-center justify-between gap-4">
                     <div>
                         <p className="text-sm font-medium text-text-primary">Test Microphone</p>
@@ -354,7 +354,7 @@ export function AudioSettings() {
                     </div>
                     <button
                         onClick={isTesting ? stopTest : startTest}
-                        className="flex-shrink-0 rounded bg-brand hover:bg-brand-hover px-3 py-1.5 text-sm font-medium text-white transition-colors duration-100"
+                        className="flex-shrink-0 rounded bg-brand hover:bg-brand-hover px-3 py-1.5 text-sm font-medium text-inverse transition-colors duration-100"
                     >
                         {isTesting ? 'Stop Test' : 'Start Test'}
                     </button>
@@ -369,7 +369,7 @@ export function AudioSettings() {
                     aria-valuenow={Math.round(level * 100)}
                     aria-valuemin={0}
                     aria-valuemax={100}
-                    className="relative h-2 w-full rounded-full bg-surface-500 overflow-hidden"
+                    className="relative h-2 w-full rounded-full bg-surface-raised overflow-hidden"
                 >
                     <div
                         className="h-full bg-success transition-[width] duration-75"
@@ -433,7 +433,7 @@ export function AudioSettings() {
                         value={preference.close_threshold_gap}
                         disabled={preference.auto_gain_control}
                         onChange={(e) => updateCloseThresholdGap(Number(e.target.value))}
-                        className="w-full bg-surface-800 border border-surface-400 rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-brand transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-brand transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {CLOSE_THRESHOLD_GAP_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>

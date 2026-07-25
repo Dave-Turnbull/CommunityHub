@@ -266,6 +266,23 @@ export async function updateVoiceDevicePreference(
     return data
 }
 
+// ── Theme preference ─────────────────────────────────────────────────────
+
+export interface ThemePreference {
+    preset: string
+    overrides: Record<string, string>
+}
+
+export async function fetchThemePreference(): Promise<ThemePreference> {
+    const { data } = await axios.get('/api/theme-preference')
+    return data
+}
+
+export async function updateThemePreference(preference: ThemePreference): Promise<ThemePreference> {
+    const { data } = await axios.put('/api/theme-preference', preference)
+    return data
+}
+
 // ── User status ──────────────────────────────────────────────────────────
 
 // One endpoint for all 5 statuses — `custom_status`/`custom_status_color` are

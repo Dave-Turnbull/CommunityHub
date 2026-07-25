@@ -2,20 +2,96 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theme tokens. Every value tailwind.config.js's `colors`/`fontSize`/
+ * `fontWeight`/`fontFamily`/`borderRadius`/`borderWidth` extensions reference
+ * lives here as a CSS custom property, scoped to `[data-theme="..."]` rather
+ * than bare `:root` — see docs/theming.md. "classic" is the only theme today
+ * (the look this app has always had); a future theme picker adds sibling
+ * `[data-theme="..."]` blocks and flips `<html data-theme>` in app.blade.php,
+ * no component or Tailwind-config change required.
+ *
+ * Colors are space-separated "R G B" triples (not `#hex` or `rgb(...)`) so
+ * Tailwind's `rgb(var(--x) / <alpha-value>)` indirection can still apply
+ * opacity modifiers like `bg-surface-app/50`.
+ */
+:root[data-theme='classic'] {
+    /* Accent — the one saturated color used for primary actions/links/active states. */
+    --color-brand: 88 101 242;
+    --color-brand-hover: 71 82 196;
+    --color-brand-muted: 78 80 88;
+
+    /* Surface elevation scale, deepest to lightest. Not tied to any one
+       component — see docs/theming.md for which role is used where. */
+    --surface-app: 15 16 21;
+    --surface-inset: 23 25 31;
+    --surface-panel: 30 32 40;
+    --surface-canvas: 37 39 47;
+    --surface-raised: 46 48 56;
+    --surface-subtle: 56 58 66;
+
+    /* Text */
+    --text-primary: 242 243 245;
+    --text-secondary: 181 186 193;
+    --text-muted: 128 132 142;
+    --text-link: 0 175 244;
+    --text-link-hover: 61 199 255;
+
+    /* Presence/status dots */
+    --status-online: 35 165 90;
+    --status-idle: 240 178 50;
+    --status-dnd: 242 63 67;
+    --status-offline: 128 132 142;
+
+    /* Semantic feedback */
+    --color-danger: 242 63 67;
+    --color-success: 35 165 90;
+
+    /* Content on top of a solid accent-colored fill (button labels, badges) */
+    --color-inverse: 255 255 255;
+
+    /* Typography */
+    --font-family-sans: 'Inter', system-ui, sans-serif;
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+    --text-size-xxs: 0.6875rem;
+    --text-size-xs: 0.75rem;
+    --text-size-sm: 0.875rem;
+    --text-size-base: 1rem;
+    --text-size-lg: 1.125rem;
+    --text-size-xl: 1.25rem;
+    --text-size-2xl: 1.5rem;
+    --text-size-3xl: 1.875rem;
+
+    /* Corner rounding scale */
+    --radius-sm: 2px;
+    --radius-md: 4px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+    --radius-3xl: 24px;
+
+    /* Border/divider stroke widths */
+    --border-width-default: 1px;
+    --border-width-thick: 2px;
+}
+
 @layer base {
     html {
-        font-family: 'Inter', system-ui, sans-serif;
+        font-family: var(--font-family-sans);
         -webkit-font-smoothing: antialiased;
     }
 
     body {
-        @apply bg-surface-900 text-text-primary text-sm overflow-hidden;
+        @apply bg-surface-app text-text-primary text-sm overflow-hidden;
     }
 
     ::-webkit-scrollbar       { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb {
-        @apply bg-surface-400 rounded-full;
+        @apply bg-surface-subtle rounded-full;
         border: 2px solid transparent;
         background-clip: content-box;
     }

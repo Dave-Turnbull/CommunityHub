@@ -71,7 +71,7 @@ describe('Rooms/Roles', () => {
         render(<RoomRoles {...buildProps([owner, member])} />)
 
         const ownerHeading = screen.getByText('Owner')
-        const card = ownerHeading.closest('div.bg-surface-700') as HTMLElement
+        const card = ownerHeading.closest('div.bg-surface-panel') as HTMLElement
 
         expect(screen.getByText(/Full access to this room/)).toBeInTheDocument()
         expect(within(card).queryAllByRole('checkbox')).toHaveLength(0)
@@ -101,7 +101,7 @@ describe('Rooms/Roles', () => {
         render(<RoomRoles {...buildProps([owner, customHigh, customLow, member])} />)
 
         const traineeHeading = screen.getByText('Trainee')
-        const card = traineeHeading.closest('div.bg-surface-700') as HTMLElement
+        const card = traineeHeading.closest('div.bg-surface-panel') as HTMLElement
 
         expect(screen.getByText('🔒 Locked')).toBeInTheDocument()
         expect(card).not.toBeNull()
@@ -123,7 +123,7 @@ describe('Rooms/Roles', () => {
         await u.click(screen.getByRole('button', { name: 'New role' }))
 
         const heading = await screen.findByText('Moderator')
-        const card = heading.closest('div.bg-surface-700') as HTMLElement
+        const card = heading.closest('div.bg-surface-panel') as HTMLElement
         expect(within(card).getByRole('button', { name: 'Save permissions' })).toBeInTheDocument()
     })
 
@@ -136,7 +136,7 @@ describe('Rooms/Roles', () => {
         render(<RoomRoles {...buildProps([owner, memberWithUsers])} />)
 
         const memberHeading = screen.getByText('Member')
-        const card = memberHeading.closest('div.bg-surface-700') as HTMLElement
+        const card = memberHeading.closest('div.bg-surface-panel') as HTMLElement
 
         expect(within(card).getByRole('button', { name: 'Remove' })).toBeInTheDocument()
     })
@@ -152,7 +152,7 @@ describe('Rooms/Roles', () => {
         render(<RoomRoles {...buildProps([owner, memberWithUsers])} />)
 
         const memberHeading = screen.getByText('Member')
-        const card = memberHeading.closest('div.bg-surface-700') as HTMLElement
+        const card = memberHeading.closest('div.bg-surface-panel') as HTMLElement
         await u.click(within(card).getByRole('button', { name: 'Remove' }))
 
         expect(router.reload).toHaveBeenCalledWith({ only: ['room'] })
@@ -165,7 +165,7 @@ describe('Rooms/Roles', () => {
         render(<RoomRoles {...buildProps([owner, customHigh, member])} />)
 
         const heading = screen.getByText('Moderator')
-        const card = heading.closest('div.bg-surface-700') as HTMLElement
+        const card = heading.closest('div.bg-surface-panel') as HTMLElement
         await u.click(within(card).getByRole('button', { name: 'Delete role' }))
 
         expect(router.reload).toHaveBeenCalledWith({ only: ['room'] })
@@ -184,7 +184,7 @@ describe('Rooms/Roles', () => {
         render(<RoomRoles {...buildProps([owner, memberWithUsers])} />)
 
         const memberHeading = screen.getByText('Member')
-        const card = memberHeading.closest('div.bg-surface-700') as HTMLElement
+        const card = memberHeading.closest('div.bg-surface-panel') as HTMLElement
         await u.click(within(card).getByRole('button', { name: 'Remove' }))
 
         expect(await within(card).findByText(/must hold at least one role/)).toBeInTheDocument()
@@ -200,7 +200,7 @@ describe('Rooms/Roles', () => {
         // customLow ("Trainee") is ranked below customHigh ("Moderator") —
         // moving it up should swap their order (Trainee, Moderator).
         const traineeHeading = screen.getByText('Trainee')
-        const card = traineeHeading.closest('div.bg-surface-700') as HTMLElement
+        const card = traineeHeading.closest('div.bg-surface-panel') as HTMLElement
         const upButton = within(card).getByTitle('Move up')
 
         await u.click(upButton)

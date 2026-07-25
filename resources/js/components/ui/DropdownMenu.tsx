@@ -40,8 +40,8 @@ function Item({ onSelect, danger, children }: ItemProps) {
             className={clsx(
                 'px-2 py-1.5 rounded cursor-pointer outline-none',
                 danger
-                    ? 'text-danger hover:bg-danger hover:text-white'
-                    : 'text-text-secondary hover:bg-brand hover:text-white',
+                    ? 'text-danger hover:bg-danger hover:text-inverse'
+                    : 'text-text-secondary hover:bg-brand hover:text-inverse',
             )}
         >
             {children}

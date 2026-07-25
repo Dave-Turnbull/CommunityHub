@@ -54,7 +54,7 @@ export function UserStatusPopover({ user, recentCustomStatuses, trigger }: Props
             side="top"
             align="start"
             sideOffset={8}
-            className="w-64 rounded-lg overflow-hidden shadow-2xl border border-surface-400 bg-surface-900 p-2 text-sm"
+            className="w-64 rounded-lg overflow-hidden shadow-2xl border border-surface-subtle bg-surface-app p-2 text-sm"
         >
             <div className="grid grid-cols-2 gap-1 mb-2">
                 {STATUSES.map((s) => (
@@ -65,7 +65,7 @@ export function UserStatusPopover({ user, recentCustomStatuses, trigger }: Props
                             'flex items-center gap-2 px-2 py-1.5 rounded border text-xs transition-colors',
                             currentStatus === s.value
                                 ? 'border-brand bg-brand/10 text-text-primary'
-                                : 'border-surface-400 text-text-secondary hover:border-brand',
+                                : 'border-surface-subtle text-text-secondary hover:border-brand',
                         )}
                     >
                         <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', s.color)} />
@@ -74,7 +74,7 @@ export function UserStatusPopover({ user, recentCustomStatuses, trigger }: Props
                 ))}
             </div>
 
-            <div className="h-px bg-surface-400 my-2" />
+            <div className="h-px bg-surface-subtle my-2" />
 
             <div className="flex items-center gap-1.5 mb-2">
                 <input
@@ -82,7 +82,7 @@ export function UserStatusPopover({ user, recentCustomStatuses, trigger }: Props
                     value={color}
                     onChange={(e) => setColor(e.target.value)}
                     aria-label="Custom status color"
-                    className="w-7 h-7 flex-shrink-0 rounded cursor-pointer bg-transparent border border-surface-400 p-0.5"
+                    className="w-7 h-7 flex-shrink-0 rounded cursor-pointer bg-transparent border border-surface-subtle p-0.5"
                 />
                 <input
                     value={text}
@@ -92,14 +92,14 @@ export function UserStatusPopover({ user, recentCustomStatuses, trigger }: Props
                     }}
                     placeholder="Set custom status"
                     maxLength={128}
-                    className="flex-1 min-w-0 bg-surface-800 border border-surface-400 rounded px-2 py-1.5 text-xs
+                    className="flex-1 min-w-0 bg-surface-inset border border-surface-subtle rounded px-2 py-1.5 text-xs
                                text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand"
                 />
                 <button
                     onClick={() => applyStatus('custom', text.trim(), color)}
                     disabled={!text.trim()}
                     title="Save custom status"
-                    className="flex-shrink-0 p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-surface-500
+                    className="flex-shrink-0 p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-surface-raised
                                disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                     💾
@@ -112,11 +112,11 @@ export function UserStatusPopover({ user, recentCustomStatuses, trigger }: Props
                         <button
                             key={r.text}
                             onClick={() => applyStatus('custom', r.text, r.color)}
-                            className="flex items-center gap-1.5 max-w-full px-2 py-1 rounded-full text-xs bg-surface-500
-                                       border border-surface-400 text-text-secondary hover:border-brand"
+                            className="flex items-center gap-1.5 max-w-full px-2 py-1 rounded-full text-xs bg-surface-raised
+                                       border border-surface-subtle text-text-secondary hover:border-brand"
                         >
                             <span
-                                className="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-1 ring-inset ring-white/30"
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-1 ring-inset ring-inverse/30"
                                 style={{ backgroundColor: r.color }}
                             />
                             <span className="truncate">{r.text}</span>
@@ -125,17 +125,17 @@ export function UserStatusPopover({ user, recentCustomStatuses, trigger }: Props
                 </div>
             )}
 
-            <div className="h-px bg-surface-400 my-2" />
+            <div className="h-px bg-surface-subtle my-2" />
 
             <Link
                 href="/settings"
-                className="block px-2 py-1.5 rounded text-text-secondary hover:bg-surface-500 hover:text-text-primary"
+                className="block px-2 py-1.5 rounded text-text-secondary hover:bg-surface-raised hover:text-text-primary"
             >
                 ⚙ Settings
             </Link>
             <button
                 onClick={() => router.post('/logout')}
-                className="w-full text-left px-2 py-1.5 rounded text-text-secondary hover:bg-surface-500 hover:text-danger"
+                className="w-full text-left px-2 py-1.5 rounded text-text-secondary hover:bg-surface-raised hover:text-danger"
             >
                 ⏻ Log out
             </button>

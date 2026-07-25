@@ -112,7 +112,9 @@ app/
                                capabilities-and-channel-types.md); RoleController
                                (distinct from Web\RoleController) is store/update/destroy/
                                addMember/removeMember for room roles (see docs/
-                               roles-and-permissions.md)
+                               roles-and-permissions.md); ThemePreferenceController is
+                               show/update for the Appearance panel's preset + per-variable
+                               overrides (see docs/theming.md)
     Controller.php            empty abstract base — Laravel ships none by default, keep it
   Http/Middleware/
     HandleInertiaRequests.php shares auth.user, rooms, conversations,
@@ -124,7 +126,9 @@ app/
                                NotificationPreference/VoiceDevicePreference — see docs/
                                notifications.md and docs/voice.md; Role/RolePermission/
                                RoleAssignment — see docs/roles-and-permissions.md;
-                               RecentCustomStatus — see docs/status.md
+                               RecentCustomStatus — see docs/status.md; ThemePreference
+                               (one row per user: preset + jsonb overrides) — see docs/
+                               theming.md
   Policies/                   authorization seams beyond simple membership checks —
                                see docs/roles-and-permissions.md and docs/
                                conversations-and-invites.md
@@ -142,7 +146,10 @@ app/
   Support/                    ChannelFocus (see docs/notifications.md); Permission/
                                PermissionChecker (see docs/roles-and-permissions.md);
                                ChannelTypes/ + Capabilities/ (see docs/
-                               capabilities-and-channel-types.md)
+                               capabilities-and-channel-types.md); Theme/ThemeTokens —
+                               the CSS-variable/preset allow-list ThemePreferenceController
+                               validates against, mirrors resources/js/services/theme.ts
+                               (see docs/theming.md)
 bootstrap/
   app.php                     THE wiring file — routing, middleware groups
   providers.php               provider list (App\Providers\AppServiceProvider,
@@ -163,7 +170,11 @@ docker/
   app/entrypoint.sh           mkdir storage, key:gen, wait-for-db, migrate, storage:link
   nginx/default.conf
 resources/
+  css/
+    app.css                   theme variable definitions ([data-theme="classic"]) +
+                               @layer base — see docs/theming.md
   views/
+    app.blade.php              sets <html data-theme="classic">
     emails/                   plain Blade mail views (room-invite.blade.php) — no
                                markdown mail layout in this repo, keep them simple
   js/
@@ -187,7 +198,9 @@ resources/
       messages/                NotificationFeed (see docs/notifications.md); UserPicker
                                — see docs/conversations-and-invites.md
       settings/                NotificationPreferences (see docs/notifications.md);
-                               AudioSettings (see docs/voice.md)
+                               AudioSettings (see docs/voice.md); AppearanceSettings —
+                               the Settings → Appearance panel: preset picker + a
+                               generated control per theme variable (see docs/theming.md)
       voice/                  VoiceChannelPanel, VoiceBar — a channel/conversation's
                                main-pane voice UI. Both render ParticipantVolumeControl
                                per remote participant (speaking-ring Avatar + volume
@@ -227,12 +240,16 @@ resources/
                                audioLevel.ts (dBFS level-meter math shared by the
                                AudioSettings mic test and voice activation — see
                                docs/voice.md), clientId.ts (localStorage-persisted
-                               per-browser-install id)
+                               per-browser-install id), theme.ts (the token catalogue:
+                               THEME_VARIABLES/THEME_PRESETS, resolveThemeValues/
+                               applyThemeValues, hex↔"R G B" triplet conversion — see
+                               docs/theming.md)
     stores/                   Zustand: useMessages, usePresence, useUI, useNotifications,
                                useChannels (see docs/capabilities-and-channel-types.md),
                                useVoice, useVoiceRoster, useSpeaking, useVoiceVolume,
                                useRemoteStreamVersion, useConnectionQuality, useMicSensitivity
-                               (send-threshold hysteresis + live AGC override — see docs/voice.md)
+                               (send-threshold hysteresis + live AGC override — see docs/voice.md),
+                               useTheme (current preset + per-variable overrides — see docs/theming.md)
     types/                    all shared interfaces + Inertia page-prop types;
                                `ChannelType` is `string`, not a closed union
     test/setup.ts             Vitest setup — @testing-library/jest-dom matchers
@@ -297,11 +314,29 @@ assuming something is undocumented.
   the top of `MessageList`.
 - **File uploads** go to the `public` disk in dev; production swaps
   `FILESYSTEM_DISK=r2` (Cloudflare R2, S3-compatible) — see `config/filesystems.php`.
-- **Tailwind palette** is defined in `tailwind.config.js` (surface/brand/status/text).
+- **Every color, corner radius, border width, and typography value is a themed CSS
+  variable, not a literal.** `tailwind.config.js` points its `colors`/`borderRadius`/
+  `borderWidth`/`fontSize`/`fontWeight`/`fontFamily` theme keys at CSS custom
+  properties defined in `resources/css/app.css` (scoped to `[data-theme="classic"]`,
+  the one theme ever expressed as an actual CSS rule); ordinary utility classes
+  (`bg-surface-panel`, `rounded-lg`, `text-text-muted`) resolve through them. Never
+  hardcode a raw hex color or pixel radius/border value in a component — reach for
+  an existing token, or add one to `app.css`/`tailwind.config.js` if it doesn't
+  exist yet. On top of that static layer, Settings' Appearance panel
+  (`AppearanceSettings`) lets a signed-in user pick a built-in preset (`classic`/
+  `midnight`/`ocean`/`light`, defined as pure data in `resources/js/services/
+  theme.ts` — no CSS block per preset) and tweak individual variables on top,
+  persisted server-side (`ThemePreference`) and applied at runtime via
+  `document.documentElement.style.setProperty()`, which is what actually shows the
+  chosen theme on every page. See `docs/theming.md` for the full token reference
+  (the surface elevation scale, text/accent/status colors, radius and border-width
+  scale), how the preset/override system and its backend allow-list
+  (`App\Support\Theme\ThemeTokens`) work, and how to add another preset or token.
   Utility classes are applied inline in JSX, not extracted into `@layer components`
-  classes — `resources/css/app.css` only holds `@layer base`. When the same class
-  string repeats across a component, copy the literal utility string rather than
-  introducing a shared CSS class; use `clsx(...)` for conditional variants.
+  classes — `resources/css/app.css` only holds `@layer base` (plus the theme
+  variable block). When the same class string repeats across a component, copy the
+  literal utility string rather than introducing a shared CSS class; use
+  `clsx(...)` for conditional variants.
 - **`RoomRail` is a horizontal bar across the top of every authenticated page**
   (`h-room-rail`, 56px). Every page wraps it in `flex flex-col h-screen` with a
   `flex flex-1 min-h-0` row underneath holding the channel/DM sidebar + main content.

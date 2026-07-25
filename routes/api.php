@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\NotificationPreferenceController;
 use App\Http\Controllers\Api\ReactionController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\RoomInviteController;
+use App\Http\Controllers\Api\ThemePreferenceController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\UserStatusController;
 use App\Http\Controllers\Api\VoiceDevicePreferenceController;
@@ -74,6 +75,10 @@ Route::middleware('auth')->group(function () {
     // Notification preferences
     Route::get('/notification-preferences', [NotificationPreferenceController::class, 'index']);
     Route::put('/notification-preferences', [NotificationPreferenceController::class, 'update']);
+
+    // Theme preference — Settings' Appearance panel, see App\Support\Theme\ThemeTokens
+    Route::get('/theme-preference', [ThemePreferenceController::class, 'show']);
+    Route::put('/theme-preference', [ThemePreferenceController::class, 'update']);
 
     // Voice — ICE servers (STUN/TURN) and per-(user, client) device preference
     Route::get('/voice/ice-servers',        [VoiceIceServersController::class, 'index']);

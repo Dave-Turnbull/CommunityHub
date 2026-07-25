@@ -59,13 +59,13 @@ export function ParticipantVolumeControl({ participant, size }: Props) {
                         <span
                             title={QUALITY_LABEL[quality]}
                             className={clsx(
-                                'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-surface-700',
+                                'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-surface-panel',
                                 QUALITY_DOT_COLOR[quality]
                             )}
                         />
                     </button>
                 }
-                className="bg-surface-600 border border-surface-400 rounded-lg p-3 w-40 shadow-lg"
+                className="bg-surface-canvas border border-surface-subtle rounded-lg p-3 w-40 shadow-lg"
             >
                 <label
                     htmlFor={`volume-${participant.userId}`}

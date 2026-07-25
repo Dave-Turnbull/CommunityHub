@@ -31,7 +31,7 @@ export function MemberList({ members }: { members: RoomMember[] }) {
                         <div
                             key={m.id}
                             className={`flex items-center gap-2 px-3 py-1.5 mx-1 rounded
-                                        hover:bg-surface-500 cursor-pointer ${dim ? 'opacity-40' : ''}`}
+                                        hover:bg-surface-raised cursor-pointer ${dim ? 'opacity-40' : ''}`}
                         >
                             <Avatar user={m.user} size="sm" showStatus />
                             <div className="min-w-0">
@@ -52,7 +52,7 @@ export function MemberList({ members }: { members: RoomMember[] }) {
     }
 
     return (
-        <aside className="w-sidebar-members bg-surface-700 flex-shrink-0 overflow-y-auto py-4">
+        <aside className="w-sidebar-members bg-surface-panel flex-shrink-0 overflow-y-auto py-4">
             {group(online, 'Online')}
             {group(offline, 'Offline', true)}
         </aside>

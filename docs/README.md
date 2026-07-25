@@ -22,6 +22,10 @@ run commands, testing, known traps), see `CLAUDE.md` at the project root.
   conversation creation/deduplication, group participants, and room invite mechanisms.
 - [status.md](status.md) — the status/custom-status/color schema, `StatusFeature`,
   `UserStatusService`, the live-broadcast contract, and the `UserStatusPopover` UI.
+- [theming.md](theming.md) — the CSS-variable-backed theme token system (surfaces,
+  text, accent/status/feedback colors, radius, border width, typography), the
+  built-in presets and per-variable overrides in Settings' Appearance panel
+  (`ThemePreference`, `ThemeTokens`), and how to add another preset or a new token.
 
 ## Keeping this up to date
 

@@ -3,6 +3,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Tabs } from '@/components/ui/Tabs'
 import { NotificationPreferences } from '@/components/settings/NotificationPreferences'
 import { AudioSettings } from '@/components/settings/AudioSettings'
+import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
 import type { SharedProps, User } from '@/types'
 
 interface Props extends SharedProps {
@@ -20,7 +21,7 @@ export default function SettingsIndex({ user }: Props) {
         <>
             <Head title="Settings" />
 
-            <div className="h-screen bg-surface-600 overflow-y-auto">
+            <div className="h-screen bg-surface-canvas overflow-y-auto">
                 <div className="max-w-2xl mx-auto px-6 py-12">
                     <div className="flex items-center justify-between mb-8">
                         <h1 className="text-2xl font-bold text-text-primary">Settings</h1>
@@ -40,7 +41,7 @@ export default function SettingsIndex({ user }: Props) {
                                 content: (
                                     <>
                                         {/* Live preview */}
-                                        <div className="bg-surface-700 rounded-lg p-6 mb-6 flex items-center gap-4">
+                                        <div className="bg-surface-panel rounded-lg p-6 mb-6 flex items-center gap-4">
                                             <Avatar
                                                 user={{ ...user, ...data } as User}
                                                 size="lg"
@@ -58,7 +59,7 @@ export default function SettingsIndex({ user }: Props) {
                                         </div>
 
                                         {/* Form */}
-                                        <div className="bg-surface-700 rounded-lg p-6 space-y-5">
+                                        <div className="bg-surface-panel rounded-lg p-6 space-y-5">
                                             <div>
                                                 <label className="block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1.5">
                                                     Display Name
@@ -66,7 +67,7 @@ export default function SettingsIndex({ user }: Props) {
                                                 <input
                                                     value={data.display_name}
                                                     onChange={(e) => setData('display_name', e.target.value)}
-                                                    className="w-full bg-surface-800 border border-surface-400 rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                                                    className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
                                                     maxLength={32}
                                                 />
                                             </div>
@@ -79,7 +80,7 @@ export default function SettingsIndex({ user }: Props) {
                                                     value={data.avatar_url}
                                                     onChange={(e) => setData('avatar_url', e.target.value)}
                                                     placeholder="https://…"
-                                                    className="w-full bg-surface-800 border border-surface-400 rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                                                    className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
                                                 />
                                             </div>
 
@@ -92,7 +93,7 @@ export default function SettingsIndex({ user }: Props) {
                                                     onChange={(e) => setData('bio', e.target.value)}
                                                     rows={3}
                                                     maxLength={190}
-                                                    className="w-full bg-surface-800 border border-surface-400 rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100 resize-none"
+                                                    className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100 resize-none"
                                                 />
                                                 <p className="text-[11px] text-text-muted mt-1 text-right">
                                                     {data.bio.length}/190
@@ -102,7 +103,7 @@ export default function SettingsIndex({ user }: Props) {
                                             <button
                                                 onClick={() => patch('/settings')}
                                                 disabled={processing || !isDirty}
-                                                className="w-full px-4 py-2 rounded bg-brand hover:bg-brand-hover text-white text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="w-full px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 {processing ? 'Saving…' : 'Save Changes'}
                                             </button>
@@ -119,6 +120,11 @@ export default function SettingsIndex({ user }: Props) {
                                 value: 'voice',
                                 label: 'Voice & Video',
                                 content: <AudioSettings />,
+                            },
+                            {
+                                value: 'appearance',
+                                label: 'Appearance',
+                                content: <AppearanceSettings />,
                             },
                         ]}
                     />
