@@ -42,8 +42,8 @@ export function VoiceChannelSidebarItem({ channel, active, currentUser }: Props)
                 className={clsx(
                     'flex items-center gap-2 px-2 py-1.5 rounded transition-colors duration-100',
                     active
-                        ? 'bg-surface-subtle text-text-primary'
-                        : 'text-text-secondary hover:text-text-primary hover:bg-surface-raised',
+                        ? 'bg-sixth text-text-primary'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-fifth',
                 )}
             >
                 <Link

@@ -59,13 +59,13 @@ export function ParticipantVolumeControl({ participant, size }: Props) {
                         <span
                             title={QUALITY_LABEL[quality]}
                             className={clsx(
-                                'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-surface-panel',
+                                'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-second',
                                 QUALITY_DOT_COLOR[quality]
                             )}
                         />
                     </button>
                 }
-                className="bg-surface-canvas border border-surface-subtle rounded-lg p-3 w-40 shadow-lg"
+                className="bg-primary border border-sixth rounded-lg p-3 w-40 shadow-lg"
             >
                 <label
                     htmlFor={`volume-${participant.userId}`}
@@ -80,7 +80,7 @@ export function ParticipantVolumeControl({ participant, size }: Props) {
                     max={100}
                     value={Math.round(volume * 100)}
                     onChange={(e) => setVolume(participant.userId, Number(e.target.value) / 100)}
-                    className="w-full accent-brand"
+                    className="w-full accent-[rgb(var(--color-accent-primary))]"
                 />
             </Popover>
 

@@ -6,29 +6,42 @@
  * Theme tokens. Every value tailwind.config.js's `colors`/`fontSize`/
  * `fontWeight`/`fontFamily`/`borderRadius`/`borderWidth` extensions reference
  * lives here as a CSS custom property, scoped to `[data-theme="..."]` rather
- * than bare `:root` — see docs/theming.md. "classic" is the only theme today
- * (the look this app has always had); a future theme picker adds sibling
- * `[data-theme="..."]` blocks and flips `<html data-theme>` in app.blade.php,
- * no component or Tailwind-config change required.
+ * than bare `:root` — see docs/theming.md. "classic" is the only *build-time*
+ * theme (the look this app has always had) — the Settings → Appearance panel
+ * layers additional presets and per-user overrides on top of this at runtime
+ * via inline styles, which is why the other built-in presets have no CSS
+ * block here at all; see docs/theming.md.
  *
  * Colors are space-separated "R G B" triples (not `#hex` or `rgb(...)`) so
  * Tailwind's `rgb(var(--x) / <alpha-value>)` indirection can still apply
- * opacity modifiers like `bg-surface-app/50`.
+ * opacity modifiers like `bg-primary/50`.
  */
 :root[data-theme='classic'] {
-    /* Accent — the one saturated color used for primary actions/links/active states. */
-    --color-brand: 88 101 242;
-    --color-brand-hover: 71 82 196;
-    --color-brand-muted: 78 80 88;
+    /* Accent — the one saturated color family used for primary actions/links/
+       active states. `-secondary` is the hover/active shade of the same
+       color (buttons, the room-rail hover state); `-tertiary` is a muted,
+       low-emphasis variant (the scrollbar thumb's hover color). */
+    --color-accent-primary: 88 101 242;
+    --color-accent-secondary: 71 82 196;
+    --color-accent-tertiary: 78 80 88;
 
-    /* Surface elevation scale, deepest to lightest. Not tied to any one
-       component — see docs/theming.md for which role is used where. */
-    --surface-app: 15 16 21;
-    --surface-inset: 23 25 31;
-    --surface-panel: 30 32 40;
-    --surface-canvas: 37 39 47;
-    --surface-raised: 46 48 56;
-    --surface-subtle: 56 58 66;
+    /* Background scale, ordered by how much of the screen each one typically
+       covers, largest first — not tied to any one component. See
+       docs/theming.md for which role each one plays. */
+    --primary: 37 39 47;
+    --second: 30 32 40;
+    --third: 23 25 31;
+    --fourth: 15 16 21;
+    --fifth: 46 48 56;
+    --sixth: 56 58 66;
+
+    /* The outer edge of a major chrome region (sidebar/top bar/member list)
+       — see docs/theming.md's "Panel border" section. Width defaults to 0
+       (invisible) because the background scale above already differentiates
+       adjacent panels in this theme; a theme where every background tint is
+       identical (e.g. a pure-black preset) turns this on instead. */
+    --panel-border-width: 0px;
+    --panel-border-color: 56 58 66;
 
     /* Text */
     --text-primary: 242 243 245;
@@ -85,15 +98,15 @@
     }
 
     body {
-        @apply bg-surface-app text-text-primary text-sm overflow-hidden;
+        @apply bg-fourth text-text-primary text-sm overflow-hidden;
     }
 
     ::-webkit-scrollbar       { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb {
-        @apply bg-surface-subtle rounded-full;
+        @apply bg-sixth rounded-full;
         border: 2px solid transparent;
         background-clip: content-box;
     }
-    ::-webkit-scrollbar-thumb:hover { @apply bg-brand-muted; }
+    ::-webkit-scrollbar-thumb:hover { @apply bg-accent-tertiary; }
 }

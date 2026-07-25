@@ -18,7 +18,7 @@ export function VoiceBar({ conversation, currentUser }: Props) {
         useVoiceChannel('conversation', conversation.id, currentUser, conversation.voice_mode)
 
     return (
-        <div className="flex items-center gap-3 px-4 py-2 border-b border-surface-inset bg-surface-panel flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 py-2 border-b border-third bg-second flex-shrink-0">
             {isActive ? (
                 <>
                     <div className="flex -space-x-2">
@@ -34,13 +34,13 @@ export function VoiceBar({ conversation, currentUser }: Props) {
 
                     <button
                         onClick={toggleMute}
-                        className="ml-auto rounded bg-surface-raised hover:bg-surface-subtle px-3 py-1 text-xs font-medium text-text-primary transition-colors duration-100"
+                        className="ml-auto rounded bg-fifth hover:bg-sixth px-3 py-1 text-xs font-medium text-text-primary transition-colors duration-100"
                     >
                         {selfMuted ? 'Unmute' : 'Mute'}
                     </button>
                     <button
                         onClick={toggleDeafen}
-                        className="rounded bg-surface-raised hover:bg-surface-subtle px-3 py-1 text-xs font-medium text-text-primary transition-colors duration-100"
+                        className="rounded bg-fifth hover:bg-sixth px-3 py-1 text-xs font-medium text-text-primary transition-colors duration-100"
                     >
                         {deafened ? 'Undeafen' : 'Deafen'}
                     </button>
@@ -54,7 +54,7 @@ export function VoiceBar({ conversation, currentUser }: Props) {
             ) : (
                 <button
                     onClick={join}
-                    className="rounded bg-brand hover:bg-brand-hover px-3 py-1 text-xs font-medium text-inverse transition-colors duration-100"
+                    className="rounded bg-accent-primary hover:bg-accent-secondary px-3 py-1 text-xs font-medium text-inverse transition-colors duration-100"
                 >
                     🎙️ Join Voice
                 </button>

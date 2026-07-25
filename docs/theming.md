@@ -3,23 +3,24 @@
 The visual look of the app — background/text colors, corner rounding, border stroke
 widths, and typography — is expressed as a fixed set of CSS custom properties, not as
 literal values scattered through components. Component code only ever reaches for a
-Tailwind utility class (`bg-surface-panel`, `rounded-lg`, `border`, `text-sm`); the
+Tailwind utility class (`bg-second`, `rounded-lg`, `border`, `text-sm`); the
 actual pixel/color value behind that utility lives in one place and can be swapped
 without touching a single component.
 
 There are two layers on top of that indirection: a fixed set of **built-in presets**
-(`classic`, `midnight`, `ocean`, `light`) a user picks from, and **per-variable
-overrides** on top of whichever preset they picked — both live in the Settings →
-Appearance panel (`AppearanceSettings`), persist per-user server-side, and apply at
-runtime without a page reload. See "Runtime presets and the Appearance panel" below.
+(`classic`, `midnight`, `ocean`, `light`, `black`) a user picks from, and
+**per-variable overrides** on top of whichever preset they picked — both live in the
+Settings → Appearance panel (`AppearanceSettings`), persist per-user server-side, and
+apply at runtime without a page reload. See "Runtime presets and the Appearance
+panel" below.
 
 ## How the static foundation fits together
 
 1. **`resources/css/app.css`** defines every variable's *build-time* value, scoped
    to a `[data-theme="..."]` attribute selector (not bare `:root` — see below):
-   `:root[data-theme='classic'] { --surface-app: 15 16 21; ... }`. This is the only
-   theme ever expressed as an actual CSS rule — see below for why the other three
-   presets don't have one.
+   `:root[data-theme='classic'] { --primary: 37 39 47; ... }`. This is the only
+   theme ever expressed as an actual CSS rule — see below for why the other presets
+   don't have one.
 2. **`resources/views/app.blade.php`** sets `<html data-theme="classic">`, which is
    what makes that block active. This attribute never changes at runtime — it isn't
    how presets/overrides apply (see below).
@@ -27,36 +28,47 @@ runtime without a page reload. See "Runtime presets and the Appearance panel" be
    `fontWeight`, `fontFamily`, `borderRadius`, `borderWidth`) at those variables
    instead of literal values, so ordinary utility classes resolve to them.
 
-Color variables are stored as unquoted `"R G B"` triples (`--surface-app: 15 16
-21;`), not `#hex` or `rgb(...)`. `tailwind.config.js` wraps each one as
-`rgb(var(--x) / <alpha-value>)`, which is what lets Tailwind's opacity modifiers
-keep working on a themed color (`bg-surface-app/50`, `ring-inverse/30`) — a plain
-`var(--x)` reference can't be modified with a trailing `/50` the way a color
-function can.
+Color variables are stored as unquoted `"R G B"` triples (`--primary: 37 39 47;`),
+not `#hex` or `rgb(...)`. `tailwind.config.js` wraps each one as `rgb(var(--x) /
+<alpha-value>)`, which is what lets Tailwind's opacity modifiers keep working on a
+themed color (`bg-primary/50`, `ring-inverse/30`) — a plain `var(--x)` reference
+can't be modified with a trailing `/50` the way a color function can.
 
 ## Token reference
 
-### Surfaces (backgrounds + borders)
+### Backgrounds (+ borders)
 
-A six-step elevation scale, deepest to lightest. These are the only background
-colors used anywhere in the app — nothing is named after the component that
-happens to use it (no "sidebar color"), so the same six tokens compose every
-screen. Classes: `bg-surface-{name}`, `border-surface-{name}`,
-`divide-surface-{name}`, `fill-surface-{name}`, etc.
+Six background tones, named by how much of the screen each one typically covers,
+**largest first** — `primary` is the biggest single visible surface (the main
+content pane), `sixth` is the smallest (borders/dividers are just 1–2px lines).
+Nothing is named after the component that happens to use it (no "sidebar color"),
+so the same six tokens compose every screen. Classes: `bg-{name}`,
+`border-{name}`, `divide-{name}`, `fill-{name}`, etc.
 
 | Token | Variable | Role |
 |---|---|---|
-| `surface-app` | `--surface-app` | Deepest layer: full-page auth backdrop, popovers/dropdown menus/context menus floating above everything else |
-| `surface-inset` | `--surface-inset` | Sunken strip elements sitting inside a panel: the room rail, form inputs, the user panel strip |
-| `surface-panel` | `--surface-panel` | Sidebars (channel/DM/member list), modal dialogs, cards |
-| `surface-canvas` | `--surface-canvas` | The main content pane — where messages/settings/room content render |
-| `surface-raised` | `--surface-raised` | Hover backgrounds, the message compose box, secondary buttons, pills/tags |
-| `surface-subtle` | `--surface-subtle` | Borders and dividers (its most common use), thumbnail placeholders, stronger hover states |
+| `primary` | `--primary` | The main content pane — where messages/settings/room content render. The single largest surface on almost every screen. |
+| `second` | `--second` | Sidebars (channel/DM/member list), modal dialogs, cards |
+| `third` | `--third` | Sunken strip elements sitting inside a panel: the room rail, form inputs, the user panel strip |
+| `fourth` | `--fourth` | The deepest/rearmost layer: full-page auth backdrop, popovers/dropdown menus/context menus floating above everything else. Also `<body>`'s own background, though normally fully covered by the other five. |
+| `fifth` | `--fifth` | Hover backgrounds, the message compose box, secondary buttons, pills/tags |
+| `sixth` | `--sixth` | Borders and dividers (its most common use), thumbnail placeholders, stronger hover states |
 
 `rounded-full` circular/pill shapes (avatars, the room-rail icon buttons, status
 dots) are a **shape**, not a rounding *style*, and stay a literal `9999px` rather
 than a themed variable — a future theme changing corner roundedness shouldn't turn
 avatars into squares.
+
+**Naming caveat:** `primary`/`second`/etc. are top-level Tailwind color keys (not
+nested under a `surface` group), so `bg-primary`, `border-primary`, and so on exist
+exactly as written — matching how every other consumer of this palette (`border-`,
+`divide-`, `fill-`) already works. The one thing to know: Tailwind auto-generates
+*every* utility prefix for *every* top-level color, so a `text-primary` class also
+technically exists (background color `primary` applied as a text color) — this is
+never what you want; the actual primary **text** color is namespaced separately as
+`text-text-primary` (see below). Nobody in this codebase uses bare `text-primary`
+today; keep it that way rather than reaching for it by pattern-matching off
+`bg-primary`.
 
 ### Text
 
@@ -71,12 +83,28 @@ avatars into squares.
 
 ### Accent, status, and feedback colors
 
+`accent-primary`/`accent-secondary`/`accent-tertiary` are named as a color
+*family* rather than "DEFAULT/hover/muted" on purpose: `secondary` isn't only a
+hover state (that was the confusing part of the old `brand-hover` name) — it also
+shows up as a resting/active color in its own right (the room-rail's active-room
+background, `MessageRow`'s pinned-reply rail). Naming it by role (`secondary`)
+rather than by trigger (`hover`) matches what it's actually used for.
+
 | Token | Variable | Role |
 |---|---|---|
-| `brand` / `brand-hover` / `brand-muted` | `--color-brand*` | The one saturated accent color: primary buttons, active nav state, focus rings, links' surrounding UI |
+| `accent-primary` | `--color-accent-primary` | The one saturated accent color: primary buttons, focus rings, links' surrounding UI, the default room-rail state |
+| `accent-secondary` | `--color-accent-secondary` | A resting/active/hover variant of the accent — button hover states, but also non-hover active states like the room-rail's active-room background |
+| `accent-tertiary` | `--color-accent-tertiary` | A muted, low-emphasis variant — currently just the scrollbar thumb's hover color |
 | `status-online` / `status-idle` / `status-dnd` / `status-offline` | `--status-*` | Presence dots |
 | `danger` | `--color-danger` | Destructive actions, error text |
 | `success` | `--color-success` | Confirmations, the "create a room" affordance |
+
+The CSS `accent-color` utility (`accent-*`, used to tint native `<input
+type="range">`/checkbox controls) would collide with this group's own generated
+class names (`accent-accent-primary` — Tailwind flattens the nested color path),
+so range sliders use an arbitrary value instead:
+`accent-[rgb(var(--color-accent-primary))]`. Don't reach for `accent-accent-primary`
+even though Tailwind generates it — it works, but reads as a typo.
 
 ### Corner rounding
 
@@ -100,6 +128,53 @@ variables, so existing classes (`rounded`, `rounded-md`, `rounded-lg`, `rounded-
 | `border` / `border-b` / `border-l` / `border-r` (1×) | `--border-width-default` | 1px |
 | `border-2` / `border-b-2` / `border-l-2` / `border-r-2` | `--border-width-thick` | 2px |
 
+### Panel border
+
+A separate width + color pair for the outer edge of a **major chrome region or
+floating surface** — `RoomRail` (top bar), `ChannelSidebar`/`DMSidebar` (left
+sidebar), `MemberList` (right member list), `UserPanel` (the strip at the bottom
+of the sidebar), and `MessageInput` (the message compose box). These are the
+regions a user orients by, or elements that sit visually "on top of" a pane
+rather than flush against it; everywhere else (dividers inside a form, the
+message-header rule) keeps using `sixth`/`border-width-default` as before. Kept
+deliberately separate from those generic tokens — see "Why this exists" below.
+
+| Class | Variable | Default (`classic`) |
+|---|---|---|
+| `border-panel` / `border-t-panel` / `border-r-panel` / `border-b-panel` / `border-l-panel` | `--panel-border-width` | 0px |
+| `border-panel-border` | `--panel-border-color` | `56 58 66` (same tone as `sixth`) |
+
+Usage is the pair together, width restricted to whichever side actually touches
+an adjacent panel — except for a standalone element like the compose box, which
+takes the border on all four sides (plain `border-panel`, not a directional
+variant): `border-b-panel border-panel-border` on `RoomRail`, `border-r-panel
+border-panel-border` on the left sidebars, `border-l-panel border-panel-border`
+on `MemberList`, `border-t-panel border-panel-border` on `UserPanel`,
+`border-panel border-panel-border` on `MessageInput`.
+
+`--panel-border-width` steps in **quarter pixels** (0, 0.25, 0.5, ... up to 4px),
+finer than every other width token in this app (`--border-width-default`/
+`-thick` and the radius scale are whole pixels). The Appearance panel renders it
+as a slider *and* a paired, editable number input, both bound to the same value
+(`ThemeVariable.showNumberInput` — see `theme.ts`); this is the one token in the
+whole set with two controls. Validated server-side by `ThemeTokens::
+DECIMAL_PX_KEYS` (up to 2 decimal places) rather than the whole-pixel `PX_KEYS`
+group every other radius/border-width token uses.
+
+**Why this exists.** Every preset except `black` differentiates adjacent chrome
+panels purely through the background scale (`primary` vs. `second` vs. `third`
+are visibly different shades), so `--panel-border-width` defaults to `0px` — the
+border geometrically exists but is invisible, same as leaving it off entirely.
+`black` sets every background tier to identical pure black (see below), which
+means the background scale can no longer do that differentiating job at all —
+without a real border, the sidebar/top bar/main pane/member list would visually
+merge into one undifferentiated region. `black` sets a hairline
+`--panel-border-width: 0.25px` (color `#1E1E1E`, `--panel-border-color: 30 30
+30` — deliberately subtle, not a loud grey line) specifically to restore that
+separation without it reading as a heavy outline. A user can also turn this on
+manually for any preset from the Appearance panel's "Panel Border" group — e.g.
+someone who prefers `classic`'s colors but wants crisper panel edges.
+
 ### Typography
 
 | Class | Variable | Default (`classic`) |
@@ -113,9 +188,9 @@ variables, so existing classes (`rounded`, `rounded-md`, `rounded-lg`, `rounded-
 `resources/js/services/theme.ts` is the frontend's own copy of the full token set —
 `THEME_VARIABLES` (every CSS variable, plus which kind of control edits it and its
 valid range/options) and `THEME_PRESETS` (a complete value for every variable, once
-per built-in preset: `classic`, `midnight`, `ocean`, `light`). `classic`'s values
-here are a straight copy of `app.css`'s `:root[data-theme='classic']` block; the
-other three presets exist **only as data in this file** — there is no
+per built-in preset: `classic`, `midnight`, `ocean`, `light`, `black`). `classic`'s
+values here are a straight copy of `app.css`'s `:root[data-theme='classic']` block;
+the other four presets exist **only as data in this file** — there is no
 `[data-theme='midnight']` CSS block anywhere, and there doesn't need to be, because
 presets never apply by changing the `data-theme` attribute. They apply by writing
 directly onto `<html>`'s inline `style` — `applyThemeValues()` calls
@@ -124,6 +199,16 @@ inline style always wins over any stylesheet rule regardless of selector
 specificity, so this reliably shadows the `classic` CSS defaults for whichever
 variables the current preset/overrides touch, without ever needing to flip
 `data-theme` or add a new CSS rule.
+
+`black` is a true-OLED-black preset: `--primary` through `--fifth` (every
+background tone) are all `0 0 0`, `--sixth` (borders/dividers) is a mid grey, and
+text is off-white rather than pure white — a deliberate example of a preset that
+doesn't vary the background *scale* at all (unlike the other four, where each tier
+is a visibly different shade). Because nothing distinguishes one panel's
+background from another's, `black` is also the only built-in preset with a
+nonzero `--panel-border-width` (a hairline 0.25px) — see "Panel border" above —
+otherwise the sidebar, top bar, main pane, and member list would visually merge into a single
+undifferentiated black region.
 
 **Presets vs. overrides.** `useTheme` (`resources/js/stores/index.ts`) holds two
 things: `preset` (a key into `THEME_PRESETS`) and `overrides` (a flat map of
@@ -201,8 +286,8 @@ its own `isValidValue` branch) on the backend.
 
 If a new component needs a color/radius/border-width/font value that doesn't map to
 an existing token, don't hardcode a literal Tailwind class or raw CSS value — check
-first whether one of the tokens above already fits (most things do; the surface scale
-in particular is meant to cover every background in the app). If it genuinely
+first whether one of the tokens above already fits (most things do; the background
+scale in particular is meant to cover every background in the app). If it genuinely
 doesn't, see "Adding a brand-new token" above for the full checklist (both the
 static `app.css`/`tailwind.config.js` wiring and the Appearance-panel/backend
 allow-list wiring) rather than writing a one-off literal value into a component's

@@ -35,8 +35,8 @@ describe('resolveThemeValues', () => {
     })
 
     it('lets overrides win over the preset default', () => {
-        const resolved = resolveThemeValues('classic', { '--color-brand': '1 2 3' })
-        expect(resolved['--color-brand']).toBe('1 2 3')
+        const resolved = resolveThemeValues('classic', { '--color-accent-primary': '1 2 3' })
+        expect(resolved['--color-accent-primary']).toBe('1 2 3')
         expect(resolved['--radius-md']).toBe(THEME_PRESETS.classic['--radius-md'])
     })
 
@@ -51,17 +51,17 @@ describe('applyThemeValues', () => {
     })
 
     it('sets every value as a CSS custom property on the root element', () => {
-        applyThemeValues({ '--color-brand': '1 2 3', '--radius-md': '10px' })
+        applyThemeValues({ '--color-accent-primary': '1 2 3', '--radius-md': '10px' })
 
-        expect(document.documentElement.style.getPropertyValue('--color-brand')).toBe('1 2 3')
+        expect(document.documentElement.style.getPropertyValue('--color-accent-primary')).toBe('1 2 3')
         expect(document.documentElement.style.getPropertyValue('--radius-md')).toBe('10px')
     })
 
     it('overwrites a previously-applied value rather than leaving it stale', () => {
-        applyThemeValues({ '--color-brand': '1 2 3' })
-        applyThemeValues({ '--color-brand': '9 9 9' })
+        applyThemeValues({ '--color-accent-primary': '1 2 3' })
+        applyThemeValues({ '--color-accent-primary': '9 9 9' })
 
-        expect(document.documentElement.style.getPropertyValue('--color-brand')).toBe('9 9 9')
+        expect(document.documentElement.style.getPropertyValue('--color-accent-primary')).toBe('9 9 9')
     })
 })
 

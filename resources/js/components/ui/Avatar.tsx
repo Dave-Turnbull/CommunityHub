@@ -53,7 +53,7 @@ export function Avatar({ user, size = 'md', showStatus = false, className }: Pro
                 />
             ) : (
                 <div className={clsx(
-                    'rounded-full bg-brand text-inverse flex items-center justify-center font-semibold select-none',
+                    'rounded-full bg-accent-primary text-inverse flex items-center justify-center font-semibold select-none',
                     SIZES[size],
                 )}>
                     {initials}
@@ -63,7 +63,7 @@ export function Avatar({ user, size = 'md', showStatus = false, className }: Pro
             {showStatus && (
                 <span
                     className={clsx(
-                        'absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-surface-panel',
+                        'absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-second',
                         DOT_SIZES[size],
                         live !== 'custom' && DOT_COLORS[live],
                     )}

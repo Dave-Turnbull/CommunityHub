@@ -39,13 +39,13 @@ export function VoiceChannelPanel({ channel, currentUser }: Props) {
                 <div className="flex gap-3">
                     <button
                         onClick={toggleMute}
-                        className="rounded bg-surface-raised hover:bg-surface-subtle px-4 py-2 text-sm font-medium text-text-primary transition-colors duration-100"
+                        className="rounded bg-fifth hover:bg-sixth px-4 py-2 text-sm font-medium text-text-primary transition-colors duration-100"
                     >
                         {selfMuted ? 'Unmute' : 'Mute'}
                     </button>
                     <button
                         onClick={toggleDeafen}
-                        className="rounded bg-surface-raised hover:bg-surface-subtle px-4 py-2 text-sm font-medium text-text-primary transition-colors duration-100"
+                        className="rounded bg-fifth hover:bg-sixth px-4 py-2 text-sm font-medium text-text-primary transition-colors duration-100"
                     >
                         {deafened ? 'Undeafen' : 'Deafen'}
                     </button>
@@ -59,7 +59,7 @@ export function VoiceChannelPanel({ channel, currentUser }: Props) {
             ) : (
                 <button
                     onClick={join}
-                    className="rounded bg-brand hover:bg-brand-hover px-6 py-2 text-sm font-medium text-inverse transition-colors duration-100"
+                    className="rounded bg-accent-primary hover:bg-accent-secondary px-6 py-2 text-sm font-medium text-inverse transition-colors duration-100"
                 >
                     {connectionState === 'connecting' ? 'Joining…' : 'Join Voice'}
                 </button>

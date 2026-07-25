@@ -13,7 +13,7 @@ export function UserPanel({ user, recentCustomStatuses }: { user: User; recentCu
             user={user}
             recentCustomStatuses={recentCustomStatuses}
             trigger={
-                <button className="w-full flex items-center gap-2 px-2 py-2 bg-surface-inset flex-shrink-0 text-left">
+                <button className="w-full flex items-center gap-2 px-2 py-2 bg-third border-t-panel border-panel-border flex-shrink-0 text-left">
                     <Avatar user={user} size="sm" showStatus />
 
                     <div className="flex-1 min-w-0">

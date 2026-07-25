@@ -39,7 +39,7 @@ export function CreateChannelModal({ room, onClose, onCreated }: Props) {
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
             <div
-                className="w-full max-w-md bg-surface-panel rounded-lg p-6 shadow-2xl"
+                className="w-full max-w-md bg-second rounded-lg p-6 shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
             >
                 <h2 className="text-lg font-semibold text-text-primary mb-4">Create channel</h2>
@@ -55,8 +55,8 @@ export function CreateChannelModal({ room, onClose, onCreated }: Props) {
                             className={
                                 'flex-1 flex flex-col items-center gap-1 py-2 rounded border text-sm transition-colors duration-100 ' +
                                 (type === descriptor.key
-                                    ? 'border-brand bg-surface-raised text-text-primary'
-                                    : 'border-surface-subtle text-text-muted hover:text-text-primary')
+                                    ? 'border-accent-primary bg-fifth text-text-primary'
+                                    : 'border-sixth text-text-muted hover:text-text-primary')
                             }
                         >
                             <span className="text-lg">{descriptor.icon}</span>
@@ -74,7 +74,7 @@ export function CreateChannelModal({ room, onClose, onCreated }: Props) {
                     placeholder="new-channel"
                     onChange={(e) => setName(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && create()}
-                    className="w-full mb-4 bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                    className="w-full mb-4 bg-third border border-sixth rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary transition-colors duration-100"
                 />
 
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2">
@@ -85,21 +85,21 @@ export function CreateChannelModal({ room, onClose, onCreated }: Props) {
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && create()}
-                    className="w-full mb-1 bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                    className="w-full mb-1 bg-third border border-sixth rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary transition-colors duration-100"
                 />
                 {error && <p className="text-xs text-danger mt-1.5">{error}</p>}
 
                 <div className="flex gap-2 mt-5">
                     <button
                         onClick={onClose}
-                        className="flex-1 px-4 py-2 rounded bg-surface-raised hover:bg-surface-subtle text-text-secondary text-sm font-medium transition-colors duration-100"
+                        className="flex-1 px-4 py-2 rounded bg-fifth hover:bg-sixth text-text-secondary text-sm font-medium transition-colors duration-100"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={create}
                         disabled={busy || !name.trim()}
-                        className="flex-1 px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex-1 px-4 py-2 rounded bg-accent-primary hover:bg-accent-secondary text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {busy ? 'Creating…' : 'Create'}
                     </button>

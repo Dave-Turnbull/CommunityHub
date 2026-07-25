@@ -55,7 +55,7 @@ export function InviteModal({ room, onClose }: Props) {
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
             <div
-                className="w-full max-w-md bg-surface-panel rounded-lg p-6 shadow-2xl"
+                className="w-full max-w-md bg-second rounded-lg p-6 shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
             >
                 <h2 className="text-lg font-semibold text-text-primary mb-1">Invite people to {room.name}</h2>
@@ -69,11 +69,11 @@ export function InviteModal({ room, onClose }: Props) {
                         readOnly
                         value={inviteLink}
                         onFocus={(e) => e.target.select()}
-                        className="flex-1 bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-muted"
+                        className="flex-1 bg-third border border-sixth rounded px-3 py-2 text-sm text-text-muted"
                     />
                     <button
                         onClick={copyLink}
-                        className="px-4 py-2 rounded bg-surface-raised hover:bg-surface-subtle text-text-secondary text-sm font-medium transition-colors duration-100 flex-shrink-0"
+                        className="px-4 py-2 rounded bg-fifth hover:bg-sixth text-text-secondary text-sm font-medium transition-colors duration-100 flex-shrink-0"
                     >
                         {copied ? 'Copied!' : 'Copy'}
                     </button>
@@ -93,12 +93,12 @@ export function InviteModal({ room, onClose }: Props) {
                         placeholder="name@example.com"
                         onChange={(e) => setEmail(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && send()}
-                        className="flex-1 bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                        className="flex-1 bg-third border border-sixth rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary transition-colors duration-100"
                     />
                     <button
                         onClick={send}
                         disabled={busy}
-                        className="px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-4 py-2 rounded bg-accent-primary hover:bg-accent-secondary text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {busy ? 'Sending…' : 'Invite'}
                     </button>
@@ -126,7 +126,7 @@ export function InviteModal({ room, onClose }: Props) {
 
                 <button
                     onClick={onClose}
-                    className="w-full mt-5 px-4 py-2 rounded bg-surface-raised hover:bg-surface-subtle text-text-secondary text-sm font-medium transition-colors duration-100"
+                    className="w-full mt-5 px-4 py-2 rounded bg-fifth hover:bg-sixth text-text-secondary text-sm font-medium transition-colors duration-100"
                 >
                     Done
                 </button>

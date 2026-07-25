@@ -17,8 +17,8 @@ export default function RoomCreate({ auth, rooms }: SharedProps) {
             <div className="flex flex-col h-screen">
                 <RoomRail rooms={rooms} currentUserId={auth.user.id} />
 
-                <main className="flex-1 min-h-0 grid place-items-center bg-surface-canvas px-4">
-                    <div className="w-full max-w-md bg-surface-panel rounded-lg p-8 shadow-2xl">
+                <main className="flex-1 min-h-0 grid place-items-center bg-primary px-4">
+                    <div className="w-full max-w-md bg-second rounded-lg p-8 shadow-2xl">
                         <h1 className="text-2xl font-bold text-text-primary text-center mb-1">
                             Create a room
                         </h1>
@@ -35,7 +35,7 @@ export default function RoomCreate({ auth, rooms }: SharedProps) {
                                     value={data.name}
                                     onChange={(e) => setData('name', e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && submit()}
-                                    className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                                    className="w-full bg-third border border-sixth rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary transition-colors duration-100"
                                     autoFocus
                                 />
                                 {errors.name && (
@@ -52,7 +52,7 @@ export default function RoomCreate({ auth, rooms }: SharedProps) {
                                     onChange={(e) => setData('icon_url', e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && submit()}
                                     placeholder="https://…"
-                                    className="w-full bg-surface-inset border border-surface-subtle rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-brand transition-colors duration-100"
+                                    className="w-full bg-third border border-sixth rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary transition-colors duration-100"
                                 />
                                 {errors.icon_url && (
                                     <p className="text-xs text-danger mt-1">{errors.icon_url}</p>
@@ -62,7 +62,7 @@ export default function RoomCreate({ auth, rooms }: SharedProps) {
                             <button
                                 onClick={submit}
                                 disabled={processing || !data.name.trim()}
-                                className="w-full px-4 py-2 rounded bg-brand hover:bg-brand-hover text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full px-4 py-2 rounded bg-accent-primary hover:bg-accent-secondary text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {processing ? 'Creating…' : 'Create Room'}
                             </button>

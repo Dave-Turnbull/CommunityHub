@@ -319,17 +319,31 @@ assuming something is undocumented.
   `borderWidth`/`fontSize`/`fontWeight`/`fontFamily` theme keys at CSS custom
   properties defined in `resources/css/app.css` (scoped to `[data-theme="classic"]`,
   the one theme ever expressed as an actual CSS rule); ordinary utility classes
-  (`bg-surface-panel`, `rounded-lg`, `text-text-muted`) resolve through them. Never
-  hardcode a raw hex color or pixel radius/border value in a component — reach for
-  an existing token, or add one to `app.css`/`tailwind.config.js` if it doesn't
-  exist yet. On top of that static layer, Settings' Appearance panel
+  (`bg-second`, `rounded-lg`, `text-text-muted`) resolve through them. The six
+  background tones are top-level color keys named by prominence, largest-covered-
+  area first — `primary` (main content pane) → `second` → `third` → `fourth` →
+  `fifth` → `sixth` (borders/dividers) — not by component or elevation metaphor.
+  The accent color is `accent-primary`/`accent-secondary`/`accent-tertiary` (a
+  color *family*, not "DEFAULT/hover/muted" — `secondary` shows up as more than
+  just a hover state, e.g. the room-rail's active-room background). Major chrome
+  regions (`RoomRail`, `ChannelSidebar`/`DMSidebar`, `MemberList`, `UserPanel`,
+  and the `MessageInput` compose box) also carry a `border-panel
+  border-panel-border` pair (directional on the sidebar/rail/member-list edges,
+  all sides on the standalone compose box), quarter-pixel-stepped and at 0
+  width in every preset except `black` (where the background scale alone can't
+  tell adjacent panels apart) — see docs/theming.md's "Panel border" section
+  before assuming a 0-width border on one of those components is dead code;
+  it's a real, theme-controlled affordance. Never hardcode a raw hex color or pixel
+  radius/border value in a component — reach for an existing token, or add one
+  to `app.css`/`tailwind.config.js` if it doesn't exist yet. On top of that
+  static layer, Settings' Appearance panel
   (`AppearanceSettings`) lets a signed-in user pick a built-in preset (`classic`/
-  `midnight`/`ocean`/`light`, defined as pure data in `resources/js/services/
-  theme.ts` — no CSS block per preset) and tweak individual variables on top,
-  persisted server-side (`ThemePreference`) and applied at runtime via
+  `midnight`/`ocean`/`light`/`black`, defined as pure data in `resources/js/
+  services/theme.ts` — no CSS block per preset) and tweak individual variables on
+  top, persisted server-side (`ThemePreference`) and applied at runtime via
   `document.documentElement.style.setProperty()`, which is what actually shows the
   chosen theme on every page. See `docs/theming.md` for the full token reference
-  (the surface elevation scale, text/accent/status colors, radius and border-width
+  (the background scale, text/accent/status colors, radius and border-width
   scale), how the preset/override system and its backend allow-list
   (`App\Support\Theme\ThemeTokens`) work, and how to add another preset or token.
   Utility classes are applied inline in JSX, not extracted into `@layer components`

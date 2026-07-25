@@ -30,13 +30,19 @@ describe('AppearanceSettings', () => {
         expect(screen.getByText('Ocean')).toBeInTheDocument()
         expect(screen.getByText('Light')).toBeInTheDocument()
 
-        expect(screen.getByText('Surfaces')).toBeInTheDocument()
+        expect(screen.getByText('Backgrounds')).toBeInTheDocument()
         expect(screen.getByText('Typography')).toBeInTheDocument()
         expect(screen.getByText('Corner Rounding')).toBeInTheDocument()
         expect(screen.getByText('Border Width')).toBeInTheDocument()
+        expect(screen.getByText('Panel Border')).toBeInTheDocument()
 
-        expect(screen.getByLabelText('Accent')).toBeInTheDocument()
+        expect(screen.getByLabelText('Accent — Primary')).toBeInTheDocument()
+        expect(screen.getByLabelText('Accent — Secondary')).toBeInTheDocument()
+        expect(screen.getByLabelText('Accent — Tertiary')).toBeInTheDocument()
         expect(screen.getByLabelText('Font family')).toBeInTheDocument()
+        expect(screen.getByLabelText('Panel border width')).toBeInTheDocument()
+        expect(screen.getByLabelText('Panel border width (number)')).toBeInTheDocument()
+        expect(screen.getByLabelText('Panel border color')).toBeInTheDocument()
     })
 
     it('applies the fetched theme to the document root on load', async () => {
@@ -47,7 +53,7 @@ describe('AppearanceSettings', () => {
         render(<AppearanceSettings />)
         await screen.findByText('Classic')
 
-        expect(document.documentElement.style.getPropertyValue('--color-brand')).toBe('14 165 233')
+        expect(document.documentElement.style.getPropertyValue('--color-accent-primary')).toBe('14 165 233')
     })
 
     it('clicking a preset applies it immediately and saves it after a debounce', async () => {
@@ -57,7 +63,7 @@ describe('AppearanceSettings', () => {
         vi.useFakeTimers()
         fireEvent.click(screen.getByText('Midnight'))
 
-        expect(document.documentElement.style.getPropertyValue('--color-brand')).toBe('139 92 246')
+        expect(document.documentElement.style.getPropertyValue('--color-accent-primary')).toBe('139 92 246')
         expect(api.updateThemePreference).not.toHaveBeenCalled()
 
         await vi.advanceTimersByTimeAsync(500)
@@ -70,9 +76,9 @@ describe('AppearanceSettings', () => {
         await screen.findByText('Classic')
 
         vi.useFakeTimers()
-        fireChange(screen.getByLabelText('Accent'), '#00ff00')
+        fireChange(screen.getByLabelText('Accent — Primary'), '#00ff00')
 
-        expect(document.documentElement.style.getPropertyValue('--color-brand')).toBe('0 255 0')
+        expect(document.documentElement.style.getPropertyValue('--color-accent-primary')).toBe('0 255 0')
         // Untouched variables keep the preset's own value.
         expect(document.documentElement.style.getPropertyValue('--radius-md')).toBe('4px')
 
@@ -81,7 +87,7 @@ describe('AppearanceSettings', () => {
         expect(api.updateThemePreference).toHaveBeenCalledTimes(1)
         expect(api.updateThemePreference).toHaveBeenCalledWith({
             preset: 'classic',
-            overrides: { '--color-brand': '0 255 0' },
+            overrides: { '--color-accent-primary': '0 255 0' },
         })
     })
 
@@ -99,6 +105,50 @@ describe('AppearanceSettings', () => {
         expect(api.updateThemePreference).toHaveBeenCalledWith({
             preset: 'classic',
             overrides: { '--radius-lg': '20px' },
+        })
+    })
+
+    it('applying the pure black preset turns on a hairline panel border', async () => {
+        vi.mocked(api.fetchThemePreference).mockResolvedValue({ preset: 'black', overrides: {} })
+
+        render(<AppearanceSettings />)
+        await screen.findByText('Classic')
+
+        expect(document.documentElement.style.getPropertyValue('--panel-border-width')).toBe('0.25px')
+        expect(document.documentElement.style.getPropertyValue('--panel-border-color')).toBe('30 30 30')
+    })
+
+    it('changing the panel border width slider updates its CSS variable in quarter-pixel steps', async () => {
+        render(<AppearanceSettings />)
+        await screen.findByText('Classic')
+
+        vi.useFakeTimers()
+        fireChange(screen.getByLabelText('Panel border width'), '0.75')
+
+        expect(document.documentElement.style.getPropertyValue('--panel-border-width')).toBe('0.75px')
+
+        await vi.advanceTimersByTimeAsync(500)
+
+        expect(api.updateThemePreference).toHaveBeenCalledWith({
+            preset: 'classic',
+            overrides: { '--panel-border-width': '0.75px' },
+        })
+    })
+
+    it('changing the paired panel border width number input updates the same CSS variable', async () => {
+        render(<AppearanceSettings />)
+        await screen.findByText('Classic')
+
+        vi.useFakeTimers()
+        fireChange(screen.getByLabelText('Panel border width (number)'), '2')
+
+        expect(document.documentElement.style.getPropertyValue('--panel-border-width')).toBe('2px')
+
+        await vi.advanceTimersByTimeAsync(500)
+
+        expect(api.updateThemePreference).toHaveBeenCalledWith({
+            preset: 'classic',
+            overrides: { '--panel-border-width': '2px' },
         })
     })
 

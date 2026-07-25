@@ -23,6 +23,8 @@ export interface ThemeVariable {
     max?: number
     step?: number
     options?: ThemeSelectOption[]
+    /** `control: 'slider'` only — also render a paired, editable number input alongside the slider. */
+    showNumberInput?: boolean
 }
 
 export const FONT_FAMILY_OPTIONS: ThemeSelectOption[] = [
@@ -40,20 +42,29 @@ const FONT_WEIGHT_OPTIONS: ThemeSelectOption[] = [100, 200, 300, 400, 500, 600, 
 const SIZE_SLIDER = { control: 'slider' as const, unit: 'rem' as const, min: 0.5, max: 3, step: 0.0625 }
 const RADIUS_SLIDER = { control: 'slider' as const, unit: 'px' as const, min: 0, max: 32, step: 1 }
 const BORDER_NUMBER = { control: 'number' as const, unit: 'px' as const, min: 0, max: 8, step: 1 }
+// Fine-grained quarter-pixel control (0, 0.25, 0.5, ...) — a hairline panel
+// border is meant to be adjustable finer than a whole pixel at a time, unlike
+// the integer-stepped border widths above.
+const PANEL_BORDER_WIDTH_SLIDER = {
+    control: 'slider' as const, unit: 'px' as const, min: 0, max: 4, step: 0.25, showNumberInput: true,
+}
 
 export const THEME_VARIABLES: ThemeVariable[] = [
-    // Accent
-    { key: '--color-brand', label: 'Accent', group: 'Accent', control: 'color' },
-    { key: '--color-brand-hover', label: 'Accent (hover)', group: 'Accent', control: 'color' },
-    { key: '--color-brand-muted', label: 'Accent (muted)', group: 'Accent', control: 'color' },
+    // Accent — a color family, not "DEFAULT/hover/muted": `secondary` shows
+    // up in more than just hover states (e.g. the active room-rail
+    // indicator), so it's named for what it is rather than when it's used.
+    { key: '--color-accent-primary', label: 'Accent — Primary', group: 'Accent', control: 'color' },
+    { key: '--color-accent-secondary', label: 'Accent — Secondary', group: 'Accent', control: 'color' },
+    { key: '--color-accent-tertiary', label: 'Accent — Tertiary', group: 'Accent', control: 'color' },
 
-    // Surfaces — the six-step elevation scale, see docs/theming.md
-    { key: '--surface-app', label: 'App background', group: 'Surfaces', control: 'color' },
-    { key: '--surface-inset', label: 'Inset surface', group: 'Surfaces', control: 'color' },
-    { key: '--surface-panel', label: 'Panel surface', group: 'Surfaces', control: 'color' },
-    { key: '--surface-canvas', label: 'Canvas', group: 'Surfaces', control: 'color' },
-    { key: '--surface-raised', label: 'Raised surface', group: 'Surfaces', control: 'color' },
-    { key: '--surface-subtle', label: 'Subtle surface / borders', group: 'Surfaces', control: 'color' },
+    // Backgrounds — six tones, ordered by how much of the screen each one
+    // typically covers, largest first. See docs/theming.md.
+    { key: '--primary', label: 'Primary background', group: 'Backgrounds', control: 'color' },
+    { key: '--second', label: 'Secondary background', group: 'Backgrounds', control: 'color' },
+    { key: '--third', label: 'Third background', group: 'Backgrounds', control: 'color' },
+    { key: '--fourth', label: 'Fourth background', group: 'Backgrounds', control: 'color' },
+    { key: '--fifth', label: 'Fifth background', group: 'Backgrounds', control: 'color' },
+    { key: '--sixth', label: 'Sixth background (borders)', group: 'Backgrounds', control: 'color' },
 
     // Text
     { key: '--text-primary', label: 'Primary text', group: 'Text', control: 'color' },
@@ -99,10 +110,18 @@ export const THEME_VARIABLES: ThemeVariable[] = [
     // more precise than typing the value.
     { key: '--border-width-default', label: 'Default border width', group: 'Border Width', ...BORDER_NUMBER },
     { key: '--border-width-thick', label: 'Thick border width', group: 'Border Width', ...BORDER_NUMBER },
+
+    // Panel border — the outer edge of a major chrome region (sidebar/top
+    // bar/member list). 0 width by default in every preset except `black`,
+    // where the background scale can't differentiate panels on its own —
+    // see docs/theming.md.
+    { key: '--panel-border-width', label: 'Panel border width', group: 'Panel Border', ...PANEL_BORDER_WIDTH_SLIDER },
+    { key: '--panel-border-color', label: 'Panel border color', group: 'Panel Border', control: 'color' },
 ]
 
 export const THEME_GROUPS = [
-    'Accent', 'Surfaces', 'Text', 'Status & Feedback', 'Typography', 'Corner Rounding', 'Border Width',
+    'Accent', 'Backgrounds', 'Text', 'Status & Feedback', 'Typography', 'Corner Rounding', 'Border Width',
+    'Panel Border',
 ] as const
 
 export const DEFAULT_PRESET = 'classic'
@@ -135,15 +154,15 @@ const HAIRLINE_BORDERS = {
 export const THEME_PRESETS: Record<string, Record<string, string>> = {
     // The look this app has always had — see resources/css/app.css.
     classic: {
-        '--color-brand': '88 101 242',
-        '--color-brand-hover': '71 82 196',
-        '--color-brand-muted': '78 80 88',
-        '--surface-app': '15 16 21',
-        '--surface-inset': '23 25 31',
-        '--surface-panel': '30 32 40',
-        '--surface-canvas': '37 39 47',
-        '--surface-raised': '46 48 56',
-        '--surface-subtle': '56 58 66',
+        '--color-accent-primary': '88 101 242',
+        '--color-accent-secondary': '71 82 196',
+        '--color-accent-tertiary': '78 80 88',
+        '--primary': '37 39 47',
+        '--second': '30 32 40',
+        '--third': '23 25 31',
+        '--fourth': '15 16 21',
+        '--fifth': '46 48 56',
+        '--sixth': '56 58 66',
         '--text-primary': '242 243 245',
         '--text-secondary': '181 186 193',
         '--text-muted': '128 132 142',
@@ -165,18 +184,20 @@ export const THEME_PRESETS: Record<string, Record<string, string>> = {
         '--radius-2xl': '16px',
         '--radius-3xl': '24px',
         ...HAIRLINE_BORDERS,
+        '--panel-border-width': '0px',
+        '--panel-border-color': '56 58 66',
     },
     // Deep violet accent on a near-black scale, softer/rounder than classic.
     midnight: {
-        '--color-brand': '139 92 246',
-        '--color-brand-hover': '124 58 237',
-        '--color-brand-muted': '76 67 89',
-        '--surface-app': '11 10 18',
-        '--surface-inset': '19 18 32',
-        '--surface-panel': '26 24 48',
-        '--surface-canvas': '33 31 59',
-        '--surface-raised': '42 39 73',
-        '--surface-subtle': '54 49 89',
+        '--color-accent-primary': '139 92 246',
+        '--color-accent-secondary': '124 58 237',
+        '--color-accent-tertiary': '76 67 89',
+        '--primary': '33 31 59',
+        '--second': '26 24 48',
+        '--third': '19 18 32',
+        '--fourth': '11 10 18',
+        '--fifth': '42 39 73',
+        '--sixth': '54 49 89',
         '--text-primary': '244 242 251',
         '--text-secondary': '195 189 224',
         '--text-muted': '138 131 171',
@@ -198,18 +219,20 @@ export const THEME_PRESETS: Record<string, Record<string, string>> = {
         '--radius-2xl': '24px',
         '--radius-3xl': '32px',
         ...HAIRLINE_BORDERS,
+        '--panel-border-width': '0px',
+        '--panel-border-color': '54 49 89',
     },
     // Cool teal/blue accent, tighter corners, cooler-toned grays.
     ocean: {
-        '--color-brand': '14 165 233',
-        '--color-brand-hover': '2 132 199',
-        '--color-brand-muted': '59 85 104',
-        '--surface-app': '10 20 24',
-        '--surface-inset': '15 30 36',
-        '--surface-panel': '20 40 50',
-        '--surface-canvas': '26 50 63',
-        '--surface-raised': '33 62 77',
-        '--surface-subtle': '43 77 94',
+        '--color-accent-primary': '14 165 233',
+        '--color-accent-secondary': '2 132 199',
+        '--color-accent-tertiary': '59 85 104',
+        '--primary': '26 50 63',
+        '--second': '20 40 50',
+        '--third': '15 30 36',
+        '--fourth': '10 20 24',
+        '--fifth': '33 62 77',
+        '--sixth': '43 77 94',
         '--text-primary': '234 246 250',
         '--text-secondary': '169 200 211',
         '--text-muted': '111 147 161',
@@ -231,18 +254,20 @@ export const THEME_PRESETS: Record<string, Record<string, string>> = {
         '--radius-2xl': '10px',
         '--radius-3xl': '12px',
         ...HAIRLINE_BORDERS,
+        '--panel-border-width': '0px',
+        '--panel-border-color': '43 77 94',
     },
     // The one light theme — proves the token set generalizes past "dark UI".
     light: {
-        '--color-brand': '79 70 229',
-        '--color-brand-hover': '67 56 202',
-        '--color-brand-muted': '165 166 246',
-        '--surface-app': '243 244 246',
-        '--surface-inset': '255 255 255',
-        '--surface-panel': '255 255 255',
-        '--surface-canvas': '249 250 251',
-        '--surface-raised': '238 240 243',
-        '--surface-subtle': '217 220 225',
+        '--color-accent-primary': '79 70 229',
+        '--color-accent-secondary': '67 56 202',
+        '--color-accent-tertiary': '165 166 246',
+        '--primary': '249 250 251',
+        '--second': '255 255 255',
+        '--third': '255 255 255',
+        '--fourth': '243 244 246',
+        '--fifth': '238 240 243',
+        '--sixth': '217 220 225',
         '--text-primary': '17 24 39',
         '--text-secondary': '75 85 99',
         '--text-muted': '156 163 175',
@@ -264,6 +289,47 @@ export const THEME_PRESETS: Record<string, Record<string, string>> = {
         '--radius-2xl': '10px',
         '--radius-3xl': '12px',
         ...HAIRLINE_BORDERS,
+        '--panel-border-width': '0px',
+        '--panel-border-color': '217 220 225',
+    },
+    // True OLED black: every background tone is pure black — only the grey
+    // border/divider tone and off-white text give the UI any shape at all.
+    // This is the one preset where the background scale alone can't tell
+    // adjacent panels apart, so panel-border-width turns on (a hairline
+    // 0.25px) instead of the 0px every other preset uses — see docs/theming.md.
+    black: {
+        '--color-accent-primary': '47 129 247',
+        '--color-accent-secondary': '31 111 235',
+        '--color-accent-tertiary': '77 77 77',
+        '--primary': '0 0 0',
+        '--second': '0 0 0',
+        '--third': '0 0 0',
+        '--fourth': '0 0 0',
+        '--fifth': '0 0 0',
+        '--sixth': '82 82 82',
+        '--text-primary': '245 245 245',
+        '--text-secondary': '179 179 179',
+        '--text-muted': '128 128 128',
+        '--text-link': '77 166 255',
+        '--text-link-hover': '128 193 255',
+        '--status-online': '46 160 67',
+        '--status-idle': '210 153 34',
+        '--status-dnd': '248 81 73',
+        '--status-offline': '110 118 129',
+        '--color-danger': '248 81 73',
+        '--color-success': '46 160 67',
+        '--color-inverse': '255 255 255',
+        '--font-family-sans': "'Inter', system-ui, sans-serif",
+        ...TYPE_SCALE,
+        '--radius-sm': '0px',
+        '--radius-md': '2px',
+        '--radius-lg': '4px',
+        '--radius-xl': '6px',
+        '--radius-2xl': '8px',
+        '--radius-3xl': '10px',
+        ...HAIRLINE_BORDERS,
+        '--panel-border-width': '0.25px',
+        '--panel-border-color': '30 30 30',
     },
 }
 
@@ -278,6 +344,7 @@ export const THEME_PRESET_META: ThemePresetMeta[] = [
     { key: 'midnight', label: 'Midnight', description: 'Deep violet accent, soft rounded corners.' },
     { key: 'ocean', label: 'Ocean', description: 'Cool blue-teal accent, tighter corners.' },
     { key: 'light', label: 'Light', description: 'A bright, high-contrast light theme.' },
+    { key: 'black', label: 'Pure Black', description: 'Pure black backgrounds, grey borders, off-white text.' },
 ]
 
 /** The full, resolved value for every token: the preset's value, then any per-variable override on top. */
