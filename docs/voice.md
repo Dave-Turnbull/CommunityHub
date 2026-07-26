@@ -1,5 +1,9 @@
 # Voice
 
+[← All docs](README.md) · See also: [service-layer.md](service-layer.md) ·
+[capabilities-and-channel-types.md](capabilities-and-channel-types.md) ·
+[traps.md](traps.md#voice--see-voicemd-for-the-full-design-these-traps-sit-inside)
+
 ## Scope and orchestration model
 
 Every dm/group `Conversation` always has voice available — a first-class, always-on

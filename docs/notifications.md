@@ -1,5 +1,9 @@
 # Notifications
 
+[← All docs](README.md) · See also: [service-layer.md](service-layer.md) ·
+[conversations-and-invites.md](conversations-and-invites.md) ·
+[voice.md](voice.md)
+
 ## Delivery foundation
 
 Every user has a private `App.Models.User.{id}` channel (`routes/channels.php`),

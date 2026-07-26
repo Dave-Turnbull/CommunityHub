@@ -1,5 +1,8 @@
 # Capabilities, Channel types, and Channel management
 
+[← All docs](README.md) · See also: [service-layer.md](service-layer.md) ·
+[roles-and-permissions.md](roles-and-permissions.md) · [voice.md](voice.md)
+
 ## Overview
 
 What a channel or conversation can *do* is governed by a capability system with two

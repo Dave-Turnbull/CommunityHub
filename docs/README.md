@@ -3,10 +3,22 @@
 Formal, standalone reference documentation for specific subsystems and features. These
 files describe how the code currently works — they are not changelogs or narrated
 histories of how a feature was built. For repo-wide orientation (stack, directory map,
-run commands, testing, known traps), see `CLAUDE.md` at the project root.
+run commands, testing conventions), see `CLAUDE.md` at the project root.
+
+This page is the hub every doc links back to. Every file here (plus `CLAUDE.md`) starts
+with a `[← All docs](README.md) · See also: ...` line and, where relevant, ends with
+cross-links to the docs it most overlaps with — follow those rather than searching, they
+encode the actual dependency graph between subsystems.
+
+**New to the repo?** Start at [quickstart.md](quickstart.md), not here.
 
 ## Index
 
+- [quickstart.md](quickstart.md) — boot the stack, seed demo data, make one real
+  change and watch it go out over HTTP and the WebSocket. Read this first.
+- [traps.md](traps.md) — every non-obvious gotcha already hit in this codebase,
+  grouped by subsystem, so it doesn't get hit twice. `CLAUDE.md`'s own traps section
+  is now just a short index into this file.
 - [capabilities-and-channel-types.md](capabilities-and-channel-types.md) — the
   Feature/ChannelType capability system, built-in channel types, and channel
   create/update/delete management.

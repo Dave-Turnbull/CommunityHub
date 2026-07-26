@@ -1,5 +1,9 @@
 # Status, custom status, and the status popover
 
+[← All docs](README.md) · See also:
+[capabilities-and-channel-types.md](capabilities-and-channel-types.md) ·
+[service-layer.md](service-layer.md)
+
 ## Schema
 
 `users.status` is one column with 5 possible values: `online`, `idle`, `dnd`,

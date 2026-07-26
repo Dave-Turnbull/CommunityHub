@@ -1,5 +1,9 @@
 # Service layer
 
+[← All docs](README.md) · See also:
+[capabilities-and-channel-types.md](capabilities-and-channel-types.md) ·
+[voice.md](voice.md) · [roles-and-permissions.md](roles-and-permissions.md)
+
 ## Purpose
 
 A Feature's actual server-side operations live in a companion `{Operation}Service`
