@@ -1,5 +1,9 @@
 # Roles & permissions (RBAC)
 
+[← All docs](README.md) · See also:
+[capabilities-and-channel-types.md](capabilities-and-channel-types.md) ·
+[service-layer.md](service-layer.md)
+
 ## Schema
 
 - `Role` (`roles` table) is scoped by a nullable `room_id` — a room-scoped role

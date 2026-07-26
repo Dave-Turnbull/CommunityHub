@@ -1,5 +1,9 @@
 # Messages: windowed pagination, caching, optimistic mutations
 
+[← All docs](README.md) · See also: [service-layer.md](service-layer.md) ·
+[conversations-and-invites.md](conversations-and-invites.md) ·
+[capabilities-and-channel-types.md](capabilities-and-channel-types.md)
+
 How a text channel's or conversation's history is paged, how much of it the client
 holds at once, where already-fetched pages are cached, and how reader-triggered
 mutations are applied before the server confirms them.

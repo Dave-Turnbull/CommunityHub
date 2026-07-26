@@ -1,5 +1,10 @@
 # Conversations and invites
 
+[← All docs](README.md) · See also:
+[messages-and-pagination.md](messages-and-pagination.md) ·
+[roles-and-permissions.md](roles-and-permissions.md) ·
+[notifications.md](notifications.md)
+
 ## Message scoping
 
 Messages are scoped by either `channel_id` OR `conversation_id`, never both.

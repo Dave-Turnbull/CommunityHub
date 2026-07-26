@@ -1,5 +1,7 @@
 # Theming
 
+[← All docs](README.md) · See also: [service-layer.md](service-layer.md)
+
 The visual look of the app — background/text colors, corner rounding, border stroke
 widths, and typography — is expressed as a fixed set of CSS custom properties, not as
 literal values scattered through components. Component code only ever reaches for a
