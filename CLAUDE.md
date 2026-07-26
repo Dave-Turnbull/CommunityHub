@@ -702,6 +702,23 @@ mechanism this app doesn't have yet) and deserves its own explicit go-ahead.
   page access. This needs its own explicit design discussion before any code
   — don't start it as a side effect of touching `ChannelTypeRegistry`.
 
+## Deploying behind a reverse proxy
+
+`docker-compose.yml`'s `app`/`postgres`/`redis`/`reverb`/`mailpit`/`vite` ports are
+bound to `127.0.0.1` on the host, not `0.0.0.0` — none of them should ever be reachable
+directly from outside the host. Put a reverse proxy in front of the host and route it
+to `127.0.0.1:8000` (HTTP/Inertia/API) and `127.0.0.1:8080` (Reverb — needs WebSocket
+`Upgrade`/`Connection` headers passed through, since Reverb isn't behind the app's
+`nginx` container). `coturn`'s ports are the one exception left bound to `0.0.0.0` —
+WebRTC media relay is UDP/TCP, not something an HTTP reverse proxy can front, so it
+must stay directly reachable by real clients. `bootstrap/app.php` trusts `*` for
+`trustProxies()` specifically because of this — that's only safe as long as the port
+bindings above stay loopback-only. If you ever need to expose one of those ports
+publicly again, narrow `trustProxies()` to the actual proxy IP/CIDR first. Also set,
+per-environment, not in this file: `APP_URL` (real public URL), `SANCTUM_STATEFUL_DOMAINS`
+(real domain), `SESSION_SECURE_COOKIE=true`, `VITE_REVERB_HOST`/`VITE_REVERB_SCHEME`/
+`TURN_PUBLIC_HOST` (the public domain instead of `localhost`).
+
 ## Env vars that matter
 
 `APP_NAME` (default `CommunityHub` — the one knob for the display name; see the
