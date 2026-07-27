@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\Channel;
 use App\Models\Role;
+use App\Policies\ChannelPolicy;
 use App\Services\TextMessageService;
 use App\Support\Permission;
 use App\Support\PermissionChecker;
@@ -47,7 +48,7 @@ class ChannelController extends Controller
             'members'                          => $members,
             'custom_emojis'                    => $room->customEmojis,
             'messages'                         => $messages,
-            'can_manage_channels'              => Gate::allows('create', [Channel::class, $room]),
+            'creatable_channel_types'          => app(ChannelPolicy::class)->creatableTypeKeys($user, $room),
             'can_manage_roles'                 => Gate::allows('create', [Role::class, $room]),
             'can_manage_channel_visibility'    => Gate::allows('manageVisibility', $channel),
             // Whether the viewer holds ManageMembers/BanMembers at all — not

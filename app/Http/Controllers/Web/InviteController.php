@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Models\Channel;
 use App\Models\RoomInvite;
 use App\Models\User;
+use App\Support\ChannelTypes\ChannelTypeRegistry;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -23,7 +25,10 @@ class InviteController extends Controller
         if ($user = $request->user()) {
             $room = $invite->accept($user);
 
-            $first = $room->channels()->where('type', 'text')->first();
+            $first = $room->channels()
+                ->whereIn('type', ChannelTypeRegistry::typeKeysWithCapability('text.read'))
+                ->get()
+                ->first(fn (Channel $channel) => $channel->isVisibleTo($user));
 
             return redirect($first ? "/channels/{$first->id}" : '/');
         }

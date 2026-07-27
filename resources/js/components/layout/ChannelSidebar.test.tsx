@@ -107,12 +107,26 @@ describe('ChannelSidebar', () => {
         expect(screen.queryByTitle('Manage roles')).not.toBeInTheDocument()
     })
 
-    it('shows the add-channel button when canManageChannels is true', () => {
+    it('shows the add-channel button when creatableChannelTypes is non-empty', () => {
         render(
-            <ChannelSidebar room={room} channels={[]} activeChannelId="" currentUser={user} recentCustomStatuses={[]} canManageChannels />
+            <ChannelSidebar
+                room={room} channels={[]} activeChannelId="" currentUser={user} recentCustomStatuses={[]}
+                creatableChannelTypes={['text']}
+            />
         )
 
         expect(screen.getByTitle('Add channel')).toBeInTheDocument()
+    })
+
+    it('hides the add-channel button when creatableChannelTypes is empty', () => {
+        render(
+            <ChannelSidebar
+                room={room} channels={[]} activeChannelId="" currentUser={user} recentCustomStatuses={[]}
+                creatableChannelTypes={[]}
+            />
+        )
+
+        expect(screen.queryByTitle('Add channel')).not.toBeInTheDocument()
     })
 
     it('shows a roles link to /rooms/{id}/roles when canManageRoles is true', () => {

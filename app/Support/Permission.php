@@ -29,6 +29,22 @@ enum Permission: string
     case ManageRoom     = 'manage_room';
     case ManageRoles    = 'manage_roles';
     case ManageChannels = 'manage_channels';
+
+    /**
+     * Room-scoped. Gates *creating* a channel whose ChannelType::category()
+     * is 'mod' (announcement today; a future 'reports' type would fall
+     * under it automatically with no code change here) — ManageChannels
+     * alone no longer authorizes creating a mod-category channel. This
+     * permission also *implies* ManageChannels (creating standard-category
+     * channels, and all non-create channel management: edit/delete/reorder)
+     * — see ChannelPolicy::canManageChannels(). Splitting a narrower,
+     * independently-delegatable permission out of ManageChannels mirrors
+     * ManageChannelVisibility's precedent, but unlike that permission this
+     * one is a superset, not a sibling: holding it grants everything
+     * ManageChannels grants, plus mod-category creation.
+     */
+    case ManageModChannels = 'manage_mod_channels';
+
     case ManageMembers  = 'manage_members';
     case BanMembers     = 'ban_members';
     case ManageMessages = 'manage_messages';

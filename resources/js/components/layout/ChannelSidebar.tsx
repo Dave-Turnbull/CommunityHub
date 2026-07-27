@@ -15,7 +15,7 @@ interface Props {
     activeChannelId: string
     currentUser: User
     recentCustomStatuses: RecentCustomStatus[]
-    canManageChannels?: boolean
+    creatableChannelTypes?: string[]
     canManageRoles?: boolean
 }
 
@@ -39,7 +39,7 @@ function DefaultChannelRow({ channel, active }: { channel: Channel; active: bool
 }
 
 export function ChannelSidebar({
-    room, channels, activeChannelId, currentUser, recentCustomStatuses, canManageChannels, canManageRoles,
+    room, channels, activeChannelId, currentUser, recentCustomStatuses, creatableChannelTypes = [], canManageRoles,
 }: Props) {
     const [inviting, setInviting] = useState(false)
     const [creatingChannel, setCreatingChannel] = useState(false)
@@ -69,7 +69,7 @@ export function ChannelSidebar({
                             🛡
                         </Link>
                     )}
-                    {canManageChannels && (
+                    {creatableChannelTypes.length > 0 && (
                         <button
                             onClick={() => setCreatingChannel(true)}
                             title="Add channel"
@@ -94,6 +94,7 @@ export function ChannelSidebar({
             {creatingChannel && (
                 <CreateChannelModal
                     room={room}
+                    creatableTypes={creatableChannelTypes}
                     onClose={() => setCreatingChannel(false)}
                     onCreated={(channel) => addChannel(room.id, channel)}
                 />

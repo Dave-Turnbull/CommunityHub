@@ -144,12 +144,15 @@ class ChannelVisibilityTest extends TestCase
         $room = Room::factory()->create();
         $channel = Channel::factory()->for($room)->create();
         [$user, $role] = $this->memberWithRole($room, Permission::ManageChannelVisibility);
-        // Owner (rank INF) always outranks a room-scoped actor and must be
-        // included too — see ChannelVisibilityHierarchyTest for that guard.
+        // Owner (rank INF) and the seeded Moderator role (position 50, see
+        // Role::seedDefaultsForRoom()) both outrank a default-position (0)
+        // room-scoped actor and must be included too — see
+        // ChannelVisibilityHierarchyTest for that guard.
         $ownerRoleId = $room->roles()->where('is_system', true)->where('is_default', false)->first()->id;
+        $moderatorRoleId = $room->roles()->where('name', 'Moderator')->first()->id;
 
         $response = $this->actingAs($user)->patchJson("/api/channels/{$channel->id}", [
-            'visibility_role_ids' => [$role->id, $ownerRoleId],
+            'visibility_role_ids' => [$role->id, $ownerRoleId, $moderatorRoleId],
         ]);
 
         $response->assertOk();

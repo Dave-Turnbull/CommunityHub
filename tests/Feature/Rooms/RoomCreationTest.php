@@ -56,6 +56,19 @@ class RoomCreationTest extends TestCase
         $this->assertCount(2, $room->channels);
     }
 
+    public function test_default_channels_get_settings_seeded_from_their_channel_type(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->post('/rooms', ['name' => 'My Cool Room']);
+
+        $room = Room::where('name', 'My Cool Room')->firstOrFail();
+
+        foreach ($room->channels as $channel) {
+            $this->assertSame([], $channel->settings);
+        }
+    }
+
     public function test_room_name_is_required(): void
     {
         $user = User::factory()->create();

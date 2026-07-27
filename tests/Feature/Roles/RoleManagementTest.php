@@ -116,6 +116,43 @@ class RoleManagementTest extends TestCase
         );
     }
 
+    public function test_a_roles_channel_categories_can_be_granted_and_replaced(): void
+    {
+        $room = Room::factory()->create();
+        $user = $this->memberWithManageRoles($room);
+        $role = Role::factory()->for($room)->create(['position' => 10]);
+
+        $this->actingAs($user)->patchJson("/api/roles/{$role->id}", [
+            'channel_categories' => ['mod', 'standard'],
+        ])->assertOk();
+
+        $this->assertEqualsCanonicalizing(
+            ['mod', 'standard'],
+            $role->fresh()->channelCategories->pluck('category')->all()
+        );
+
+        // A second update fully replaces the set, same as permissions.
+        $this->actingAs($user)->patchJson("/api/roles/{$role->id}", [
+            'channel_categories' => ['standard'],
+        ])->assertOk();
+
+        $this->assertSame(['standard'], $role->fresh()->channelCategories->pluck('category')->all());
+    }
+
+    public function test_an_unknown_channel_category_is_rejected(): void
+    {
+        $room = Room::factory()->create();
+        $user = $this->memberWithManageRoles($room);
+        $role = Role::factory()->for($room)->create(['position' => 10]);
+
+        $response = $this->actingAs($user)->patchJson("/api/roles/{$role->id}", [
+            'channel_categories' => ['not-a-real-category'],
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertEmpty($role->fresh()->channelCategories);
+    }
+
     public function test_the_administrator_permission_cannot_be_granted_to_a_custom_role(): void
     {
         $room = Room::factory()->create();
@@ -301,9 +338,12 @@ class RoleManagementTest extends TestCase
             ->firstOrFail();
         $unmanageable = Role::factory()->for($room)->create(['position' => 50]);
         $unmanageable->grant(Permission::ManageRoles);
+        // Every room seeds a Moderator role (is_system: false), which counts as a
+        // custom role reorder must include — see Role::seedDefaultsForRoom().
+        $moderator = $room->roles()->where('name', 'Moderator')->firstOrFail();
 
         $response = $this->actingAs($user)->patchJson("/api/rooms/{$room->id}/roles/reorder", [
-            'role_ids' => [$unmanageable->id, $actorRole->id],
+            'role_ids' => [$unmanageable->id, $actorRole->id, $moderator->id],
         ]);
 
         $response->assertForbidden();
@@ -318,15 +358,21 @@ class RoleManagementTest extends TestCase
             ->firstOrFail();
         $low = Role::factory()->for($room)->create(['position' => 10]);
         $mid = Role::factory()->for($room)->create(['position' => 20]);
+        // Every room seeds a Moderator role (is_system: false), which counts as a
+        // custom role reorder must include — see Role::seedDefaultsForRoom(). The
+        // actor's own role (position 50) outranks-or-equals Moderator's seeded
+        // position (50), so including it here doesn't change the 200 expectation.
+        $moderator = $room->roles()->where('name', 'Moderator')->firstOrFail();
 
         $response = $this->actingAs($user)->patchJson("/api/rooms/{$room->id}/roles/reorder", [
-            'role_ids' => [$low->id, $mid->id, $actorRole->id],
+            'role_ids' => [$low->id, $mid->id, $actorRole->id, $moderator->id],
         ]);
 
         $response->assertOk();
-        $this->assertSame(3, $low->fresh()->position);
-        $this->assertSame(2, $mid->fresh()->position);
-        $this->assertSame(1, $actorRole->fresh()->position);
+        $this->assertSame(4, $low->fresh()->position);
+        $this->assertSame(3, $mid->fresh()->position);
+        $this->assertSame(2, $actorRole->fresh()->position);
+        $this->assertSame(1, $moderator->fresh()->position);
     }
 
     public function test_reordering_rejects_a_role_from_another_room(): void

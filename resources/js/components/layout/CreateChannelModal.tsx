@@ -1,23 +1,42 @@
 import { useState } from 'react'
 import { createChannel } from '@/services/api'
-import { KNOWN_CHANNEL_TYPES } from '@/services/channelTypes'
+import {
+    CHANNEL_CATEGORY_LABELS, KNOWN_CHANNEL_CATEGORIES, KNOWN_CHANNEL_TYPES, type ChannelTypeDescriptor,
+} from '@/services/channelTypes'
 import type { Channel, Room } from '@/types'
 
 interface Props {
     room: Room
+    creatableTypes: string[]
     onClose: () => void
     onCreated: (channel: Channel) => void
 }
 
-export function CreateChannelModal({ room, onClose, onCreated }: Props) {
+function groupByCategory(descriptors: ChannelTypeDescriptor[]): [string, ChannelTypeDescriptor[]][] {
+    const grouped = new Map<string, ChannelTypeDescriptor[]>()
+    for (const descriptor of descriptors) {
+        const list = grouped.get(descriptor.category) ?? []
+        list.push(descriptor)
+        grouped.set(descriptor.category, list)
+    }
+
+    return Array.from(grouped.entries()).sort(
+        ([a], [b]) => KNOWN_CHANNEL_CATEGORIES.indexOf(a) - KNOWN_CHANNEL_CATEGORIES.indexOf(b)
+    )
+}
+
+export function CreateChannelModal({ room, creatableTypes, onClose, onCreated }: Props) {
+    const availableTypes = KNOWN_CHANNEL_TYPES.filter((d) => creatableTypes.includes(d.key))
+    const sections = groupByCategory(availableTypes)
+
     const [name, setName] = useState('')
-    const [type, setType] = useState(KNOWN_CHANNEL_TYPES[0]?.key ?? 'text')
+    const [type, setType] = useState(availableTypes[0]?.key ?? '')
     const [topic, setTopic] = useState('')
     const [error, setError] = useState<string | null>(null)
     const [busy, setBusy] = useState(false)
 
     const create = async () => {
-        if (!name.trim() || busy) return
+        if (!name.trim() || !type || busy) return
 
         setBusy(true)
         setError(null)
@@ -44,26 +63,35 @@ export function CreateChannelModal({ room, onClose, onCreated }: Props) {
             >
                 <h2 className="text-lg font-semibold text-text-primary mb-4">Create channel</h2>
 
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2">
-                    Channel type
-                </p>
-                <div className="flex gap-2 mb-4">
-                    {KNOWN_CHANNEL_TYPES.map((descriptor) => (
-                        <button
-                            key={descriptor.key}
-                            onClick={() => setType(descriptor.key)}
-                            className={
-                                'flex-1 flex flex-col items-center gap-1 py-2 rounded border text-sm transition-colors duration-100 ' +
-                                (type === descriptor.key
-                                    ? 'border-accent-primary bg-fifth text-text-primary'
-                                    : 'border-sixth text-text-muted hover:text-text-primary')
-                            }
-                        >
-                            <span className="text-lg">{descriptor.icon}</span>
-                            {descriptor.key}
-                        </button>
-                    ))}
-                </div>
+                {availableTypes.length === 0 ? (
+                    <p className="text-sm text-text-muted mb-4">You don't have permission to create any channel type.</p>
+                ) : (
+                    sections.map(([category, descriptors]) => (
+                        <div key={category} className="mb-4">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2">
+                                {CHANNEL_CATEGORY_LABELS[category] ?? category}
+                            </p>
+                            <div className="flex gap-2">
+                                {descriptors.map((descriptor) => (
+                                    <button
+                                        key={descriptor.key}
+                                        onClick={() => setType(descriptor.key)}
+                                        title={descriptor.description}
+                                        className={
+                                            'flex-1 flex flex-col items-center gap-1 py-2 rounded border text-sm transition-colors duration-100 ' +
+                                            (type === descriptor.key
+                                                ? 'border-accent-primary bg-fifth text-text-primary'
+                                                : 'border-sixth text-text-muted hover:text-text-primary')
+                                        }
+                                    >
+                                        <span className="text-lg">{descriptor.icon}</span>
+                                        {descriptor.key}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    ))
+                )}
 
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2">
                     Channel name
@@ -98,7 +126,7 @@ export function CreateChannelModal({ room, onClose, onCreated }: Props) {
                     </button>
                     <button
                         onClick={create}
-                        disabled={busy || !name.trim()}
+                        disabled={busy || !name.trim() || !type}
                         className="flex-1 px-4 py-2 rounded bg-accent-primary hover:bg-accent-secondary text-inverse text-sm font-medium transition-colors duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {busy ? 'Creating…' : 'Create'}

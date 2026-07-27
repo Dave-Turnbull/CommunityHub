@@ -56,6 +56,7 @@ class RoomController extends Controller
             'name'     => 'general',
             'type'     => 'text',
             'position' => 0,
+            'settings' => ChannelTypeRegistry::for('text')?->defaultSettings() ?? [],
         ]);
 
         Channel::create([
@@ -63,6 +64,7 @@ class RoomController extends Controller
             'name'     => 'Voice Chat',
             'type'     => 'voice',
             'position' => 1,
+            'settings' => ChannelTypeRegistry::for('voice')?->defaultSettings() ?? [],
         ]);
 
         return redirect("/channels/{$channel->id}");

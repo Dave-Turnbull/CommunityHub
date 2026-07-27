@@ -1,7 +1,9 @@
 # Capabilities, Channel types, and Channel management
 
 [← All docs](README.md) · See also: [service-layer.md](service-layer.md) ·
-[roles-and-permissions.md](roles-and-permissions.md) · [voice.md](voice.md)
+[roles-and-permissions.md](roles-and-permissions.md) · [voice.md](voice.md) ·
+[architecture-vision.md](architecture-vision.md) ·
+[build-a-channel-type.md](build-a-channel-type.md)
 
 ## Overview
 
@@ -66,6 +68,31 @@ Interface: `App\Support\ChannelTypes\ChannelType`.
   array is valid and means the type is granted nothing, not even reading messages.
 - `defaultSettings(): array` — seed value for `Channel.settings` when a channel of this
   type is created with none supplied.
+- `category(): string` — a free-form classification string, same convention as `key()`
+  (no PHP/DB enum). Only `'standard'` and `'mod'` are used by built-in types today. Drives
+  creation-time permission gating — see "Category-based creation gating" below.
+- `description(): string` — short help text shown next to this type in
+  `CreateChannelModal`.
+
+### Category-based creation gating
+
+`ChannelPolicy::create(User $user, Room $room, ?string $type = null)` branches on the
+requested type's `category()`: a `'mod'`-category type (`announcement` today; a future
+`'reports'` type would fall under it automatically with no code change here) requires
+`Permission::ManageModChannels`. Every other category, plus all non-create channel
+management (edit/delete/reorder/visibility), is gated by `Permission::ManageChannels` as
+before. `ManageModChannels` *implies* `ManageChannels` — a role holding it can also create
+`'standard'`-category channels and manage any existing channel. On top of those two
+bucket permissions, a role can also hold an explicit per-category grant
+(`RoleChannelCategory`) authorizing creation of just one category on its own — see
+`docs/roles-and-permissions.md` for the full permission writeup, including the Roles UI's
+category checklist.
+
+`ChannelPolicy::creatableTypeKeys(User $user, Room $room): array` computes every
+registered, user-creatable type key (excluding `conversation`) the viewer may create —
+this backs `Web\ChannelController::show`'s `creatable_channel_types` Inertia prop, which
+`ChannelSidebar`/`CreateChannelModal` use to show only the "+ Add Channel" affordance and
+type options the viewer is actually permitted to create.
 
 `FeatureRegistry::resolveGrants(array $requested): array` expands every group into its
 atomic members once, at the point something asks. Enforcement code never resolves
@@ -89,12 +116,12 @@ Registered in `App\Providers\ChannelTypeServiceProvider::boot()` — a dedicated
 has an established pattern to imitate: register its own `ChannelType` implementation
 from its own provider, nothing else in the app needs to change.
 
-| Type | Capabilities |
-|---|---|
-| `text` | `['text.all']` |
-| `announcement` | `['text.all']` |
-| `voice` | `['voice.all']` |
-| `conversation` (`HybridConversationType`) | `['text.all', 'voice.all']` |
+| Type | Capabilities | Category |
+|---|---|---|
+| `text` | `['text.all']` | `standard` |
+| `announcement` | `['text.all']` | `mod` |
+| `voice` | `['voice.all']` | `standard` |
+| `conversation` (`HybridConversationType`) | `['text.all', 'voice.all']` | `standard` (inert — never user-creatable, see below) |
 
 `channels.type` is a free string with no DB-level enum constraint. `routes/channels.php`'s
 voice broadcast-auth gates check `hasCapability('voice.join')` rather than a literal
@@ -115,8 +142,9 @@ channel-scoped equivalents do — conversations have no special-cased bypass.
 ## Frontend mirror
 
 `resources/js/services/channelTypes.tsx` is the single registry — one
-`ChannelTypeDescriptor` per type: `key/label/icon/order/capabilities/isTextCapable`,
-plus optional `Content` and `SidebarItem` components.
+`ChannelTypeDescriptor` per type:
+`key/label/icon/order/category/description/capabilities/isTextCapable`, plus optional
+`Content` and `SidebarItem` components.
 
 - `capabilities` mirrors the backend registration but is informational only today —
   there is no JS-side `FeatureRegistry`/group-expansion port (see "Planned work" in
@@ -134,7 +162,9 @@ plus optional `Content` and `SidebarItem` components.
   the type system, is where a type's existence is declared.
 - `KNOWN_CHANNEL_TYPES` (the static list backing `CreateChannelModal`'s type picker)
   excludes the `conversation` hybrid type (never user-creatable as a room channel) and
-  has no backend round-trip.
+  has no backend round-trip. `CreateChannelModal` filters it down to the
+  `creatable_channel_types` prop (see "Category-based creation gating" above) and groups
+  what's left by `category`.
 - `Content`'s prop shape is not one fixed interface: a channel-scoped type's `Content`
   receives `{ channel, currentUser, initialMessages }`; the `conversation` type's
   receives `{ conversation, currentUser, initialMessages }`. Each registry entry is
@@ -154,8 +184,9 @@ The backend is the only real enforcement boundary. There is no frontend equivale
 React's Rules of Hooks means a component cannot be handed a dynamic subset of hooks to
 call conditionally. Every capability that exposes *data* must be enforced on the
 specific endpoint/query returning that data. `Web\ChannelController::show` currently
-sends the room's member list to every channel page regardless of type — a known gap
-relative to a "channel types only see what they're granted" model.
+sends the room's member list, custom emojis, roles, and several `can_*` permission
+booleans to every channel page regardless of type — a known gap relative to a
+"channel types only see what they're granted" model.
 
 ## Channel management
 
@@ -172,8 +203,9 @@ added. A channel's `type` is immutable after creation.
 
 `RoomController::store`'s two hardcoded `Channel::create()` calls are still the only way
 a room's default `general`/`Voice Chat` channels come into existence — default
-scaffolding at room creation, ad-hoc creation after, via the same
-`ChannelTypeRegistry::registeredTypeKeys()` validation either way.
+scaffolding at room creation, ad-hoc creation after. The scaffolding path hardcodes its
+two type strings rather than validating against `registeredTypeKeys()` (moot for
+literals), but both paths seed `settings` from the type's `defaultSettings()`.
 
 ### Creation path, file by file
 
@@ -195,7 +227,10 @@ scaffolding at room creation, ad-hoc creation after, via the same
 Channel create/update/delete broadcast to the whole room via `room.{roomId}`, a private
 channel distinct from `channel.{id}` (per-channel presence) and `voice.channel.{id}`
 (per-channel voice roster). `routes/channels.php` gates it on `Room::hasMember`; it
-carries no roster payload, just the three CRUD events.
+carries no roster payload, just the three CRUD events. Known gap: that gate does not
+consult `Channel::isVisibleTo()`, so a role-restricted channel's create/update/delete
+still broadcasts to every room member's sidebar store (see
+[roles-and-permissions.md](roles-and-permissions.md)'s "Channel visibility").
 
 `Api\ChannelController::store`/`update`/`destroy` each dispatch
 `ChannelCreated`/`ChannelUpdated`/`ChannelDeleted` (`app/Events/`) with `->toOthers()`.

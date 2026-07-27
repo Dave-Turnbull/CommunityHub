@@ -107,4 +107,16 @@ class InviteAcceptTest extends TestCase
         $this->assertNotNull($invite->fresh()->accepted_at);
         $response->assertRedirect("/channels/{$channel->id}");
     }
+
+    public function test_accepting_lands_on_any_text_capable_channel_not_just_type_text(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create(['type' => 'announcement']);
+        $user = User::factory()->create();
+        $invite = RoomInvite::factory()->for($room)->create();
+
+        $response = $this->actingAs($user)->get("/invite/{$invite->token}");
+
+        $response->assertRedirect("/channels/{$channel->id}");
+    }
 }

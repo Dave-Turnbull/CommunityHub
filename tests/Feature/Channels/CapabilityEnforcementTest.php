@@ -42,6 +42,8 @@ class CapabilityEnforcementTest extends TestCase
             public function order(): int { return 99; }
             public function capabilities(): array { return $this->caps; }
             public function defaultSettings(): array { return []; }
+            public function category(): string { return 'standard'; }
+            public function description(): string { return ''; }
         });
     }
 

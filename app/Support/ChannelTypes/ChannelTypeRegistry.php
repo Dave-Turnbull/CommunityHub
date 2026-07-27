@@ -40,6 +40,23 @@ class ChannelTypeRegistry
     }
 
     /**
+     * Every distinct category() value among registered, user-creatable types
+     * (excludes 'conversation' — HybridConversationType is never
+     * user-creatable, see ChannelPolicy::create()). Backs validation of
+     * Role's per-category channel-creation grants (RoleChannelCategory) and
+     * the Roles UI's category checklist.
+     *
+     * @return string[]
+     */
+    public static function knownCategories(): array
+    {
+        return array_values(array_unique(array_map(
+            fn (ChannelType $t) => $t->category(),
+            array_filter(static::$types, fn (ChannelType $t) => $t->key() !== 'conversation')
+        )));
+    }
+
+    /**
      * The flat, resolved set of atomic capability keys a type grants — e.g.
      * ['text.read', 'text.send_text', ...] for a type that requested
      * ['text.all']. Empty for an unregistered type or one with no requested

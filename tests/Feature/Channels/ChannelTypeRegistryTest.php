@@ -30,6 +30,19 @@ class ChannelTypeRegistryTest extends TestCase
         $this->assertFalse(ChannelTypeRegistry::hasCapability('text', 'voice.join'));
     }
 
+    public function test_every_built_in_type_declares_a_category_and_description(): void
+    {
+        foreach (['text', 'voice', 'announcement', 'conversation'] as $key) {
+            $type = ChannelTypeRegistry::for($key);
+            $this->assertNotSame('', $type->category());
+            $this->assertNotSame('', $type->description());
+        }
+
+        $this->assertSame('mod', ChannelTypeRegistry::for('announcement')->category());
+        $this->assertSame('standard', ChannelTypeRegistry::for('text')->category());
+        $this->assertSame('standard', ChannelTypeRegistry::for('voice')->category());
+    }
+
     public function test_an_unregistered_type_is_not_text_capable(): void
     {
         $channel = Channel::factory()->create(['type' => 'drawing']);

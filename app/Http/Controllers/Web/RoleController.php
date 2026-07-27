@@ -19,6 +19,7 @@ class RoleController extends Controller
 
         $room->load([
             'roles.rolePermissions',
+            'roles.channelCategories',
             'roles.users:id,username,display_name,avatar_url',
             'members.user:id,username,display_name,avatar_url',
         ]);
