@@ -25,7 +25,12 @@ function groupByCategory(descriptors: ChannelTypeDescriptor[]): [string, Channel
     )
 }
 
-export function CreateChannelModal({ room, creatableTypes, onClose, onCreated }: Props) {
+/**
+ * The "Add channel" affordance, rendered inline in Channels/Show's main pane
+ * (in place of the channel content) rather than as a centered modal — see
+ * ChannelSidebar's "+" button / Channels/Show's `mainView` state.
+ */
+export function CreateChannelPanel({ room, creatableTypes, onClose, onCreated }: Props) {
     const availableTypes = KNOWN_CHANNEL_TYPES.filter((d) => creatableTypes.includes(d.key))
     const sections = groupByCategory(availableTypes)
 
@@ -56,13 +61,8 @@ export function CreateChannelModal({ room, creatableTypes, onClose, onCreated }:
     }
 
     return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-            <div
-                className="w-full max-w-md bg-second rounded-lg p-6 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <h2 className="text-lg font-semibold text-text-primary mb-4">Create channel</h2>
-
+        <div className="flex-1 min-h-0 overflow-y-auto bg-primary px-6 py-6">
+            <div className="max-w-2xl mx-auto">
                 {availableTypes.length === 0 ? (
                     <p className="text-sm text-text-muted mb-4">You don't have permission to create any channel type.</p>
                 ) : (

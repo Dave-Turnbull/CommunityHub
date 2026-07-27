@@ -47,7 +47,7 @@ export interface Room {
     channels?: Channel[]
     custom_emojis?: CustomEmoji[]
     // Present on ChannelPageProps.room (Web\ChannelController::show) — backs
-    // ChannelVisibilityModal's role checklist. Not loaded on every Room
+    // ChannelVisibilityPanel's role checklist. Not loaded on every Room
     // payload (e.g. the shared sidebar rooms prop).
     roles?: Role[]
 }
@@ -152,7 +152,8 @@ export interface Role {
     users?: User[]
     // Gate::allows('manage', $role) for the current viewer — hierarchy-aware
     // (Role::outranks), not just "has manage_roles somewhere" — see
-    // RolePolicy::manage. Only present on Rooms/Roles.tsx's room.roles.
+    // RolePolicy::manage. Only present on RoomRolesPanel/GlobalRolesSettings'
+    // self-fetched roles, not every Role payload.
     can_manage?: boolean
 }
 
@@ -386,10 +387,10 @@ export interface ChannelPageProps extends SharedProps {
     highlight_message_id: string | null
     // ChannelPolicy::creatableTypeKeys($user, $room) — every registered
     // channel type key the viewer may create here. Drives ChannelSidebar's
-    // "+ Add Channel" button (shown iff non-empty) and CreateChannelModal's
+    // "+ Add Channel" button (shown iff non-empty) and CreateChannelPanel's
     // per-category filtering — see Permission.ManageModChannels.
     creatable_channel_types: string[]
-    // Gate::allows('create', [Role::class, $room]) — drives ChannelSidebar's "Roles" link.
+    // Gate::allows('create', [Role::class, $room]) — drives ChannelSidebar's "Roles" button.
     can_manage_roles: boolean
     // Gate::allows('manageVisibility', $channel) — separate from
     // creatable_channel_types, see Permission.ManageChannelVisibility.
@@ -408,6 +409,13 @@ export interface DMPageProps extends SharedProps {
     highlight_message_id: string | null
 }
 
-export interface RoomRolesPageProps extends SharedProps {
-    room: Room & { roles: Role[]; members: RoomMember[] }
-}
+// Which panel Channels/Show's <main> is currently showing — 'channel' is the
+// normal channel content; the other three are ChannelSidebar-triggered panels
+// that render in place of it (see docs/capabilities-and-channel-types.md).
+// Not persisted across navigation: Inertia's default preserveState:false
+// remounts Channels/Show on every channel switch, resetting this for free.
+export type MainView =
+    | { type: 'channel' }
+    | { type: 'roles' }
+    | { type: 'create-channel' }
+    | { type: 'invite' }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { InviteModal } from '@/components/layout/InviteModal'
+import { InvitePanel } from '@/components/layout/InvitePanel'
 import * as api from '@/services/api'
 import type { Room, RoomInvite } from '@/types'
 
@@ -30,7 +30,7 @@ const invite: RoomInvite = {
     created_at: '2026-01-01T00:00:00Z',
 }
 
-describe('InviteModal', () => {
+describe('InvitePanel', () => {
     afterEach(() => {
         vi.clearAllMocks()
     })
@@ -38,7 +38,7 @@ describe('InviteModal', () => {
     it('shows a copyable invite link built from the room invite_code', async () => {
         vi.mocked(api.fetchRoomInvites).mockResolvedValue([])
 
-        render(<InviteModal room={room} onClose={vi.fn()} />)
+        render(<InvitePanel room={room} onClose={vi.fn()} />)
 
         expect(await screen.findByDisplayValue('http://localhost:3000/join/abc12345')).toBeInTheDocument()
     })
@@ -51,7 +51,7 @@ describe('InviteModal', () => {
             configurable: true,
         })
 
-        render(<InviteModal room={room} onClose={vi.fn()} />)
+        render(<InvitePanel room={room} onClose={vi.fn()} />)
 
         await user.click(screen.getByRole('button', { name: 'Copy' }))
 
@@ -62,7 +62,7 @@ describe('InviteModal', () => {
     it('lists existing pending invites on open', async () => {
         vi.mocked(api.fetchRoomInvites).mockResolvedValue([invite])
 
-        render(<InviteModal room={room} onClose={vi.fn()} />)
+        render(<InvitePanel room={room} onClose={vi.fn()} />)
 
         expect(await screen.findByText('pending@example.com')).toBeInTheDocument()
     })
@@ -72,7 +72,7 @@ describe('InviteModal', () => {
         vi.mocked(api.sendRoomInvite).mockResolvedValue(invite)
         const user = userEvent.setup()
 
-        render(<InviteModal room={room} onClose={vi.fn()} />)
+        render(<InvitePanel room={room} onClose={vi.fn()} />)
 
         await user.type(screen.getByPlaceholderText('name@example.com'), 'pending@example.com')
         await user.click(screen.getByRole('button', { name: 'Invite' }))
@@ -88,7 +88,7 @@ describe('InviteModal', () => {
         })
         const user = userEvent.setup()
 
-        render(<InviteModal room={room} onClose={vi.fn()} />)
+        render(<InvitePanel room={room} onClose={vi.fn()} />)
 
         await user.type(screen.getByPlaceholderText('name@example.com'), 'existing@example.com')
         await user.click(screen.getByRole('button', { name: 'Invite' }))
@@ -101,7 +101,7 @@ describe('InviteModal', () => {
         vi.mocked(api.revokeRoomInvite).mockResolvedValue(undefined)
         const user = userEvent.setup()
 
-        render(<InviteModal room={room} onClose={vi.fn()} />)
+        render(<InvitePanel room={room} onClose={vi.fn()} />)
 
         await screen.findByText('pending@example.com')
         await user.click(screen.getByRole('button', { name: 'Revoke' }))

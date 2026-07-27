@@ -59,7 +59,7 @@ class GalleryChannelType implements ChannelType
   [roles-and-permissions.md](roles-and-permissions.md)'s "Channel creation is
   category-gated".
 - `description()` — short help text shown next to this type in
-  `CreateChannelModal`.
+  `CreateChannelPanel`.
 
 Register it in `app/Providers/ChannelTypeServiceProvider::boot()`:
 

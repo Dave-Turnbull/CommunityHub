@@ -182,13 +182,16 @@ Permission::ManageMembers, $room)` — membership remains sufficient (any member
 invite, unchanged from before), with `ManageMembers` added as an override so
 instance-wide/room staff who hold it can invite even into a room they haven't joined.
 
-`Web\RoleController::index` (`GET /rooms/{room}/roles`) is the room role-management page
-(`Rooms/Roles.tsx`); `Api\RoleController::indexGlobal` (`GET /api/settings/roles`) is its
-instance-wide equivalent, backing the Roles tab in Settings
-(`components/settings/GlobalRolesSettings.tsx`) — see "Global (instance-wide) roles"
-below. Both surfaces render the same `RoleCard` component
-(`resources/js/components/roles/RoleCard.tsx`), which is scope-agnostic — every API
-call it makes is keyed by role id, not room id.
+`Api\RoleController::index` (`GET /api/rooms/{room}/roles`) backs the room
+role-management UI — `RoomRolesPanel.tsx`, one of the inline panels
+`Channels/Show` swaps into its main pane in place of the channel content (see
+`docs/capabilities-and-channel-types.md`), self-fetched rather than threaded
+through Inertia props. `Api\RoleController::indexGlobal` (`GET
+/api/settings/roles`) is its instance-wide equivalent, backing the Roles tab in
+Settings (`components/settings/GlobalRolesSettings.tsx`) — see "Global
+(instance-wide) roles" below. Both surfaces render the same `RoleCard`
+component (`resources/js/components/roles/RoleCard.tsx`), which is
+scope-agnostic — every API call it makes is keyed by role id, not room id.
 
 ## Hierarchy
 
@@ -267,21 +270,22 @@ branching on `$role->room`'s truthiness, closing that gap — see
 `GlobalRoleTest::test_removing_a_users_only_global_role_the_default_member_role_is_blocked`
 and its neighboring tests.
 
-On the frontend, `RoleCard`'s `removeMember`, the page's `removeRole`, and
-`moveCustomRole` (reorder) all follow their optimistic local update with
-`router.reload({ only: ['room'] })` — the component's `roles` state is otherwise seeded
-once from the `room` prop and would not see server-side side effects otherwise. Reorder
-needs this for a different reason than remove/delete: shifting positions can change
-which roles the viewer outranks (and therefore `can_manage`) even for roles not directly
-touched, and the optimistic update only patches `position`.
+On the frontend, `RoleCard`'s `removeMember`, and `RoomRolesPanel`/`GlobalRolesSettings`'s
+`removeRole` and `moveCustomRole` (reorder) all follow their optimistic local update with
+a `reload()` — a refetch of `fetchRoomRoles`/`fetchGlobalRoles` — since both panels'
+`roles` state is otherwise seeded once on mount and would not see server-side side
+effects otherwise. Reorder needs this for a different reason than remove/delete:
+shifting positions can change which roles the viewer outranks (and therefore
+`can_manage`) even for roles not directly touched, and the optimistic update only
+patches `position`.
 
 ### `can_manage` must be computed by every endpoint that returns a Role
 
 `can_manage` has to be computed and returned by every endpoint whose response the
-frontend trusts for it, not just `Web\RoleController::index`'s initial page load.
-`RoleCard` reads `role.can_manage ?? false`; any endpoint returning `Role` JSON the
-frontend renders without going through `index` first needs `Gate::allows('manage',
-$role)` computed the same way `index` does.
+frontend trusts for it, not just `Api\RoleController::index`/`indexGlobal`'s initial
+fetch. `RoleCard` reads `role.can_manage ?? false`; any endpoint returning `Role` JSON
+the frontend renders without going through `index`/`indexGlobal` first needs
+`Gate::allows('manage', $role)` computed the same way those do.
 
 ### Known, unfixed edge case
 
@@ -397,9 +401,22 @@ are unaffected until someone deliberately restricts one).
   `PermissionChecker::can($user, Permission::ManageChannelVisibility, null)`) is exempt
   from this guard entirely — they hold no room-scoped rank to compare against, mirroring
   `Role::effectiveModerationRank`'s global-supersedes-room-hierarchy pattern below. The
-  frontend (`ChannelVisibilityModal`) doesn't replicate this rank comparison — it lets
+  frontend (`ChannelVisibilityPanel`) doesn't replicate this rank comparison — it lets
   any role be toggled and surfaces the backend's 422 message on save, keeping the
   hierarchy logic in one place.
+- **UI**: `Channels/Show` renders the 🔒 button in the channel header and, when
+  `visibilityOpen`, `ChannelVisibilityPanel` directly below it — absolutely positioned
+  (`top-full` off a `relative` header wrapper) so it reads visually as sitting right
+  below the title, above the channel content, without actually pushing that content
+  down: opening/closing it must never move the message list's scroll position. Not a
+  Radix `Popover`/portal, not a centered modal, and not one of `Channels/Show`'s
+  `mainView` panels either (see `docs/capabilities-and-channel-types.md`'s "Inline
+  panels") — this is a header-attached toggle, not a full main-pane view, and it stays
+  independent of which `mainView` is showing. `Channels/Show` owns the open/closed state
+  and a `mousedown` listener scoped to the header's container ref for click-outside-to-
+  close, since there's no Radix dismissal behavior to lean on here; `ChannelVisibilityPanel`
+  itself only owns the form and closes via its `onClose` prop — clicking the lock icon
+  again, clicking outside the header, clicking Cancel, or a successful save all call it.
 
 ## Direct message restriction
 

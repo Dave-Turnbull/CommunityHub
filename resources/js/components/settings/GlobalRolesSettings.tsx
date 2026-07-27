@@ -5,13 +5,13 @@ import type { Role, User } from '@/types'
 
 /**
  * Instance-wide (global) role management — the Settings tab equivalent of
- * Rooms/Roles.tsx, backed by the same RoleCard component. Self-fetches via
+ * RoomRolesPanel.tsx, backed by the same RoleCard component. Self-fetches via
  * GET /api/settings/roles (see Api\RoleController::indexGlobal) rather than
  * Inertia props, matching NotificationPreferences/AudioSettings's pattern
  * for settings tab content. Only rendered at all when Settings/Index's
  * `can_manage_global_roles` prop is true — see SettingsController::show.
  * Global roles have no per-room hierarchy (see RolePolicy::manage's
- * `!$role->room` branch), so unlike Rooms/Roles.tsx there is no outranks()
+ * `!$role->room` branch), so unlike RoomRolesPanel.tsx there is no outranks()
  * gate on reordering — any user who can manage global roles at all can
  * reorder any of them.
  */
