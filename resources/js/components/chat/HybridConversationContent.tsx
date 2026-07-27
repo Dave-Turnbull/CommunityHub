@@ -6,6 +6,7 @@ interface Props {
     conversation: Conversation
     currentUser: User
     initialMessages: PaginatedMessages
+    initialHighlightMessageId?: string | null
 }
 
 /**
@@ -15,7 +16,9 @@ interface Props {
  * one-off page. Every dm/group Conversation grants both 'text.all' and
  * 'voice.all' via HybridConversationType, so both pieces always render.
  */
-export function HybridConversationContent({ conversation, currentUser, initialMessages }: Props) {
+export function HybridConversationContent({
+    conversation, currentUser, initialMessages, initialHighlightMessageId,
+}: Props) {
     const other = conversation.participants?.find((p) => p.user_id !== currentUser.id)
     const name = conversation.type === 'group'
         ? (conversation.name ?? 'Group Chat')
@@ -29,6 +32,7 @@ export function HybridConversationContent({ conversation, currentUser, initialMe
                 scopeType="conversation"
                 currentUser={currentUser}
                 initialMessages={initialMessages}
+                initialHighlightMessageId={initialHighlightMessageId}
                 placeholder={`Message ${name}`}
                 emptyState={
                     <div className="text-center">

@@ -31,13 +31,18 @@ class ChannelController extends Controller
             ->with('user:id,username,display_name,avatar_url,status,custom_status')
             ->get();
 
+        // A "go to message" direct link (see CLAUDE.md) redirects here with
+        // ?message= — Web\MessageController already checked visibility, so
+        // this only has to seed the window around it instead of the tail.
+        $highlightMessageId = $request->query('message');
+
         // Non-text-capable channels (voice today; future custom types) have
         // no text chat (see MessageController's matching guard) — skip
         // querying messages nobody will render. The first page comes from the
         // same service the client pages with, so its shape (and its
         // has_older/has_newer window flags) can't drift from /api's.
         $messages = $channel->isTextCapable()
-            ? TextMessageService::for($channel)->list($user)
+            ? TextMessageService::for($channel)->list($user, around: $highlightMessageId)
             : null;
 
         $channel->load('visibilityRoles');
@@ -48,6 +53,7 @@ class ChannelController extends Controller
             'members'                          => $members,
             'custom_emojis'                    => $room->customEmojis,
             'messages'                         => $messages,
+            'highlight_message_id'             => $highlightMessageId,
             'creatable_channel_types'          => app(ChannelPolicy::class)->creatableTypeKeys($user, $room),
             'can_manage_roles'                 => Gate::allows('create', [Role::class, $room]),
             'can_manage_channel_visibility'    => Gate::allows('manageVisibility', $channel),

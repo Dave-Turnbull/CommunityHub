@@ -29,8 +29,8 @@ export type SendPayload = {
 
 // ── Messages ─────────────────────────────────────────────────────────────
 
-/** One direction at a time — the endpoint rejects before+after together. */
-export type MessageCursor = { before?: string; after?: string }
+/** One cursor at a time — the endpoint rejects more than one of these together. */
+export type MessageCursor = { before?: string; after?: string; around?: string }
 
 export async function fetchChannelMessages(
     channelId: string,

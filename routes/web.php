@@ -4,6 +4,7 @@ use App\Http\Controllers\Web\AuthController;
 use App\Http\Controllers\Web\ChannelController;
 use App\Http\Controllers\Web\ConversationController;
 use App\Http\Controllers\Web\InviteController;
+use App\Http\Controllers\Web\MessageController;
 use App\Http\Controllers\Web\RoleController;
 use App\Http\Controllers\Web\RoomController;
 use App\Http\Controllers\Web\SettingsController;
@@ -34,6 +35,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/channels/{channel}',           [ChannelController::class, 'show']);
     Route::get('/conversations/{conversation}', [ConversationController::class, 'show']);
+    Route::get('/messages/{message}',           [MessageController::class, 'show']);
 
     Route::get('/settings',   [SettingsController::class, 'show']);
     Route::patch('/settings', [SettingsController::class, 'update']);

@@ -119,6 +119,31 @@ export function useChat({ scopeId, scopeType, initial, enabled = true }: Options
     }, [scopeId, fetchPage, setWindow, enabled])
 
     /**
+     * The network half of "go to message" (see CLAUDE.md) — a reply preview
+     * click or a direct link's target. Only hits the network when the
+     * message isn't already held: a reply within the currently loaded window
+     * needs no fetch, it's already there. Scrolling to and highlighting the
+     * row is the caller's job (see MessageList's scrollTo prop) — this hook
+     * only owns the window's contents, not the DOM.
+     */
+    const jumpToMessage = useCallback(async (messageId: string) => {
+        if (!enabled) return
+
+        const alreadyLoaded = (useMessages.getState().messages[scopeId] ?? [])
+            .some((m) => m.id === messageId)
+        if (alreadyLoaded) return
+
+        loading.current = true
+        try {
+            const page = await fetchPage({ around: messageId })
+            setWindow(scopeId, page)
+            await cache.seedRun(scopeId, page)
+        } finally {
+            loading.current = false
+        }
+    }, [scopeId, fetchPage, setWindow, enabled])
+
+    /**
      * A message this tab just sent. While detached, appending it would put it
      * on the far side of the window's gap (the store refuses, see
      * useMessages.add) — the reader plainly wants to be at the present, so go
@@ -144,6 +169,7 @@ export function useChat({ scopeId, scopeType, initial, enabled = true }: Options
         loadOlder,
         loadNewer,
         jumpToPresent,
+        jumpToMessage,
         commitSent,
     }
 }

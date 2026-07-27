@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, render, screen } from '@testing-library/react'
 import { MessageList } from '@/components/chat/MessageList'
 import type { Message, User } from '@/types'
 
@@ -35,6 +35,7 @@ const props = {
     onLoadOlder: vi.fn(),
     onLoadNewer: vi.fn(),
     onReply: vi.fn(),
+    onJumpToMessage: vi.fn(),
 }
 
 describe('MessageList', () => {
@@ -97,5 +98,55 @@ describe('MessageList', () => {
         expect(observe).toHaveBeenCalledTimes(3)
 
         vi.unstubAllGlobals()
+    })
+
+    describe('scrollTo — "go to message" landing', () => {
+        beforeEach(() => {
+            vi.useFakeTimers()
+            // jsdom ships no scrollIntoView — see MessageList's optional call.
+            Element.prototype.scrollIntoView = vi.fn()
+        })
+
+        afterEach(() => {
+            vi.useRealTimers()
+        })
+
+        const messages = [
+            message('1', '2026-01-01T10:00:00Z'),
+            message('2', '2026-01-01T10:01:00Z'),
+        ]
+
+        it('scrolls the target row into view', () => {
+            render(<MessageList {...props} messages={messages} scrollTo={{ id: '2', token: 1 }} />)
+
+            expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
+        })
+
+        it('flashes the target row and clears the flash after a timeout', () => {
+            const { container } = render(
+                <MessageList {...props} messages={messages} scrollTo={{ id: '2', token: 1 }} />
+            )
+
+            const row = container.querySelector('[data-message-id="2"]')!
+            expect(row.querySelector('.bg-accent-primary\\/10')).toBeInTheDocument()
+
+            act(() => { vi.advanceTimersByTime(2000) })
+
+            expect(row.querySelector('.bg-accent-primary\\/10')).not.toBeInTheDocument()
+        })
+
+        it('re-flashes when the token is bumped even for the same id', () => {
+            const { container, rerender } = render(
+                <MessageList {...props} messages={messages} scrollTo={{ id: '2', token: 1 }} />
+            )
+            act(() => { vi.advanceTimersByTime(2000) })
+
+            const row = container.querySelector('[data-message-id="2"]')!
+            expect(row.querySelector('.bg-accent-primary\\/10')).not.toBeInTheDocument()
+
+            rerender(<MessageList {...props} messages={messages} scrollTo={{ id: '2', token: 2 }} />)
+
+            expect(row.querySelector('.bg-accent-primary\\/10')).toBeInTheDocument()
+        })
     })
 })

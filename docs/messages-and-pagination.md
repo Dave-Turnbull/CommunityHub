@@ -140,6 +140,51 @@ Two details are load-bearing:
 flags: `hasNewer` also goes false when a reader pages forward to the end by hand,
 where holding position is the correct behaviour and yanking to the bottom is not.
 
+## Jumping to a message
+
+"Go to message" is the general mechanic behind landing on one specific message
+rather than paging through history to find it — a reply preview click and a
+direct link both use it today; search results and pinned messages are planned
+to reuse the same pieces rather than growing their own (see CLAUDE.md).
+
+**The `around` cursor.** `TextMessageService::list()` takes a third, mutually
+exclusive cursor alongside `before`/`after`: `around={id}` returns a window
+*centered* on that message — the target included, up to `PAGE_SIZE / 2`
+messages fetched independently on each side (`pageAround()`). Unlike
+before/after there's no single edge to walk away from, so both sides are
+filled separately; `describeWindow()`'s `has_older`/`has_newer` EXISTS checks
+are unchanged, since they only ever look at the resulting window's first/last
+row. A target that doesn't resolve (wrong id, or soft-deleted — `pageAround`
+deliberately does *not* use `withTrashed()`, since the point is to display an
+actual message, not just resolve a position) is a `422`, the same "unknown
+cursor" contract before/after already have.
+
+**Direct links.** `Web\MessageController::show` (`GET /messages/{message}`) is
+the entry point a shareable link points at: it resolves the message to its
+channel or conversation, runs the exact same visibility check the page itself
+would (`Channel::isVisibleTo()` + room membership, or
+`Conversation::hasParticipant()`), and redirects to that page with
+`?message={id}`. `ChannelController::show`/`ConversationController::show` read
+that query param and pass it as `around` to `TextMessageService::list()`
+instead of fetching the tail, plus forward it as the `highlight_message_id`
+Inertia prop. A soft-deleted message 404s at the route-model-binding step,
+before any of this runs — nothing to link to.
+
+**On the frontend**, `useChat`'s `jumpToMessage(id)` is the network half: a
+no-op if `id` is already in the current window (the common case for a reply —
+same scope, usually already loaded), otherwise a `fetchPage({ around: id })`
+that replaces the window via `setWindow`/`cache.seedRun`, the same shape
+`jumpToPresent` already uses. `TextChannelContent` wraps it with the "where to
+land" half — a `{ id, token }` highlight state (seeded from
+`initialHighlightMessageId` on mount for a direct link, updated by
+`jumpToMessageAndHighlight` for a reply click) passed to `MessageList` as
+`scrollTo`. `MessageList` scrolls the row into view
+(`Element.scrollIntoView`, optionally chained since jsdom ships none) and
+flashes it (`bg-accent-primary/10`) for two seconds; `token` bumps on every
+jump so clicking the same reply twice still re-triggers both, rather than
+being a no-op state update. `MessageRow`'s reply-context block is a button
+precisely so it has something to call `onJumpToMessage` from.
+
 ## The message cache
 
 `services/messageCache.ts` keeps pages this tab has already fetched, so changing
@@ -240,12 +285,15 @@ docker compose exec app php artisan db:seed --class=DemoConversationSeeder --for
 | --- | --- |
 | `tests/Feature/Messages/MessageWindowTest.php` | the `after` direction, both window flags, one-direction-only, unknown/deleted cursors |
 | `tests/Feature/Messages/ChannelMessageTest.php` | backwards paging, membership |
+| `tests/Feature/Messages/MessageAroundCursorTest.php` | the `around` cursor's two-sided window, unknown/deleted targets, one-cursor-only, channel + conversation |
+| `tests/Feature/Messages/MessageLinkTest.php` | `Web\MessageController::show`'s permission checks and redirect shape, deleted-message 404, the receiving page's `highlight_message_id`/windowed seed |
 | `stores/index.test.ts` | trimming from each end, the cursors it records, `add`'s gap rule, `insert` ordering |
-| `hooks/useChat.test.ts` | both directions, cache hits, `jumpToPresent`, `commitSent` while detached |
+| `hooks/useChat.test.ts` | both directions, cache hits, `jumpToPresent`, `commitSent` while detached, `jumpToMessage` (in-window no-op vs. fetch) |
 | `services/messageCache.test.ts` | whole-page-or-nothing, contiguity refusals, live/patch/drop behaviour |
 | `services/messageActions.test.ts` | prediction, reconcile, rollback, cache write-through |
-| `components/chat/MessageList.test.tsx` | row tagging for anchoring, day dividers, one sentinel per loadable direction |
-| `components/chat/TextChannelContent.test.tsx` | when the jump button shows, and what jumping does |
+| `components/chat/MessageRow.test.tsx` | reply preview click calls `onJumpToMessage`, `highlighted` renders the flash background |
+| `components/chat/MessageList.test.tsx` | row tagging for anchoring, day dividers, one sentinel per loadable direction, `scrollTo`'s scroll-into-view + timed flash |
+| `components/chat/TextChannelContent.test.tsx` | when the jump button shows, what jumping does, direct-link highlight on mount, in-window vs. out-of-window reply jumps |
 
 `resources/js/test/setup.ts` stubs `IntersectionObserver` globally — jsdom ships
 none, and `MessageList` constructs one per loadable direction, so rendering a

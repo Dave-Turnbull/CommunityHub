@@ -192,6 +192,35 @@ describe('useChat', () => {
         expect(useMessages.getState().windows['chan-1'].hasNewer).toBe(false)
     })
 
+    it('jumpToMessage does nothing when the message is already in the window', async () => {
+        const { result } = renderHook(() =>
+            useChat({ scopeId: 'chan-1', scopeType: 'channel', initial })
+        )
+
+        await act(async () => {
+            await result.current.jumpToMessage('1')
+        })
+
+        expect(api.fetchChannelMessages).not.toHaveBeenCalled()
+    })
+
+    it('jumpToMessage fetches a page centered on the target when not in the window', async () => {
+        vi.mocked(api.fetchChannelMessages).mockResolvedValue(
+            page([message('4'), message('5'), message('6')], { has_older: true, older_cursor: '4' })
+        )
+
+        const { result } = renderHook(() =>
+            useChat({ scopeId: 'chan-1', scopeType: 'channel', initial })
+        )
+
+        await act(async () => {
+            await result.current.jumpToMessage('5')
+        })
+
+        expect(api.fetchChannelMessages).toHaveBeenCalledWith('chan-1', { around: '5' })
+        expect(useMessages.getState().messages['chan-1'].map((m) => m.id)).toEqual(['4', '5', '6'])
+    })
+
     it('commitSent appends a sent message while the window is at the tail', () => {
         const { result } = renderHook(() =>
             useChat({ scopeId: 'chan-1', scopeType: 'channel', initial })

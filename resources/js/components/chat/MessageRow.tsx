@@ -12,6 +12,11 @@ interface Props {
     grouped: boolean          // same author as previous → hide avatar/header
     currentUser: User
     onReply: (m: Message) => void
+    /** "Go to message" (see CLAUDE.md) — jumps to the message a reply preview
+     * points at. Only called from the reply-context button below. */
+    onJumpToMessage?: (messageId: string) => void
+    /** Briefly flashed after a jump lands on this row — see MessageList's scrollTo. */
+    highlighted?: boolean
 }
 
 const time = (iso: string) =>
@@ -22,7 +27,7 @@ const fullTime = (iso: string) =>
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     })
 
-export function MessageRow({ message, scopeId, grouped, currentUser, onReply }: Props) {
+export function MessageRow({ message, scopeId, grouped, currentUser, onReply, onJumpToMessage, highlighted }: Props) {
     const [editing, setEditing] = useState(false)
     const [draft, setDraft] = useState(message.content ?? '')
 
@@ -45,7 +50,13 @@ export function MessageRow({ message, scopeId, grouped, currentUser, onReply }: 
     }
 
     return (
-        <div className={clsx('px-4 hover:bg-fifth transition-colors duration-75 group', grouped ? 'py-0.5' : 'pt-4 pb-0.5')}>
+        <div
+            className={clsx(
+                'px-4 hover:bg-fifth transition-colors duration-75 group',
+                grouped ? 'py-0.5' : 'pt-4 pb-0.5',
+                highlighted && 'bg-accent-primary/10',
+            )}
+        >
             <div className="flex gap-3">
                 {/* Gutter: avatar, or hover-timestamp when grouped */}
                 <div className="w-10 flex-shrink-0">
@@ -70,14 +81,19 @@ export function MessageRow({ message, scopeId, grouped, currentUser, onReply }: 
                         </div>
                     )}
 
-                    {/* Reply context */}
+                    {/* Reply context — jumps to the replied-to message (see CLAUDE.md's "go to message") */}
                     {message.reply_to && (
-                        <div className="flex items-center gap-1.5 mb-1 pl-2 border-l-2 border-sixth text-xs text-text-muted">
+                        <button
+                            type="button"
+                            onClick={() => onJumpToMessage?.(message.reply_to_id!)}
+                            className="flex items-center gap-1.5 mb-1 pl-2 border-l-2 border-sixth text-xs text-text-muted
+                                       hover:border-accent-primary hover:text-text-secondary transition-colors text-left"
+                        >
                             <span className="font-medium text-text-secondary">
                                 {message.reply_to.author?.display_name}
                             </span>
                             <span className="truncate">{message.reply_to.content}</span>
-                        </div>
+                        </button>
                     )}
 
                     {editing ? (

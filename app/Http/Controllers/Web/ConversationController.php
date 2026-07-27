@@ -25,10 +25,15 @@ class ConversationController extends Controller
 
         $conversation->load('participants.user:id,username,display_name,avatar_url,status');
 
+        // A "go to message" direct link redirects here with ?message= — see
+        // ChannelController::show for the matching Channel-side comment.
+        $highlightMessageId = $request->query('message');
+
         return Inertia::render('DM/Show', [
             'conversation' => $conversation,
             // Same service the client pages with — see ChannelController::show.
-            'messages'     => TextMessageService::for($conversation)->list($user),
+            'messages'     => TextMessageService::for($conversation)->list($user, around: $highlightMessageId),
+            'highlight_message_id' => $highlightMessageId,
         ]);
     }
 }

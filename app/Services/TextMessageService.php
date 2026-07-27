@@ -37,26 +37,31 @@ class TextMessageService
     }
 
     /**
-     * One page of history, always returned oldest-first, walking away from a
-     * cursor in exactly one direction: `$before` for older messages,
-     * `$after` for newer ones, neither for the live tail. Both directions
-     * report whether more exists on each side (`has_older`/`has_newer`), which
-     * is what lets the client hold a trimmed window of history and page back
-     * toward the present — see docs/messages-and-pagination.md.
+     * One page of history, always returned oldest-first. `$before`/`$after`
+     * walk away from a cursor in exactly one direction; `$around` instead
+     * centers the page on a specific message — the "jump to message" entry
+     * point (reply previews, direct links; search/pinned results are planned
+     * to reuse it too, see CLAUDE.md). Neither cursor given serves the live
+     * tail. Every mode reports whether more exists on each side (`has_older`/
+     * `has_newer`), which is what lets the client hold a trimmed window of
+     * history and page back toward the present — see
+     * docs/messages-and-pagination.md.
      */
-    public function list(User $user, ?string $before = null, ?string $after = null): array
+    public function list(User $user, ?string $before = null, ?string $after = null, ?string $around = null): array
     {
         $this->assertMember($user);
         abort_unless($this->entity->hasCapability('text.read'), 422, 'This channel has no text chat.');
         abort_if(
-            filled($before) && filled($after),
+            count(array_filter([$before, $after, $around], fn ($c) => filled($c))) > 1,
             422,
-            'Page in one direction at a time — pass before or after, not both.'
+            'Page in one direction at a time — pass only one of before, after, or around.'
         );
 
-        $messages = filled($after)
-            ? $this->pageAfter($after)
-            : $this->pageBefore($before);
+        $messages = match (true) {
+            filled($around) => $this->pageAround($around),
+            filled($after)  => $this->pageAfter($after),
+            default         => $this->pageBefore($before),
+        };
 
         $messages->each(fn ($m) => $m->setAttribute('reactions', $m->reactionSummary($user->id)));
 
@@ -84,6 +89,34 @@ class TextMessageService
             ->limit(self::PAGE_SIZE)
             ->get()
             ->values();
+    }
+
+    /**
+     * A window centered on a specific message, target included, both edges
+     * filled independently — unlike before/after there's no single edge to
+     * walk away from. NOT withTrashed(): the target has to be an actual,
+     * displayable message, not just a positional pivot (see cursorTimestamp
+     * below for the contrast). describeWindow()'s has_older/has_newer EXISTS
+     * checks work unchanged since they only look at the resulting window's
+     * first/last row.
+     */
+    private function pageAround(string $around): Collection
+    {
+        $target = $this->hydratedQuery()->find($around);
+
+        abort_unless($target, 422, 'Unknown message cursor.');
+
+        $radius = intdiv(self::PAGE_SIZE, 2);
+
+        $older = $this->hydratedQuery()
+            ->where('created_at', '<', $target->created_at)
+            ->latest()->limit($radius)->get()->reverse()->values();
+
+        $newer = $this->hydratedQuery()
+            ->where('created_at', '>', $target->created_at)
+            ->oldest()->limit($radius)->get()->values();
+
+        return $older->push($target)->concat($newer)->values();
     }
 
     /**

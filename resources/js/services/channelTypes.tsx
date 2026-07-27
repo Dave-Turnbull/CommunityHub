@@ -21,11 +21,14 @@ import type { Channel, ChannelType, PaginatedMessages, User } from '@/types'
  *
  * `Content`'s prop shape depends on which kind of entity this type is ever
  * used for — a Channel-scoped type's Content receives
- * `{ channel, currentUser, initialMessages }`; the 'conversation' type's
- * receives `{ conversation, currentUser, initialMessages }`. Each type is
- * only ever backed by one kind of entity, so this never needs to be a
- * discriminated union in practice — typed loosely here rather than forcing
- * generics onto a registry that doesn't need them.
+ * `{ channel, currentUser, initialMessages, initialHighlightMessageId }`;
+ * the 'conversation' type's receives the same with `conversation` instead of
+ * `channel`. `initialHighlightMessageId` is the "go to message" direct-link
+ * target (see CLAUDE.md) — only text-capable Content components need to
+ * forward it to TextChannelContent. Each type is only ever backed by one
+ * kind of entity, so this never needs to be a discriminated union in
+ * practice — typed loosely here rather than forcing generics onto a
+ * registry that doesn't need them.
  */
 export interface ChannelTypeDescriptor {
     key: string
@@ -53,11 +56,12 @@ const EMPTY_PAGE: PaginatedMessages = {
 }
 
 function TextChannelTypeContent({
-    channel, currentUser, initialMessages,
+    channel, currentUser, initialMessages, initialHighlightMessageId,
 }: {
     channel: Channel
     currentUser: User
     initialMessages: PaginatedMessages | null
+    initialHighlightMessageId?: string | null
 }) {
     return (
         <TextChannelContent
@@ -65,6 +69,7 @@ function TextChannelTypeContent({
             scopeType="channel"
             currentUser={currentUser}
             initialMessages={initialMessages ?? EMPTY_PAGE}
+            initialHighlightMessageId={initialHighlightMessageId}
             placeholder={`Message #${channel.name}`}
             emptyState={
                 <div className="text-center">

@@ -10,8 +10,8 @@ import { channelTypeDescriptor, isTextCapableChannelType } from '@/services/chan
 import type { ChannelPageProps } from '@/types'
 
 export default function ChannelShow({
-    auth, rooms, room, channel: initialChannel, members, messages: initial, creatable_channel_types, can_manage_roles,
-    can_manage_channel_visibility, can_manage_members, can_ban_members, recentCustomStatuses,
+    auth, rooms, room, channel: initialChannel, members, messages: initial, highlight_message_id, creatable_channel_types,
+    can_manage_roles, can_manage_channel_visibility, can_manage_members, can_ban_members, recentCustomStatuses,
 }: ChannelPageProps) {
     const [channel, setChannel] = useState(initialChannel)
     const [editingVisibility, setEditingVisibility] = useState(false)
@@ -74,7 +74,12 @@ export default function ChannelShow({
                         </header>
 
                         {Content ? (
-                            <Content channel={channel} currentUser={auth.user} initialMessages={initial} />
+                            <Content
+                                channel={channel}
+                                currentUser={auth.user}
+                                initialMessages={initial}
+                                initialHighlightMessageId={highlight_message_id}
+                            />
                         ) : (
                             <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
                                 This channel type has no features enabled.
