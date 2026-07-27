@@ -1,16 +1,22 @@
 import { Head, Link, useForm } from '@inertiajs/react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Tabs } from '@/components/ui/Tabs'
+import type { TabItem } from '@/components/ui/Tabs'
 import { NotificationPreferences } from '@/components/settings/NotificationPreferences'
 import { AudioSettings } from '@/components/settings/AudioSettings'
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
+import { GlobalRolesSettings } from '@/components/settings/GlobalRolesSettings'
 import type { SharedProps, User } from '@/types'
 
 interface Props extends SharedProps {
     user: User
+    // Gate::allows('create', [Role::class, null]) — only server admins/staff
+    // (anyone holding ManageRoles globally) see the Roles tab at all. See
+    // docs/roles-and-permissions.md.
+    can_manage_global_roles: boolean
 }
 
-export default function SettingsIndex({ user }: Props) {
+export default function SettingsIndex({ user, can_manage_global_roles }: Props) {
     const { data, setData, patch, processing, isDirty } = useForm({
         display_name: user.display_name,
         bio:          user.bio ?? '',
@@ -126,6 +132,9 @@ export default function SettingsIndex({ user }: Props) {
                                 label: 'Appearance',
                                 content: <AppearanceSettings />,
                             },
+                            ...(can_manage_global_roles
+                                ? [{ value: 'roles', label: 'Roles', content: <GlobalRolesSettings /> } as TabItem]
+                                : []),
                         ]}
                     />
                 </div>

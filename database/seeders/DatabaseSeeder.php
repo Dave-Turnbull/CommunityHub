@@ -7,6 +7,7 @@ use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\Message;
 use App\Models\Role;
+use App\Models\RoleAssignment;
 use App\Models\Room;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -43,6 +44,11 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $authors = ['d' => $dave, 'b' => $bove, 'p' => $peve];
+
+        $globalMember = Role::seedGlobalDefaults();
+        foreach ($authors as $author) {
+            RoleAssignment::firstOrCreate(['role_id' => $globalMember->id, 'user_id' => $author->id]);
+        }
 
         // ── Room ─────────────────────────────────────────────────────────
         $room = Room::create([

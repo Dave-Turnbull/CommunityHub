@@ -31,12 +31,16 @@ vi.mock('@/components/settings/AudioSettings', () => ({
     AudioSettings: () => null,
 }))
 
+vi.mock('@/components/settings/GlobalRolesSettings', () => ({
+    GlobalRolesSettings: () => null,
+}))
+
 const user: User = {
     id: 'user-1', username: 'alice', display_name: 'Alice', avatar_url: null, status: 'online',
     bio: 'Hello there', custom_status: 'Should not appear', custom_status_color: '#ff00aa',
 }
 
-const props = (): SharedProps & { user: User } => ({
+const props = (overrides: { can_manage_global_roles?: boolean } = {}): SharedProps & { user: User; can_manage_global_roles: boolean } => ({
     appName: 'CommunityHub',
     auth: { user },
     rooms: [],
@@ -44,6 +48,8 @@ const props = (): SharedProps & { user: User } => ({
     recentCustomStatuses: [],
     flash: {},
     user,
+    can_manage_global_roles: false,
+    ...overrides,
 })
 
 describe('Settings/Index', () => {
@@ -68,5 +74,20 @@ describe('Settings/Index', () => {
         render(<SettingsIndex {...props()} />)
 
         expect(screen.getByText('Save Changes')).toBeInTheDocument()
+    })
+
+    it('does not show a Roles tab for a user who cannot manage global roles', () => {
+        render(<SettingsIndex {...props({ can_manage_global_roles: false })} />)
+
+        expect(screen.queryByRole('tab', { name: 'Roles' })).not.toBeInTheDocument()
+    })
+
+    it('shows a Roles tab for a server admin, without changing the default active tab', () => {
+        render(<SettingsIndex {...props({ can_manage_global_roles: true })} />)
+
+        expect(screen.getByRole('tab', { name: 'Roles' })).toBeInTheDocument()
+        // Profile stays the default tab even when Roles is present — see
+        // Settings/Index.tsx's tab ordering.
+        expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('data-state', 'active')
     })
 })

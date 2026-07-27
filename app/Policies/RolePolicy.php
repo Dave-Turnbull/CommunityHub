@@ -10,8 +10,14 @@ use App\Support\PermissionChecker;
 
 class RolePolicy
 {
-    /** Create a role in $room — no Role instance exists yet to authorize against. */
-    public function create(User $user, Room $room): bool
+    /**
+     * Create a role in $room — no Role instance exists yet to authorize
+     * against. $room is null for a global/instance-wide role — ManageRoles
+     * is the same permission for both scopes (see CLAUDE.md: kept as one
+     * mechanism, not a separate global-only ability), and PermissionChecker
+     * already accepts a nullable room.
+     */
+    public function create(User $user, ?Room $room = null): bool
     {
         return PermissionChecker::can($user, Permission::ManageRoles, $room);
     }

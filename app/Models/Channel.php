@@ -3,10 +3,13 @@
 namespace App\Models;
 
 use App\Support\ChannelTypes\ChannelTypeRegistry;
+use App\Support\Permission;
+use App\Support\PermissionChecker;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Channel extends Model
@@ -30,6 +33,37 @@ class Channel extends Model
 
     public function room(): BelongsTo      { return $this->belongsTo(Room::class); }
     public function messages(): HasMany   { return $this->hasMany(Message::class); }
+
+    public function visibilityRoles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class, 'channel_role_visibility');
+    }
+
+    /**
+     * Whether $user can see this channel at all — separate from whether they
+     * can send in it. An empty visibilityRoles set means "never explicitly
+     * restricted," which is visible to every room member (opt-in
+     * restriction, so existing channels are unaffected until someone
+     * deliberately restricts one — see Permission::SeeAllChannels for the
+     * bypass and docs/roles-and-permissions.md for the hierarchy guard on
+     * who may set this list).
+     */
+    public function isVisibleTo(User $user): bool
+    {
+        if (PermissionChecker::can($user, Permission::SeeAllChannels, $this->room)) {
+            return true;
+        }
+
+        $roleIds = $this->visibilityRoles()->pluck('roles.id');
+        if ($roleIds->isEmpty()) {
+            return true;
+        }
+
+        return Role::query()
+            ->whereIn('id', $roleIds)
+            ->whereHas('assignments', fn ($q) => $q->where('user_id', $user->id))
+            ->exists();
+    }
 
     /**
      * `type` has no DB-level enum constraint (see CLAUDE.md trap #3/#30's

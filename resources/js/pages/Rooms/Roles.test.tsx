@@ -73,7 +73,7 @@ describe('Rooms/Roles', () => {
         const ownerHeading = screen.getByText('Owner')
         const card = ownerHeading.closest('div.bg-second') as HTMLElement
 
-        expect(screen.getByText(/Full access to this room/)).toBeInTheDocument()
+        expect(screen.getByText(/Full access/)).toBeInTheDocument()
         expect(within(card).queryAllByRole('checkbox')).toHaveLength(0)
     })
 

@@ -79,5 +79,12 @@ to group" notification has no associated message).
   `AuthController::login`/`register` (via `session('pending_invite_token')`, set when a
   guest visits `/invite/{token}`).
 
-`RoomPolicy::invite` checks plain `Room::hasMember`, not `PermissionChecker` — see
-`docs/roles-and-permissions.md`.
+`RoomPolicy::invite` checks `Room::hasMember` OR a global/room `ManageMembers` grant via
+`PermissionChecker` — see `docs/roles-and-permissions.md`.
+
+### Direct message restriction
+
+Starting a conversation (this file's `store`) and sending in an existing one both
+require `Permission::SendDirectMessages` — see `docs/roles-and-permissions.md`'s
+"Direct message restriction" section for the permission and the moderation workflow
+used to revoke it from a specific user.

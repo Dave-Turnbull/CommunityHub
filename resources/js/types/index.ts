@@ -46,6 +46,10 @@ export interface Room {
     invite_code: string
     channels?: Channel[]
     custom_emojis?: CustomEmoji[]
+    // Present on ChannelPageProps.room (Web\ChannelController::show) — backs
+    // ChannelVisibilityModal's role checklist. Not loaded on every Room
+    // payload (e.g. the shared sidebar rooms prop).
+    roles?: Role[]
 }
 
 export interface RoomMember {
@@ -68,6 +72,9 @@ export type PermissionKey =
     | 'ban_members'
     | 'manage_messages'
     | 'manage_emojis'
+    | 'see_all_channels'
+    | 'manage_channel_visibility'
+    | 'send_direct_messages'
 
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {
     administrator: 'Administrator',
@@ -78,6 +85,9 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
     ban_members: 'Ban Members',
     manage_messages: 'Manage Messages',
     manage_emojis: 'Manage Emojis',
+    see_all_channels: 'See All Channels',
+    manage_channel_visibility: 'Manage Channel Visibility',
+    send_direct_messages: 'Send Direct Messages',
 }
 
 export interface RolePermission {
@@ -109,6 +119,11 @@ export interface Channel {
     position: number
     voice_mode: VoiceConnectionMode
     settings: Record<string, unknown> | null
+    // Roles that may see this channel — empty/absent means visible to every
+    // room member (opt-in restriction, see Permission.SeeAllChannels/
+    // ManageChannelVisibility). Only present when the backend eager-loads it
+    // (Web\ChannelController::show), not on every Channel payload.
+    visibility_roles?: Role[]
 }
 
 export interface Attachment {
@@ -320,6 +335,14 @@ export interface ChannelPageProps extends SharedProps {
     // drives ChannelSidebar's "+ Add Channel" button and "Roles" link.
     can_manage_channels: boolean
     can_manage_roles: boolean
+    // Gate::allows('manageVisibility', $channel) — separate from
+    // can_manage_channels, see Permission.ManageChannelVisibility.
+    can_manage_channel_visibility: boolean
+    // Whether the viewer holds ManageMembers/BanMembers at all in this room
+    // — not per-target eligibility (see RoomMemberPolicy::kick/ban, checked
+    // server-side when a kick/ban is actually attempted).
+    can_manage_members: boolean
+    can_ban_members: boolean
 }
 
 export interface DMPageProps extends SharedProps {
