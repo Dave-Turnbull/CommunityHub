@@ -120,6 +120,7 @@ class ConversationController extends Controller
         Gate::authorize('addParticipants', $conversation);
 
         $user = $request->user();
+        abort_unless(PermissionChecker::can($user, Permission::SendDirectMessages), 403, 'You are not allowed to send direct messages.');
         $newIds = $this->validateParticipants($request, $user);
 
         $existingIds = $conversation->participants()->pluck('user_id')->all();

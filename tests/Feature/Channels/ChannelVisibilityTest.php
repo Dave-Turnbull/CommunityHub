@@ -155,4 +155,64 @@ class ChannelVisibilityTest extends TestCase
         $response->assertOk();
         $this->assertDatabaseHas('channel_role_visibility', ['channel_id' => $channel->id, 'role_id' => $role->id]);
     }
+
+    public function test_submitting_an_empty_visibility_list_reopens_the_channel_to_everyone(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        [$staff, $allowedRole] = $this->memberWithRole($room, Permission::ManageChannelVisibility);
+        [$deniedUser] = $this->memberWithRole($room);
+        $this->restrictTo($channel, $allowedRole);
+
+        $this->actingAs($deniedUser)->get("/channels/{$channel->id}")->assertForbidden();
+
+        $response = $this->actingAs($staff)->patchJson("/api/channels/{$channel->id}", [
+            'visibility_role_ids' => [],
+        ]);
+        $response->assertOk();
+        $this->assertDatabaseCount('channel_role_visibility', 0);
+
+        $this->actingAs($deniedUser)->get("/channels/{$channel->id}")->assertOk();
+    }
+
+    public function test_a_mixed_update_request_does_not_partially_apply_when_only_one_permission_is_held(): void
+    {
+        // Holds ManageChannels but not ManageChannelVisibility — submitting
+        // both together must be authorized as a whole, not field-by-field,
+        // so the name change never silently commits before the visibility
+        // gate rejects the request.
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create(['name' => 'original-name']);
+        [$user, $role] = $this->memberWithRole($room, Permission::ManageChannels);
+
+        $response = $this->actingAs($user)->patchJson("/api/channels/{$channel->id}", [
+            'name'                => 'renamed',
+            'visibility_role_ids' => [$role->id],
+        ]);
+
+        $response->assertForbidden();
+        $this->assertSame('original-name', $channel->fresh()->name);
+        $this->assertDatabaseCount('channel_role_visibility', 0);
+    }
+
+    public function test_a_hierarchy_violation_in_a_mixed_request_rolls_back_the_name_change_too(): void
+    {
+        // Holds both permissions this time, so authorization passes for the
+        // whole request — but the visibility list itself violates the
+        // hierarchy guard (excludes the higher-ranked Owner role), which
+        // must roll back the name change alongside it, not leave it applied.
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create(['name' => 'original-name']);
+        [$user, $role] = $this->memberWithRole($room, Permission::ManageChannels);
+        $role->grant(Permission::ManageChannelVisibility);
+
+        $response = $this->actingAs($user)->patchJson("/api/channels/{$channel->id}", [
+            'name'                => 'renamed',
+            'visibility_role_ids' => [$role->id],
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame('original-name', $channel->fresh()->name);
+        $this->assertDatabaseCount('channel_role_visibility', 0);
+    }
 }
