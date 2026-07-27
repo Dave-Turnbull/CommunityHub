@@ -68,6 +68,7 @@ export type PermissionKey =
     | 'manage_room'
     | 'manage_roles'
     | 'manage_channels'
+    | 'manage_mod_channels'
     | 'manage_members'
     | 'ban_members'
     | 'manage_messages'
@@ -76,23 +77,67 @@ export type PermissionKey =
     | 'manage_channel_visibility'
     | 'send_direct_messages'
 
+// Purely a UI grouping/labeling concern — doesn't change what any permission
+// actually does, and any role can still be granted a permission from any
+// category (see docs/roles-and-permissions.md's "Permission categories").
+// Groups RoleCard's checklist into three headed sections; a permission's
+// category is independent of which built-in role (Owner/Moderator/Member)
+// happens to be seeded with it by default.
+export type PermissionCategory = 'admin' | 'moderator' | 'user'
+
+export const PERMISSION_CATEGORY_LABELS: Record<PermissionCategory, string> = {
+    admin: 'Admin',
+    moderator: 'Moderator',
+    user: 'User',
+}
+
+export const PERMISSION_CATEGORY_ORDER: PermissionCategory[] = ['admin', 'moderator', 'user']
+
+export const PERMISSION_CATEGORIES: Record<PermissionKey, PermissionCategory> = {
+    administrator: 'admin',
+    manage_room: 'admin',
+    manage_roles: 'admin',
+    manage_mod_channels: 'admin',
+    see_all_channels: 'admin',
+    manage_channels: 'moderator',
+    manage_channel_visibility: 'moderator',
+    manage_members: 'moderator',
+    ban_members: 'moderator',
+    manage_messages: 'moderator',
+    manage_emojis: 'moderator',
+    send_direct_messages: 'user',
+}
+
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {
     administrator: 'Administrator',
     manage_room: 'Manage Room',
     manage_roles: 'Manage Roles',
-    manage_channels: 'Manage Channels',
+    manage_channels: 'Manage User Channels',
+    manage_mod_channels: 'Manage Mod Channels',
     manage_members: 'Manage Members',
     ban_members: 'Ban Members',
     manage_messages: 'Manage Messages',
     manage_emojis: 'Manage Emojis',
     see_all_channels: 'See All Channels',
     manage_channel_visibility: 'Manage Channel Visibility',
+    // Global-scope-only (checked with room = null, see App\Support\Permission)
+    // — granting this to a room-scoped role is a no-op, so RoleCard hides it
+    // entirely there and only shows it for global roles (Settings' Roles tab).
     send_direct_messages: 'Send Direct Messages',
 }
 
 export interface RolePermission {
     id: string
     permission: PermissionKey
+}
+
+// A role's explicit per-category channel-creation grant — see
+// RoleChannelCategory/ChannelPolicy::create(). `category` mirrors
+// ChannelType::category() (e.g. 'standard'/'mod'), a free string same as
+// PermissionKey's underlying values.
+export interface RoleChannelCategory {
+    id: string
+    category: string
 }
 
 export interface Role {
@@ -103,6 +148,7 @@ export interface Role {
     is_default: boolean
     is_system: boolean
     role_permissions?: RolePermission[]
+    channel_categories?: RoleChannelCategory[]
     users?: User[]
     // Gate::allows('manage', $role) for the current viewer — hierarchy-aware
     // (Role::outranks), not just "has manage_roles somewhere" — see
@@ -331,12 +377,15 @@ export interface ChannelPageProps extends SharedProps {
     // null for a voice channel — see ChannelController::show, MessageController's
     // matching guard against posting/listing text into a voice channel.
     messages: PaginatedMessages | null
-    // Gate::allows('create', [Channel::class, $room]) / [Role::class, $room] —
-    // drives ChannelSidebar's "+ Add Channel" button and "Roles" link.
-    can_manage_channels: boolean
+    // ChannelPolicy::creatableTypeKeys($user, $room) — every registered
+    // channel type key the viewer may create here. Drives ChannelSidebar's
+    // "+ Add Channel" button (shown iff non-empty) and CreateChannelModal's
+    // per-category filtering — see Permission.ManageModChannels.
+    creatable_channel_types: string[]
+    // Gate::allows('create', [Role::class, $room]) — drives ChannelSidebar's "Roles" link.
     can_manage_roles: boolean
     // Gate::allows('manageVisibility', $channel) — separate from
-    // can_manage_channels, see Permission.ManageChannelVisibility.
+    // creatable_channel_types, see Permission.ManageChannelVisibility.
     can_manage_channel_visibility: boolean
     // Whether the viewer holds ManageMembers/BanMembers at all in this room
     // — not per-target eligibility (see RoomMemberPolicy::kick/ban, checked

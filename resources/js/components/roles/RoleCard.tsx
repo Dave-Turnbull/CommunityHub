@@ -1,9 +1,32 @@
 import { useState } from 'react'
 import { addRoleMember, removeRoleMember, updateRole } from '@/services/api'
-import { PERMISSION_LABELS } from '@/types'
-import type { PermissionKey, Role } from '@/types'
+import { CHANNEL_CATEGORY_LABELS, KNOWN_CHANNEL_CATEGORIES } from '@/services/channelTypes'
+import { PERMISSION_CATEGORIES, PERMISSION_CATEGORY_LABELS, PERMISSION_CATEGORY_ORDER, PERMISSION_LABELS } from '@/types'
+import type { PermissionCategory, PermissionKey, Role } from '@/types'
 
 const ALL_PERMISSIONS = Object.keys(PERMISSION_LABELS) as PermissionKey[]
+
+/**
+ * Every permission, grouped by PERMISSION_CATEGORIES into
+ * PERMISSION_CATEGORY_ORDER's sections, excluding 'send_direct_messages' for
+ * a room-scoped role — it's checked with room = null (global-only, see
+ * App\Support\Permission), so granting it to a room role is a silent no-op.
+ * Only the global Roles tab (Settings) passes a role with room_id: null.
+ */
+function permissionsByCategory(roomScoped: boolean): [PermissionCategory, PermissionKey[]][] {
+    const visible = ALL_PERMISSIONS.filter((p) => p !== 'send_direct_messages' || !roomScoped)
+    return PERMISSION_CATEGORY_ORDER
+        .map((category): [PermissionCategory, PermissionKey[]] => [
+            category,
+            visible.filter((p) => PERMISSION_CATEGORIES[p] === category),
+        ])
+        .filter(([, permissions]) => permissions.length > 0)
+}
+
+// Every category other than 'mod' falls under the "user channels" bucket —
+// mirrors ChannelPolicy::create()'s exact `$category === 'mod'` branch, so
+// this stays correct as new non-mod categories are registered.
+const NON_MOD_CATEGORIES = KNOWN_CHANNEL_CATEGORIES.filter((c) => c !== 'mod')
 
 /**
  * Renders one role's permissions + member management. Scope-agnostic —
@@ -31,6 +54,9 @@ export function RoleCard({
     const [selected, setSelected] = useState<PermissionKey[]>(
         (role.role_permissions ?? []).map((p) => p.permission)
     )
+    const [selectedCategories, setSelectedCategories] = useState<string[]>(
+        (role.channel_categories ?? []).map((c) => c.category)
+    )
     const [saving, setSaving] = useState(false)
     const [addingUserId, setAddingUserId] = useState('')
     const [memberError, setMemberError] = useState<string | null>(null)
@@ -44,16 +70,39 @@ export function RoleCard({
 
     const togglePermission = (permission: PermissionKey) => {
         if (permission === 'administrator') return
-        setSelected((list) =>
-            list.includes(permission) ? list.filter((p) => p !== permission) : [...list, permission]
+        const enabling = !selected.includes(permission)
+
+        setSelected((list) => (enabling ? [...list, permission] : list.filter((p) => p !== permission)))
+
+        // Manage User Channels / Manage Mod Channels bulk-apply their
+        // channel-category bucket as a convenience default — each category
+        // checkbox stays independently toggleable afterward (see
+        // ChannelPolicy::create(): an explicit per-category grant always
+        // authorizes on its own, regardless of these two permissions).
+        if (permission === 'manage_channels') {
+            setSelectedCategories((cats) =>
+                enabling
+                    ? Array.from(new Set([...cats, ...NON_MOD_CATEGORIES]))
+                    : cats.filter((c) => !NON_MOD_CATEGORIES.includes(c))
+            )
+        } else if (permission === 'manage_mod_channels') {
+            setSelectedCategories((cats) =>
+                enabling ? Array.from(new Set([...cats, 'mod'])) : cats.filter((c) => c !== 'mod')
+            )
+        }
+    }
+
+    const toggleCategory = (category: string) => {
+        setSelectedCategories((cats) =>
+            cats.includes(category) ? cats.filter((c) => c !== category) : [...cats, category]
         )
     }
 
     const savePermissions = async () => {
         setSaving(true)
         try {
-            const updated = await updateRole(role.id, { permissions: selected })
-            onChange({ ...role, role_permissions: updated.role_permissions })
+            const updated = await updateRole(role.id, { permissions: selected, channel_categories: selectedCategories })
+            onChange({ ...role, role_permissions: updated.role_permissions, channel_categories: updated.channel_categories })
         } finally {
             setSaving(false)
         }
@@ -146,32 +195,54 @@ export function RoleCard({
                 </p>
             ) : (
                 <>
+                    {permissionsByCategory(role.room_id !== null).map(([category, permissions]) => (
+                        <div key={category}>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2">
+                                {PERMISSION_CATEGORY_LABELS[category]} permissions
+                            </p>
+                            <div className="grid grid-cols-2 gap-1.5 mb-3">
+                                {permissions.map((permission) => {
+                                    const isAdministrator = permission === 'administrator'
+                                    return (
+                                        <label
+                                            key={permission}
+                                            className={
+                                                'flex items-center gap-2 text-sm ' +
+                                                (isAdministrator ? 'text-text-muted' : 'text-text-secondary')
+                                            }
+                                            title={isAdministrator ? 'Only the Owner role can have Administrator' : undefined}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={!isAdministrator && selected.includes(permission)}
+                                                disabled={isAdministrator || !canManage}
+                                                onChange={() => togglePermission(permission)}
+                                            />
+                                            {PERMISSION_LABELS[permission]}
+                                        </label>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    ))}
+
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2">
-                        Permissions
+                        Channel categories this role can create
                     </p>
                     <div className="grid grid-cols-2 gap-1.5 mb-3">
-                        {ALL_PERMISSIONS.map((permission) => {
-                            const isAdministrator = permission === 'administrator'
-                            return (
-                                <label
-                                    key={permission}
-                                    className={
-                                        'flex items-center gap-2 text-sm ' +
-                                        (isAdministrator ? 'text-text-muted' : 'text-text-secondary')
-                                    }
-                                    title={isAdministrator ? 'Only the Owner role can have Administrator' : undefined}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={!isAdministrator && selected.includes(permission)}
-                                        disabled={isAdministrator || !canManage}
-                                        onChange={() => togglePermission(permission)}
-                                    />
-                                    {PERMISSION_LABELS[permission]}
-                                </label>
-                            )
-                        })}
+                        {KNOWN_CHANNEL_CATEGORIES.map((category) => (
+                            <label key={category} className="flex items-center gap-2 text-sm text-text-secondary">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedCategories.includes(category)}
+                                    disabled={!canManage}
+                                    onChange={() => toggleCategory(category)}
+                                />
+                                {CHANNEL_CATEGORY_LABELS[category] ?? category}
+                            </label>
+                        ))}
                     </div>
+
                     {canManage && (
                         <button
                             onClick={savePermissions}

@@ -37,4 +37,16 @@ interface ChannelType
 
     /** Seed value for Channel.settings when a channel of this type is created with none supplied. */
     public function defaultSettings(): array;
+
+    /**
+     * Free-form classification string — same convention as key() (no PHP/DB
+     * enum, just a string a future type is free to reuse or extend). Only
+     * 'standard' and 'mod' are used by built-in types today. Drives
+     * creation-time permission gating — see Permission::ManageModChannels
+     * and ChannelPolicy::create().
+     */
+    public function category(): string;
+
+    /** Short help text shown next to this type in the create-channel UI. */
+    public function description(): string;
 }

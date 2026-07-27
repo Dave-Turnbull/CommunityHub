@@ -23,13 +23,18 @@ class ChannelController extends Controller
 {
     public function store(Request $request, Room $room): JsonResponse
     {
-        Gate::authorize('create', [Channel::class, $room]);
-
+        // type is validated before authorization runs, not after — the
+        // policy's category-based gating (ChannelPolicy::create) needs to
+        // know the requested type. A side effect: a request with both an
+        // invalid field and an unauthorized type now gets 422, not 403 —
+        // pinned by ChannelCrudTest.
         $validated = $request->validate([
             'name'  => ['required', 'string', 'max:100'],
             'type'  => ['required', 'string', Rule::in(ChannelTypeRegistry::registeredTypeKeys())],
             'topic' => ['nullable', 'string', 'max:1024'],
         ]);
+
+        Gate::authorize('create', [Channel::class, $room, $validated['type']]);
 
         $channelType = ChannelTypeRegistry::for($validated['type']);
 

@@ -10,7 +10,7 @@ import { channelTypeDescriptor, isTextCapableChannelType } from '@/services/chan
 import type { ChannelPageProps } from '@/types'
 
 export default function ChannelShow({
-    auth, rooms, room, channel: initialChannel, members, messages: initial, can_manage_channels, can_manage_roles,
+    auth, rooms, room, channel: initialChannel, members, messages: initial, creatable_channel_types, can_manage_roles,
     can_manage_channel_visibility, can_manage_members, can_ban_members, recentCustomStatuses,
 }: ChannelPageProps) {
     const [channel, setChannel] = useState(initialChannel)
@@ -38,7 +38,7 @@ export default function ChannelShow({
                         activeChannelId={channel.id}
                         currentUser={auth.user}
                         recentCustomStatuses={recentCustomStatuses}
-                        canManageChannels={can_manage_channels}
+                        creatableChannelTypes={creatable_channel_types}
                         canManageRoles={can_manage_roles}
                     />
 

@@ -29,6 +29,7 @@ class Role extends Model
     public function room(): BelongsTo             { return $this->belongsTo(Room::class); }
     public function rolePermissions(): HasMany     { return $this->hasMany(RolePermission::class); }
     public function assignments(): HasMany         { return $this->hasMany(RoleAssignment::class); }
+    public function channelCategories(): HasMany   { return $this->hasMany(RoleChannelCategory::class); }
 
     public function users(): BelongsToMany
     {
@@ -45,6 +46,20 @@ class Role extends Model
     public function grant(Permission $permission): void
     {
         $this->rolePermissions()->firstOrCreate(['permission' => $permission->value]);
+    }
+
+    /**
+     * Whether this role holds an explicit per-category channel-creation
+     * grant for $category — independent of, and additive with,
+     * ManageChannels/ManageModChannels (see ChannelPolicy::create() and
+     * docs/roles-and-permissions.md's "Channel creation is category-gated").
+     * Lets a role be granted rights to create channels of one specific
+     * category without needing the whole ManageChannels/ManageModChannels
+     * bucket permission.
+     */
+    public function hasCategoryGrant(string $category): bool
+    {
+        return $this->channelCategories->contains('category', $category);
     }
 
     /**
@@ -106,16 +121,24 @@ class Role extends Model
     }
 
     /**
-     * Seeds the two roles every room needs: an "Owner" role (Administrator —
-     * implies every permission) and a "Member" default role (baseline, no
-     * elevated permissions yet) auto-assigned to every new member. Both are
-     * is_system: true — undeletable/unrenamable via the API, see RolePolicy.
-     * Called explicitly at every room-creation site (RoomController::store,
-     * RoomFactory, DatabaseSeeder) rather than a Room::booted() hook, matching
-     * this app's existing "no model-event magic" style (channels are seeded
-     * explicitly too).
+     * Seeds the three roles every new room starts with: an "Owner" role
+     * (Administrator — implies every permission) and a "Member" default role
+     * (baseline, no elevated permissions yet) auto-assigned to every new
+     * member, plus a "Moderator" role pre-granted the day-to-day moderation
+     * permission set (ManageChannels/ManageChannelVisibility/ManageMembers/
+     * BanMembers — see docs/roles-and-permissions.md's permission category
+     * scheme). Owner and Member are is_system: true — undeletable/
+     * unrenamable via the API, see RolePolicy. Moderator is deliberately
+     * NOT is_system and NOT auto-assigned to anyone: it's a real, ordinary
+     * custom role from the API's point of view (editable, reorderable,
+     * deletable) that just starts pre-configured rather than blank, so a
+     * room owner who wants no moderator tier can simply delete it. Called
+     * explicitly at every room-creation site (RoomController::store,
+     * RoomFactory, DatabaseSeeder) rather than a Room::booted() hook,
+     * matching this app's existing "no model-event magic" style (channels
+     * are seeded explicitly too).
      *
-     * @return array{owner: Role, member: Role}
+     * @return array{owner: Role, member: Role, moderator: Role}
      */
     public static function seedDefaultsForRoom(Room $room): array
     {
@@ -127,6 +150,17 @@ class Role extends Model
         ]);
         $owner->grant(Permission::Administrator);
 
+        $moderator = $room->roles()->create([
+            'name'       => 'Moderator',
+            'position'   => 50,
+            'is_default' => false,
+            'is_system'  => false,
+        ]);
+        $moderator->grant(Permission::ManageChannels);
+        $moderator->grant(Permission::ManageChannelVisibility);
+        $moderator->grant(Permission::ManageMembers);
+        $moderator->grant(Permission::BanMembers);
+
         $member = $room->roles()->create([
             'name'       => 'Member',
             'position'   => 0,
@@ -134,7 +168,7 @@ class Role extends Model
             'is_system'  => true,
         ]);
 
-        return ['owner' => $owner, 'member' => $member];
+        return ['owner' => $owner, 'member' => $member, 'moderator' => $moderator];
     }
 
     /**

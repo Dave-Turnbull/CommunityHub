@@ -14,14 +14,21 @@
 - `RoleAssignment` (`role_assignments`) is `(role_id, user_id)` — a user can hold
   multiple roles, room-scoped and global at once; their effective permissions are the
   union of all of them.
+- `RoleChannelCategory` (`role_channel_categories`) is a flat `(role_id, category)`
+  pivot — a role's explicit per-`ChannelType::category()` channel-creation grants, see
+  "Channel creation is category-gated" below. Same `HasUuids`-pivot convention as
+  `ChannelRoleVisibility`/`role_permissions`: written via `firstOrCreate`/`delete()` on
+  the model directly, never `BelongsToMany::attach()`/`sync()` (those bypass the
+  `creating` event `HasUuids` relies on to generate the row's id).
 
 `App\Support\Permission` is the closed enum of grantable keys: `Administrator`,
-`ManageRoom`, `ManageRoles`, `ManageChannels`, `ManageMembers`, `BanMembers`,
-`ManageMessages`, `ManageEmojis`, `SeeAllChannels`, `ManageChannelVisibility`,
-`SendDirectMessages`. **Adding a case does not make it do anything** — enforcement
-sites today: `Administrator` (implies every permission, checked first),
-`ManageChannels`/`ManageRoles` (`ChannelPolicy`/`RolePolicy`), `ManageMembers`/
-`BanMembers` (`RoomMemberPolicy` — kick/ban, see "Kick and ban" below),
+`ManageRoom`, `ManageRoles`, `ManageChannels`, `ManageModChannels`, `ManageMembers`,
+`BanMembers`, `ManageMessages`, `ManageEmojis`, `SeeAllChannels`,
+`ManageChannelVisibility`, `SendDirectMessages`. **Adding a case does not make it do
+anything** — enforcement sites today: `Administrator` (implies every permission,
+checked first), `ManageChannels`/`ManageModChannels`/`ManageRoles`
+(`ChannelPolicy`/`RolePolicy` — see "Channel creation is category-gated" below),
+`ManageMembers`/`BanMembers` (`RoomMemberPolicy` — kick/ban, see "Kick and ban" below),
 `SeeAllChannels`/`ManageChannelVisibility` (`Channel::isVisibleTo`/`ChannelPolicy::
 manageVisibility` — see "Channel visibility" below), `SendDirectMessages`
 (`Api\ConversationController::store`/`TextMessageService::authorizeSend` — see
@@ -34,6 +41,35 @@ there is no boot-time registry validating the stored string against this enum, u
 pins every case's value and fails immediately if one changes; a real rename needs a
 data migration backfilling `role_permissions.permission` alongside updating that test.
 
+## Permission categories
+
+Backend enforcement doesn't group permissions at all — `PermissionChecker::can()` treats
+every `Permission` case identically, and any role can be granted a permission from any
+category below. The grouping exists purely so the Roles UI (`RoleCard.tsx`) doesn't
+present twelve unrelated checkboxes in one flat grid — `resources/js/types/index.ts`'s
+`PERMISSION_CATEGORIES`/`PERMISSION_CATEGORY_LABELS`/`PERMISSION_CATEGORY_ORDER` (frontend
+only, no backend equivalent — nothing server-side needs to know about it) sort every
+`PermissionKey` into one of three headed sections:
+
+- **Admin** — `Administrator`, `ManageRoom`, `ManageRoles`, `ManageModChannels`,
+  `SeeAllChannels`. Instance-of-power/visibility-bypass concerns.
+- **Moderator** — `ManageChannels`, `ManageChannelVisibility`, `ManageMembers`,
+  `BanMembers`, `ManageMessages`, `ManageEmojis`. Day-to-day room moderation — this is
+  the exact permission set the seeded Moderator role (see "Default roles" below) starts
+  with, though the mapping is a label, not an enforced link: nothing stops a room owner
+  from granting a Moderator-category permission to a role that also holds Admin-category
+  ones, or vice versa.
+- **User** — `SendDirectMessages`. Baseline capabilities an ordinary member might hold.
+
+`SendDirectMessages` is also special-cased out of the checklist entirely for a
+room-scoped role (`role.room_id !== null`): it's checked with `$room = null` (see its
+docblock on `Permission` below) — `PermissionChecker::rolesFor($user, null)` only
+considers *global* roles, so granting it to a room-scoped role compiles, saves, and does
+precisely nothing. `RoleCard` only renders it for a global role (Settings' Roles tab).
+This is the concrete fix behind "why is there a Send Direct Messages permission that
+does nothing on this room role" — the permission itself is fine, it was just being
+offered somewhere it could never take effect.
+
 ## Permission resolution
 
 `App\Support\PermissionChecker::can(User $user, Permission $permission, ?Room $room =
@@ -45,14 +81,29 @@ instance-wide staff, not "staff of no particular room."
 
 ## Default roles
 
-Every room gets two `is_system: true` roles, seeded together by
-`Role::seedDefaultsForRoom(Room $room)`:
+Every new room is seeded with three roles by `Role::seedDefaultsForRoom(Room $room)`:
 
-- **Owner** — `Administrator`, assigned to the room's creator, entirely read-only (no
-  name/position/permission edit, undeletable).
-- **Member** — `is_default: true`, auto-assigned to every other joiner. Name/position
-  are fixed, but unlike Owner its permissions are editable per room (e.g. granting it
-  `manage_messages`). `administrator` is the one permission it can never hold.
+- **Owner** — `is_system: true`, `Administrator`, assigned to the room's creator,
+  entirely read-only (no name/position/permission edit, undeletable).
+- **Moderator** — an ordinary custom role (`is_system: false`, `is_default: false`) that
+  just starts pre-configured instead of blank: `ManageChannels`, `ManageChannelVisibility`,
+  `ManageMembers`, `BanMembers` (the "moderator" category from "Permission categories"
+  below). Nobody is auto-assigned to it — a room owner assigns members explicitly, same
+  as any custom role — and because it's a normal `is_system: false` row, it can be
+  renamed, reordered, re-permissioned, or deleted via the same API any other custom role
+  uses (`RolePolicy`/`Api\RoleController` don't special-case it at all). A room owner who
+  wants no moderator tier can just delete it.
+- **Member** — `is_system: true`, `is_default: true`, auto-assigned to every other
+  joiner. Name/position are fixed, but unlike Owner its permissions are editable per room
+  (e.g. granting it `manage_messages`). `administrator` is the one permission it can
+  never hold.
+
+Because Moderator is seeded at a fixed `position` (50) alongside Owner's cosmetic 100,
+any custom role created *after* room creation starts at `max(existing custom positions) +
+1` (see `Api\RoleController::store`) and so outranks Moderator by default — the existing,
+unchanged "newest custom role starts most senior" behavior, not something specific to
+Moderator. `Api\RoleController::reorder` treats Moderator as one of the room's "custom
+roles" a reorder payload must fully account for, same as any other non-system role.
 
 Roles are freely combinable — Owner holding Member too (or any other role) is valid.
 Nothing enforces exclusivity, and `PermissionChecker::can()`'s union means holding a
@@ -67,14 +118,64 @@ raw `RoomMember` directly, or it will skip role assignment.
 
 ## Enforcement points
 
-`ChannelPolicy::create(User, Room)` / `manage(User, Channel)` and `RolePolicy::create(User,
-Room)` / `manage(User, Role)` delegate to `PermissionChecker::can()`
-(`ManageChannels`/`ManageRoles` respectively). `Api\ChannelController` (store/update/
-destroy/reorder) and `Api\RoleController` (store/update/destroy/addMember/removeMember)
-are the enforcement points. `Web\ChannelController::show` computes
-`can_manage_channels`/`can_manage_roles` via `Gate::allows(...)` and passes them as
-Inertia props — `ChannelSidebar`'s affordances are purely driven by these props, with no
-separate frontend permission check.
+`ChannelPolicy::create(User, Room, ?string $type = null)` / `manage(User, Channel)` and
+`RolePolicy::create(User, Room)` / `manage(User, Role)` delegate to
+`PermissionChecker::can()` (`ManageChannels`/`ManageModChannels`/`ManageRoles`
+respectively — see "Channel creation is category-gated" below for the first two).
+`Api\ChannelController` (store/update/destroy/reorder) and `Api\RoleController`
+(store/update/destroy/addMember/removeMember) are the enforcement points.
+`Web\ChannelController::show` computes `creatable_channel_types` (via
+`ChannelPolicy::creatableTypeKeys()`) and `can_manage_roles` via `Gate::allows(...)` and
+passes them as Inertia props — `ChannelSidebar`'s affordances are purely driven by these
+props, with no separate frontend permission check.
+
+### Channel creation is category-gated
+
+`ChannelType::category()` (see `docs/capabilities-and-channel-types.md`) is `'standard'`
+(text, voice) or `'mod'` (announcement, and a future `reports` type) for every built-in
+type. `ChannelPolicy::create()` requires `ManageModChannels` to create a `'mod'`-category
+channel; `ManageChannels` alone is **not** sufficient for that — a deliberate strict split,
+unlike `ManageChannelVisibility`'s sibling relationship to `ManageChannels` below.
+`ManageModChannels` instead *implies* `ManageChannels`: a role holding it can also create
+`'standard'`-category channels and perform all non-create channel management (edit/
+delete/reorder), via `ChannelPolicy::canManageChannels()`'s
+`ManageChannels || ManageModChannels` check. In short, `ManageModChannels` is a superset
+of `ManageChannels`, not a disjoint permission — granting it is granting everything
+`ManageChannels` grants, plus mod-category creation.
+
+This was a deliberate behavior change from channel creation's pre-`ManageModChannels`
+shape, where `ManageChannels` alone gated creation of every type regardless of category:
+any room role that already held `ManageChannels` but not `ManageModChannels` lost the
+ability to create `announcement` channels the moment this permission shipped, until
+explicitly re-granted `ManageModChannels`. No automatic backfill was performed.
+
+#### Per-category grants (finer than the two bucket permissions)
+
+`RoleChannelCategory` (see "Schema" above) lets a role be granted creation rights for
+one specific category directly, without holding the whole `ManageChannels`/
+`ManageModChannels` bucket permission — e.g. a role scoped to just the `mod` category.
+`ChannelPolicy::create()` checks `PermissionChecker::hasCategoryGrant($user, $category,
+$room)` first and authorizes immediately if it matches, regardless of the two bucket
+permissions; only when there's no matching category grant does it fall through to the
+`ManageModChannels`/`canManageChannels()` check described above. This is purely
+additive — a category grant never revokes what the bucket permissions already grant,
+consistent with `PermissionChecker`'s no-explicit-deny union semantics. Category grants
+are scoped to *creation* only, same as `ManageModChannels`'s original scope — they don't
+extend to `manage()` (edit/delete/reorder of an already-existing channel).
+
+The Roles UI (`RoleCard.tsx`) renders one checkbox per
+`services/channelTypes.tsx`'s `KNOWN_CHANNEL_CATEGORIES` (today: `standard`, `mod` —
+grows automatically as new categories are registered, no UI code change needed) below
+the permission checklist. Each is independently clickable — checking/unchecking one
+edits `channel_categories` in the `PATCH /api/roles/{role}` payload directly, same
+full-replace-on-save shape as `permissions`. Checking "Manage User Channels" or "Manage
+Mod Channels" bulk-applies its bucket's categories as a *convenience default*
+(`Manage User Channels` → every non-`mod` category; `Manage Mod Channels` → `mod`) —
+unchecking the permission afterward bulk-removes the same set, but a category checked
+independently afterward stays checked regardless of the permission checkboxes' state.
+This mirrors the backend precisely: a category checkbox ticked (by either path) and
+saved is a real `RoleChannelCategory` row, evaluated on its own by `ChannelPolicy::
+create()`, not merely a visual reflection of the two permissions.
 
 `RoomPolicy::invite` checks `Room::hasMember` OR `PermissionChecker::can($user,
 Permission::ManageMembers, $room)` — membership remains sufficient (any member can

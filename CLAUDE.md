@@ -38,8 +38,15 @@ running and walks through one real change in under ten minutes.
 ## Docs
 
 `/docs` holds formal, standalone reference documentation for specific
-subsystems and features — see `docs/README.md` for the index. These files
-describe how the code currently works; they are **not** changelogs or
+subsystems and features — see `docs/README.md` for the index.
+[docs/architecture-vision.md](docs/architecture-vision.md) is the one
+intent-stating exception: the design philosophy (base-primitive Features composed
+into ChannelTypes, grants vs. parameters, the axes that stay separate) — read it
+before proposing a new Feature, ChannelType, or extension mechanism, and keep it
+consistent with any architectural change. Its hands-on companion is
+[docs/build-a-channel-type.md](docs/build-a-channel-type.md), a worked
+add-a-channel-type tutorial. Every other file in `/docs`
+describes how the code currently works; they are **not** changelogs or
 narrated histories ("this was a bug, fixed by...", "just added this
 session") — that framing belongs in a commit message or in `## Traps` below
 when it's a real gotcha worth flagging, not in `/docs`. Write `/docs` entries
@@ -612,10 +619,14 @@ short version, by group — read the full entry before touching adjacent code:
 - **New built-in channel type reusing existing Features (text/voice):**
   implement `App\Support\ChannelTypes\ChannelType` (see `docs/
   capabilities-and-channel-types.md` for the shape) with a `capabilities()` returning
-  the capability/group keys you want granted and register it in
-  `ChannelTypeServiceProvider::boot()`. No separate allow-list to update —
-  `hasCapability()` resolves through `FeatureRegistry` automatically. On the frontend,
-  add a matching entry to `services/channelTypes.tsx`'s `REGISTRY` (icon/label/order/
+  the capability/group keys you want granted, a `category()` (`'standard'` or `'mod'` —
+  `'mod'` requires `Permission::ManageModChannels` to create, see `docs/
+  roles-and-permissions.md`'s "Channel creation is category-gated"), and a `description()`
+  for the create-channel UI, then register it in `ChannelTypeServiceProvider::boot()`. No
+  separate allow-list to update — `hasCapability()` resolves through `FeatureRegistry`
+  automatically, and `ChannelPolicy::creatableTypeKeys()` picks the new type up
+  automatically too. On the frontend, add a matching entry to
+  `services/channelTypes.tsx`'s `REGISTRY` (icon/label/order/category/description/
   capabilities, plus a `Content` component and a `SidebarItem` if it needs custom
   sidebar rendering; omit either to get an empty-state main pane / a plain link).
   `KNOWN_CHANNEL_TYPES`'s ordering falls out automatically.

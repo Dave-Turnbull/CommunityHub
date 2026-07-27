@@ -84,7 +84,7 @@ describe('Rooms/Roles', () => {
         expect(adminCheckbox.disabled).toBe(true)
         expect(adminCheckbox.checked).toBe(false)
 
-        const manageChannelsCheckbox = screen.getByLabelText('Manage Channels') as HTMLInputElement
+        const manageChannelsCheckbox = screen.getByLabelText('Manage User Channels') as HTMLInputElement
         expect(manageChannelsCheckbox.disabled).toBe(false)
 
         expect(screen.getByRole('button', { name: 'Save permissions' })).toBeInTheDocument()

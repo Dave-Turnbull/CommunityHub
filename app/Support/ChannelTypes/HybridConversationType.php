@@ -22,4 +22,16 @@ class HybridConversationType implements ChannelType
     public function order(): int { return 3; }
     public function capabilities(): array { return ['text.all', 'voice.all']; }
     public function defaultSettings(): array { return []; }
+
+    /**
+     * 'standard' by convention only — this type is never user-creatable via
+     * ChannelPolicy::create() (Conversations are created through
+     * Api\ConversationController, not Api\ChannelController) and is excluded
+     * from the frontend's KNOWN_CHANNEL_TYPES, so this value is never
+     * actually evaluated by category-based creation gating. 'standard'
+     * rather than 'mod' because a conversation carries no moderation
+     * semantics.
+     */
+    public function category(): string { return 'standard'; }
+    public function description(): string { return 'A direct or group conversation.'; }
 }

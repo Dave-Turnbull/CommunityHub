@@ -157,7 +157,7 @@ export async function createRole(roomId: string, name: string): Promise<Role> {
 
 export async function updateRole(
     roleId: string,
-    payload: Partial<{ name: string; position: number; permissions: PermissionKey[] }>
+    payload: Partial<{ name: string; position: number; permissions: PermissionKey[]; channel_categories: string[] }>
 ): Promise<Role> {
     const { data } = await axios.patch(`/api/roles/${roleId}`, payload)
     return data

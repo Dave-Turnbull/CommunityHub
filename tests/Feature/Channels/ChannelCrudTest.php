@@ -46,6 +46,31 @@ class ChannelCrudTest extends TestCase
         return $user;
     }
 
+    private function memberWithManageModChannels(Room $room): User
+    {
+        $user = User::factory()->create();
+        RoomMember::factory()->for($room)->for($user)->create();
+
+        $role = Role::factory()->for($room)->create();
+        $role->grant(Permission::ManageModChannels);
+        RoleAssignment::factory()->for($role)->for($user)->create();
+
+        return $user;
+    }
+
+    /** A member holding only an explicit per-category grant — neither ManageChannels nor ManageModChannels. */
+    private function memberWithCategoryGrant(Room $room, string $category): User
+    {
+        $user = User::factory()->create();
+        RoomMember::factory()->for($room)->for($user)->create();
+
+        $role = Role::factory()->for($room)->create();
+        $role->channelCategories()->create(['category' => $category]);
+        RoleAssignment::factory()->for($role)->for($user)->create();
+
+        return $user;
+    }
+
     public function test_a_user_with_manage_channels_can_create_a_channel(): void
     {
         Event::fake([ChannelCreated::class]);
@@ -100,6 +125,153 @@ class ChannelCrudTest extends TestCase
         ]);
 
         $response->assertStatus(422);
+    }
+
+    public function test_a_user_with_only_manage_channels_cannot_create_a_mod_category_channel(): void
+    {
+        $room = Room::factory()->create();
+        $user = $this->memberWithManageChannels($room);
+
+        $response = $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => 'announcements',
+            'type' => 'announcement',
+        ]);
+
+        $response->assertForbidden();
+        $this->assertDatabaseCount('channels', 0);
+    }
+
+    public function test_a_user_with_only_manage_channels_can_still_create_standard_types(): void
+    {
+        Event::fake([ChannelCreated::class]);
+
+        $room = Room::factory()->create();
+        $user = $this->memberWithManageChannels($room);
+
+        $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => 'general',
+            'type' => 'text',
+        ])->assertCreated();
+
+        $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => 'lounge',
+            'type' => 'voice',
+        ])->assertCreated();
+    }
+
+    public function test_a_user_with_manage_mod_channels_can_create_every_type_including_standard(): void
+    {
+        Event::fake([ChannelCreated::class]);
+
+        $room = Room::factory()->create();
+        $user = $this->memberWithManageModChannels($room);
+
+        $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => 'announcements',
+            'type' => 'announcement',
+        ])->assertCreated();
+
+        $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => 'general',
+            'type' => 'text',
+        ])->assertCreated();
+
+        $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => 'lounge',
+            'type' => 'voice',
+        ])->assertCreated();
+    }
+
+    public function test_a_plain_member_cannot_create_a_mod_category_channel(): void
+    {
+        $room = Room::factory()->create();
+        $user = $this->plainMember($room);
+
+        $response = $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => 'announcements',
+            'type' => 'announcement',
+        ]);
+
+        $response->assertForbidden();
+    }
+
+    public function test_a_user_with_manage_mod_channels_can_also_manage_an_existing_channel(): void
+    {
+        Event::fake([ChannelUpdated::class]);
+
+        $room    = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create(['name' => 'old-name']);
+        $user    = $this->memberWithManageModChannels($room);
+
+        $response = $this->actingAs($user)->patchJson("/api/channels/{$channel->id}", [
+            'name' => 'new-name',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame('new-name', $channel->fresh()->name);
+    }
+
+    public function test_a_role_with_only_a_mod_category_grant_can_create_announcement_but_not_text(): void
+    {
+        Event::fake([ChannelCreated::class]);
+
+        $room = Room::factory()->create();
+        $user = $this->memberWithCategoryGrant($room, 'mod');
+
+        $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => 'announcements',
+            'type' => 'announcement',
+        ])->assertCreated();
+
+        $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => 'general',
+            'type' => 'text',
+        ])->assertForbidden();
+    }
+
+    public function test_a_role_with_only_a_standard_category_grant_can_create_text_but_not_announcement(): void
+    {
+        Event::fake([ChannelCreated::class]);
+
+        $room = Room::factory()->create();
+        $user = $this->memberWithCategoryGrant($room, 'standard');
+
+        $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => 'general',
+            'type' => 'text',
+        ])->assertCreated();
+
+        $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => 'announcements',
+            'type' => 'announcement',
+        ])->assertForbidden();
+    }
+
+    public function test_a_category_grant_does_not_extend_to_managing_an_existing_channel(): void
+    {
+        $room    = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create(['name' => 'old-name', 'type' => 'announcement']);
+        $user    = $this->memberWithCategoryGrant($room, 'mod');
+
+        $response = $this->actingAs($user)->patchJson("/api/channels/{$channel->id}", [
+            'name' => 'new-name',
+        ]);
+
+        $response->assertForbidden();
+    }
+
+    public function test_channel_creation_returns_a_validation_error_before_an_authorization_error(): void
+    {
+        $room = Room::factory()->create();
+        $user = $this->plainMember($room);
+
+        $response = $this->actingAs($user)->postJson("/api/rooms/{$room->id}/channels", [
+            'name' => '',
+            'type' => 'announcement',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('name');
     }
 
     public function test_a_user_with_manage_channels_can_update_a_channel(): void

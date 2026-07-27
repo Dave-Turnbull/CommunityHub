@@ -32,6 +32,10 @@ export interface ChannelTypeDescriptor {
     label: string
     icon: string
     order: number
+    /** Mirrors ChannelType::category() — 'standard' or 'mod' today. Drives CreateChannelModal's grouping. */
+    category: string
+    /** Mirrors ChannelType::description() — short help text shown in CreateChannelModal. */
+    description: string
     capabilities: string[]
     isTextCapable: boolean
     /** Replaces the channel/conversation's entire main-pane content — omit to show an empty state (see CLAUDE.md: no type gets a default). */
@@ -79,6 +83,8 @@ const REGISTRY: Record<string, ChannelTypeDescriptor> = {
         label: 'Announcements',
         icon: '📢',
         order: 0,
+        category: 'mod',
+        description: 'Post updates that only moderators can send.',
         capabilities: ['text.all'],
         isTextCapable: true,
         Content: TextChannelTypeContent,
@@ -88,6 +94,8 @@ const REGISTRY: Record<string, ChannelTypeDescriptor> = {
         label: 'Text Channels',
         icon: '#',
         order: 1,
+        category: 'standard',
+        description: 'Send messages, images, and files.',
         capabilities: ['text.all'],
         isTextCapable: true,
         Content: TextChannelTypeContent,
@@ -97,6 +105,8 @@ const REGISTRY: Record<string, ChannelTypeDescriptor> = {
         label: 'Voice Channels',
         icon: '🔊',
         order: 2,
+        category: 'standard',
+        description: 'Talk with voice in real time.',
         capabilities: ['voice.all'],
         isTextCapable: false,
         Content: VoiceChannelPanel,
@@ -107,6 +117,8 @@ const REGISTRY: Record<string, ChannelTypeDescriptor> = {
         label: 'Conversations',
         icon: '💬',
         order: 3,
+        category: 'standard',
+        description: 'A direct or group conversation.',
         capabilities: ['text.all', 'voice.all'],
         isTextCapable: true,
         Content: HybridConversationContent,
@@ -118,6 +130,26 @@ export const KNOWN_CHANNEL_TYPES: ChannelTypeDescriptor[] = Object.values(REGIST
     .filter((d) => d.key !== 'conversation')
     .sort((a, b) => a.order - b.order)
 
+/** Display label per category — shared by CreateChannelModal's grouping and RoleCard's category checklist. An unrecognized future category falls back to the raw string. */
+export const CHANNEL_CATEGORY_LABELS: Record<string, string> = {
+    standard: 'Standard',
+    mod: 'Moderation',
+}
+
+const CHANNEL_CATEGORY_ORDER = ['standard', 'mod']
+
+/** Every distinct category among the user-creatable known types, in CHANNEL_CATEGORY_ORDER then alphabetically — mirrors ChannelTypeRegistry::knownCategories() on the backend. */
+export const KNOWN_CHANNEL_CATEGORIES: string[] = Array.from(
+    new Set(KNOWN_CHANNEL_TYPES.map((d) => d.category))
+).sort((a, b) => {
+    const ai = CHANNEL_CATEGORY_ORDER.indexOf(a)
+    const bi = CHANNEL_CATEGORY_ORDER.indexOf(b)
+    if (ai === -1 && bi === -1) return a.localeCompare(b)
+    if (ai === -1) return 1
+    if (bi === -1) return -1
+    return ai - bi
+})
+
 /** A type with no registry entry (unrecognized/future-plugin type) still renders — auto-generated label/icon, same fallback shape as the old channelTypeLabel(). No Content means an explicit empty state, not a default. */
 export function channelTypeDescriptor(type: ChannelType): ChannelTypeDescriptor {
     return (
@@ -126,6 +158,8 @@ export function channelTypeDescriptor(type: ChannelType): ChannelTypeDescriptor 
             label: `${type.charAt(0).toUpperCase()}${type.slice(1)} Channels`,
             icon: '#',
             order: 99,
+            category: 'standard',
+            description: '',
             capabilities: [],
             isTextCapable: false,
         }

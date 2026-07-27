@@ -22,6 +22,7 @@ class PermissionEnumStabilityTest extends TestCase
             'manage_room',
             'manage_roles',
             'manage_channels',
+            'manage_mod_channels',
             'manage_members',
             'ban_members',
             'manage_messages',

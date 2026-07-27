@@ -2,8 +2,11 @@
 
 Formal, standalone reference documentation for specific subsystems and features. These
 files describe how the code currently works — they are not changelogs or narrated
-histories of how a feature was built. For repo-wide orientation (stack, directory map,
-run commands, testing conventions), see `CLAUDE.md` at the project root.
+histories of how a feature was built. The one deliberate exception is
+[architecture-vision.md](architecture-vision.md), which states design *intent* rather
+than current mechanics, and is clearly marked as such. For repo-wide orientation
+(stack, directory map, run commands, testing conventions), see `CLAUDE.md` at the
+project root.
 
 This page is the hub every doc links back to. Every file here (plus `CLAUDE.md`) starts
 with a `[← All docs](README.md) · See also: ...` line and, where relevant, ends with
@@ -19,6 +22,13 @@ encode the actual dependency graph between subsystems.
 - [traps.md](traps.md) — every non-obvious gotcha already hit in this codebase,
   grouped by subsystem, so it doesn't get hit twice. `CLAUDE.md`'s own traps section
   is now just a short index into this file.
+- [architecture-vision.md](architecture-vision.md) — the design philosophy: base
+  communication primitives (Features) composed into user-facing surfaces
+  (ChannelTypes), the principles that keep that composition coherent, where the
+  architecture is headed, and the current known gaps.
+- [build-a-channel-type.md](build-a-channel-type.md) — tutorial: add a new channel
+  type by composing existing capabilities, worked end-to-end (backend class,
+  registration, frontend descriptor, tests) with zero new enforcement code.
 - [capabilities-and-channel-types.md](capabilities-and-channel-types.md) — the
   Feature/ChannelType capability system, built-in channel types, and channel
   create/update/delete management.

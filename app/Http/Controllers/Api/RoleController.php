@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Role;
 use App\Models\RoleAssignment;
+use App\Models\RoleChannelCategory;
 use App\Models\Room;
 use App\Models\User;
+use App\Support\ChannelTypes\ChannelTypeRegistry;
 use App\Support\Permission;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
@@ -28,7 +31,7 @@ class RoleController extends Controller
         Gate::authorize('create', [Role::class, null]);
 
         $roles = Role::whereNull('room_id')
-            ->with(['rolePermissions', 'users:id,username,display_name,avatar_url'])
+            ->with(['rolePermissions', 'channelCategories', 'users:id,username,display_name,avatar_url'])
             ->orderByDesc('position')
             ->get();
 
@@ -60,7 +63,7 @@ class RoleController extends Controller
             'is_system'  => false,
         ]);
 
-        $role->load('rolePermissions');
+        $role->load(['rolePermissions', 'channelCategories']);
         // Web\RoleController::index computes this per role for the page
         // load; store() skipped it, so a role you just created came back
         // with no can_manage at all — RoleCard's `role.can_manage ?? false`
@@ -88,7 +91,7 @@ class RoleController extends Controller
             'is_system'  => false,
         ]);
 
-        $role->load('rolePermissions');
+        $role->load(['rolePermissions', 'channelCategories']);
         $role->setAttribute('can_manage', Gate::allows('manage', $role));
 
         return response()->json($role, 201);
@@ -104,10 +107,16 @@ class RoleController extends Controller
         abort_if($role->is_system && ! $role->is_default, 422, 'This role is managed by the system and cannot be edited.');
 
         $validated = $request->validate([
-            'name'          => ['sometimes', 'string', 'max:50'],
-            'position'      => ['sometimes', 'integer', 'min:0'],
-            'permissions'   => ['sometimes', 'array'],
-            'permissions.*' => ['string', Rule::enum(Permission::class)],
+            'name'                 => ['sometimes', 'string', 'max:50'],
+            'position'             => ['sometimes', 'integer', 'min:0'],
+            'permissions'          => ['sometimes', 'array'],
+            'permissions.*'        => ['string', Rule::enum(Permission::class)],
+            // A role's explicit per-category channel-creation grants — see
+            // RoleChannelCategory/ChannelPolicy::create(). Validated against
+            // the live channel-type registry, not a DB enum, same as
+            // channels.type/permissions.* above.
+            'channel_categories'   => ['sometimes', 'array'],
+            'channel_categories.*' => ['string', Rule::in(ChannelTypeRegistry::knownCategories())],
         ]);
 
         if ($role->is_default) {
@@ -126,20 +135,36 @@ class RoleController extends Controller
             abort(422, 'The administrator permission can only be granted to the Owner role.');
         }
 
-        $role->update(array_filter(
-            $validated,
-            fn ($key) => in_array($key, ['name', 'position'], true),
-            ARRAY_FILTER_USE_KEY
-        ));
+        DB::transaction(function () use ($role, $validated) {
+            $role->update(array_filter(
+                $validated,
+                fn ($key) => in_array($key, ['name', 'position'], true),
+                ARRAY_FILTER_USE_KEY
+            ));
 
-        if (array_key_exists('permissions', $validated)) {
-            $role->rolePermissions()->delete();
-            foreach ($validated['permissions'] as $permission) {
-                $role->rolePermissions()->create(['permission' => $permission]);
+            if (array_key_exists('permissions', $validated)) {
+                $role->rolePermissions()->delete();
+                foreach ($validated['permissions'] as $permission) {
+                    $role->rolePermissions()->create(['permission' => $permission]);
+                }
             }
-        }
 
-        return response()->json($role->fresh('rolePermissions'));
+            // Full-replace, not a sync() diff — RoleChannelCategory is a
+            // HasUuids pivot-shaped model, and sync()/attach() bypass
+            // Eloquent's creating event that generates its id (same reason
+            // ChannelRoleVisibility/role_permissions are written through
+            // their models rather than pivot helpers).
+            if (array_key_exists('channel_categories', $validated)) {
+                RoleChannelCategory::where('role_id', $role->id)
+                    ->whereNotIn('category', $validated['channel_categories'])
+                    ->delete();
+                foreach ($validated['channel_categories'] as $category) {
+                    RoleChannelCategory::firstOrCreate(['role_id' => $role->id, 'category' => $category]);
+                }
+            }
+        });
+
+        return response()->json($role->fresh(['rolePermissions', 'channelCategories']));
     }
 
     /**

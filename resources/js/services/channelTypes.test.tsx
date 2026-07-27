@@ -12,9 +12,17 @@ describe('channelTypeDescriptor', () => {
 
         expect(descriptor.label).toBe('Voice Channels')
         expect(descriptor.icon).toBe('🔊')
+        expect(descriptor.category).toBe('standard')
+        expect(descriptor.description).not.toBe('')
         expect(descriptor.isTextCapable).toBe(false)
         expect(descriptor.Content).toBeDefined()
         expect(descriptor.SidebarItem).toBeDefined()
+    })
+
+    it('categorizes announcement as mod and text/voice as standard', () => {
+        expect(channelTypeDescriptor('announcement').category).toBe('mod')
+        expect(channelTypeDescriptor('text').category).toBe('standard')
+        expect(channelTypeDescriptor('voice').category).toBe('standard')
     })
 
     it('falls back to an auto-generated label/icon for an unregistered type, with no Content (no default)', () => {
@@ -22,6 +30,7 @@ describe('channelTypeDescriptor', () => {
 
         expect(descriptor.label).toBe('Drawing Channels')
         expect(descriptor.icon).toBe('#')
+        expect(descriptor.category).toBe('standard')
         expect(descriptor.isTextCapable).toBe(false)
         expect(descriptor.capabilities).toEqual([])
         expect(descriptor.Content).toBeUndefined()
