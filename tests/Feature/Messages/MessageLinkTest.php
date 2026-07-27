@@ -8,9 +8,11 @@ use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\Message;
 use App\Models\Role;
+use App\Models\RoleAssignment;
 use App\Models\Room;
 use App\Models\RoomMember;
 use App\Models\User;
+use App\Support\Permission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -64,6 +66,26 @@ class MessageLinkTest extends TestCase
         $this->actingAs($user)
             ->get("/messages/{$message->id}")
             ->assertForbidden();
+    }
+
+    public function test_see_all_channels_permission_bypasses_the_restriction_for_the_link(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $restrictedRole = Role::factory()->for($room)->create();
+        ChannelRoleVisibility::create(['channel_id' => $channel->id, 'role_id' => $restrictedRole->id]);
+
+        $staff = User::factory()->create();
+        RoomMember::factory()->for($room)->for($staff)->create();
+        $staffRole = Role::factory()->for($room)->create();
+        $staffRole->grant(Permission::SeeAllChannels);
+        RoleAssignment::factory()->for($staffRole)->for($staff)->create();
+
+        $message = Message::factory()->for($channel)->create();
+
+        $this->actingAs($staff)
+            ->get("/messages/{$message->id}")
+            ->assertRedirect("/channels/{$channel->id}?message={$message->id}");
     }
 
     public function test_a_participant_is_redirected_to_the_conversation_with_the_message_flagged(): void
