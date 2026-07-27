@@ -228,13 +228,25 @@ class TextMessageService
         broadcast(new MessageDeleted($messageId, $type, $id))->toOthers();
     }
 
+    /**
+     * For a Channel, room membership alone isn't enough — a channel
+     * restricted via channel_role_visibility must be just as inaccessible
+     * through this API as it is through the page load and the realtime
+     * presence channel (Web\ChannelController::show, routes/channels.php's
+     * channel.{channelId} auth). Both list() and send() go through here, so
+     * a visibility-restricted channel can neither be read nor posted into
+     * over the API — see docs/roles-and-permissions.md's "Channel visibility".
+     */
     private function assertMember(User $user): void
     {
-        $isMember = $this->entity instanceof Channel
-            ? $this->entity->room->hasMember($user->id)
-            : $this->entity->hasParticipant($user->id);
+        if ($this->entity instanceof Channel) {
+            abort_unless($this->entity->room->hasMember($user->id), 403);
+            abort_unless($this->entity->isVisibleTo($user), 403);
 
-        abort_unless($isMember, 403);
+            return;
+        }
+
+        abort_unless($this->entity->hasParticipant($user->id), 403);
     }
 
     /**

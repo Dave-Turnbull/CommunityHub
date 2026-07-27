@@ -364,8 +364,14 @@ are unaffected until someone deliberately restricts one).
   user holds any role in the channel's visibility set (room-scoped or global).
   Enforced in `Web\ChannelController::show` (the channel itself, and filtering the
   room's channel list passed to the page), `Web\RoomController::show`/`join`'s
-  "first text-capable channel" redirect, and `channel.{channelId}`'s presence-auth
-  callback in `routes/channels.php`.
+  "first text-capable channel" redirect, `channel.{channelId}`'s presence-auth
+  callback in `routes/channels.php`, `Web\MessageController::show`'s "go to message"
+  direct-link resolver (see docs/messages-and-pagination.md), and
+  `TextMessageService::assertMember` — without the last of these, a room member
+  denied by a restriction could still read or send a restricted channel's messages
+  straight through `/api/channels/{channel}/messages`, bypassing everything else on
+  this list (a real gap this milestone closed; see
+  `tests/Feature/Messages/MessageVisibilityTest.php`).
 - Two permissions, deliberately separate: `SeeAllChannels` (bypass when *viewing*) and
   `ManageChannelVisibility` (required to *set* the list) — kept apart from
   `ManageChannels` so "who can restrict a channel" is delegable independently of full

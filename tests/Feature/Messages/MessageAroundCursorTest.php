@@ -116,6 +116,15 @@ class MessageAroundCursorTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_around_combined_with_after_is_rejected(): void
+    {
+        $messages = $this->messages(3);
+
+        $this->actingAs($this->user)
+            ->getJson("/api/channels/{$this->channel->id}/messages?after={$messages[0]->id}&around={$messages[2]->id}")
+            ->assertStatus(422);
+    }
+
     public function test_an_unknown_around_cursor_is_rejected(): void
     {
         $this->messages(3);
