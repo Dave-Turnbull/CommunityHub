@@ -105,6 +105,8 @@ describe('TextChannelContent', () => {
         expect(screen.getByPlaceholderText('Message Bob')).toBeInTheDocument()
     })
 
+    const jumpButton = () => screen.queryByRole('button', { name: /jump to present/i })
+
     it('offers no jump-to-present while the window reaches the live tail', () => {
         renderContent({
             data: [message('1')],
@@ -114,13 +116,13 @@ describe('TextChannelContent', () => {
             newer_cursor: null,
         })
 
-        expect(screen.queryByText(/Jump to present/)).not.toBeInTheDocument()
+        expect(jumpButton()).not.toBeInTheDocument()
     })
 
     it('offers a jump-to-present only once the window has messages below it', () => {
         renderContent(detached)
 
-        expect(screen.getByText(/Jump to present/)).toBeInTheDocument()
+        expect(jumpButton()).toBeInTheDocument()
     })
 
     it('jumping refetches the tail and replaces the window', async () => {
@@ -133,13 +135,47 @@ describe('TextChannelContent', () => {
         })
 
         renderContent(detached)
-        await userEvent.click(screen.getByText(/Jump to present/))
+        await userEvent.click(jumpButton()!)
 
         expect(api.fetchChannelMessages).toHaveBeenCalledWith('chan-1', {})
         await waitFor(() => {
             expect(useMessages.getState().messages['chan-1'].map((m) => m.id)).toEqual(['8', '9'])
         })
-        expect(screen.queryByText(/Jump to present/)).not.toBeInTheDocument()
+        expect(jumpButton()).not.toBeInTheDocument()
+    })
+
+    it('renders no composer at all when canPost is false', () => {
+        render(
+            <TextChannelContent
+                scopeId="chan-1"
+                scopeType="channel"
+                currentUser={user}
+                initialMessages={initial}
+                placeholder="Message #announcements"
+                emptyState={<div>Empty</div>}
+                canPost={false}
+            />
+        )
+
+        expect(screen.queryByPlaceholderText('Message #announcements')).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /send/i })).not.toBeInTheDocument()
+    })
+
+    it('still offers jump-to-present when canPost is false and the window is detached', () => {
+        render(
+            <TextChannelContent
+                scopeId="chan-1"
+                scopeType="channel"
+                currentUser={user}
+                initialMessages={detached}
+                placeholder="Message #announcements"
+                emptyState={<div>Empty</div>}
+                canPost={false}
+            />
+        )
+
+        expect(screen.queryByPlaceholderText('Message #announcements')).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /jump to present/i })).toBeInTheDocument()
     })
 
     it('shows the empty state when there are no messages', () => {

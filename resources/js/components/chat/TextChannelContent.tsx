@@ -20,6 +20,17 @@ interface Props {
      * docs/messages-and-pagination.md.
      */
     initialHighlightMessageId?: string | null
+    /**
+     * Whether the viewer may post here — defaults to true. `false` is only
+     * ever passed for an 'announcement' channel the viewer lacks
+     * PostAnnouncements for (see Channel.can_post/ChannelPolicy::post); the
+     * composer is omitted entirely rather than rendered disabled, since
+     * there's nothing the viewer can do to unlock it from here. The jump-to-
+     * present control is unaffected — it's not part of "posting" — see
+     * below. The real enforcement is server-side
+     * (TextMessageService::authorizeSend) — this is only the affordance.
+     */
+    canPost?: boolean
 }
 
 /**
@@ -31,7 +42,7 @@ interface Props {
  * conversation is allowed to use it.
  */
 export function TextChannelContent({
-    scopeId, scopeType, currentUser, initialMessages, placeholder, emptyState, initialHighlightMessageId,
+    scopeId, scopeType, currentUser, initialMessages, placeholder, emptyState, initialHighlightMessageId, canPost = true,
 }: Props) {
     const [replyTo, setReplyTo] = useState<Message | null>(null)
     // Bumped per jump so MessageList re-pins to the bottom even when two jumps
@@ -49,6 +60,23 @@ export function TextChannelContent({
         setJumpToken((t) => t + 1)
         jumpToPresent()
     }
+
+    // Only while the window has been trimmed away from the live tail — i.e.
+    // exactly when there are messages below the ones on screen that this tab
+    // isn't holding. See useChat. Independent of `canPost` — jumping to the
+    // present is not a posting action, so it must keep working (e.g. in an
+    // announcement channel) even when the composer itself is hidden.
+    const jumpButton = hasNewer && (
+        <button
+            onClick={jump}
+            title="Jump to present"
+            aria-label="Jump to present"
+            className="mb-0.5 w-9 h-9 flex-shrink-0 grid place-items-center rounded-lg bg-fifth
+                       border-panel border-panel-border text-text-secondary hover:text-text-primary"
+        >
+            ⬇
+        </button>
+    )
 
     // Fetches the message's window if it isn't already loaded (useChat's
     // job), then tells MessageList where to scroll and flash (this
@@ -75,26 +103,23 @@ export function TextChannelContent({
                 emptyState={emptyState}
             />
 
-            <MessageInput
-                scopeId={scopeId}
-                scopeType={scopeType}
-                placeholder={placeholder}
-                replyTo={replyTo}
-                onClearReply={() => setReplyTo(null)}
-                onSent={commitSent}
-                // Only while the window has been trimmed away from the live
-                // tail — i.e. exactly when there are messages below the ones
-                // on screen that this tab isn't holding. See useChat.
-                leading={hasNewer && (
-                    <button
-                        onClick={jump}
-                        className="mb-0.5 px-3 py-2 rounded-lg bg-fifth border-panel border-panel-border
-                                   text-xs text-text-secondary hover:text-text-primary whitespace-nowrap"
-                    >
-                        ↓ Jump to present
-                    </button>
-                )}
-            />
+            {canPost ? (
+                <MessageInput
+                    scopeId={scopeId}
+                    scopeType={scopeType}
+                    placeholder={placeholder}
+                    replyTo={replyTo}
+                    onClearReply={() => setReplyTo(null)}
+                    onSent={commitSent}
+                    leading={jumpButton}
+                />
+            ) : (
+                // No composer at all when the viewer can't post — but the
+                // jump-to-present affordance isn't part of "posting", so it
+                // still needs somewhere to render without MessageInput's
+                // `leading` slot to hold it.
+                jumpButton && <div className="px-4 pb-4 flex-shrink-0 flex justify-end">{jumpButton}</div>
+            )}
         </>
     )
 }

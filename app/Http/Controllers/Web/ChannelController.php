@@ -46,6 +46,7 @@ class ChannelController extends Controller
             : null;
 
         $channel->load('visibilityRoles');
+        $channel->setAttribute('can_post', Gate::allows('post', $channel));
 
         return Inertia::render('Channels/Show', [
             'room'                             => $room,

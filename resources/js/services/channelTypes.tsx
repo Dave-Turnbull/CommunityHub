@@ -70,6 +70,7 @@ function TextChannelTypeContent({
             currentUser={currentUser}
             initialMessages={initialMessages ?? EMPTY_PAGE}
             initialHighlightMessageId={initialHighlightMessageId}
+            canPost={channel.can_post ?? true}
             placeholder={`Message #${channel.name}`}
             emptyState={
                 <div className="text-center">

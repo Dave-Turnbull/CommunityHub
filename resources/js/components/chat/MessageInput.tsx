@@ -216,7 +216,7 @@ export function MessageInput({
                 <div
                     {...getRootProps()}
                     className={clsx(
-                        'flex items-end bg-fifth rounded-lg border-panel border-panel-border',
+                        'flex items-center bg-fifth rounded-lg border-panel border-panel-border',
                         (replyTo || files.length) && 'rounded-t-none',
                         isDragActive && 'ring-2 ring-accent-primary',
                     )}
