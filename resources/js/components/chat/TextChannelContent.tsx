@@ -12,6 +12,14 @@ interface Props {
     initialMessages: PaginatedMessages
     placeholder: string
     emptyState: ReactNode
+    /**
+     * A message to land on and flash as soon as this scope mounts — set by a
+     * "go to message" direct link (Web\MessageController redirects here with
+     * ?message=, which is also why `initialMessages` already centers on it
+     * rather than the live tail). See CLAUDE.md and
+     * docs/messages-and-pagination.md.
+     */
+    initialHighlightMessageId?: string | null
 }
 
 /**
@@ -23,19 +31,31 @@ interface Props {
  * conversation is allowed to use it.
  */
 export function TextChannelContent({
-    scopeId, scopeType, currentUser, initialMessages, placeholder, emptyState,
+    scopeId, scopeType, currentUser, initialMessages, placeholder, emptyState, initialHighlightMessageId,
 }: Props) {
     const [replyTo, setReplyTo] = useState<Message | null>(null)
     // Bumped per jump so MessageList re-pins to the bottom even when two jumps
     // in a row resolve to the same window.
     const [jumpToken, setJumpToken] = useState(0)
+    // The "go to message" landing target — see MessageList's scrollTo prop.
+    const [highlight, setHighlight] = useState<{ id: string; token: number } | null>(
+        initialHighlightMessageId ? { id: initialHighlightMessageId, token: 0 } : null
+    )
 
-    const { messages, hasOlder, hasNewer, loadOlder, loadNewer, jumpToPresent, commitSent } =
+    const { messages, hasOlder, hasNewer, loadOlder, loadNewer, jumpToPresent, jumpToMessage, commitSent } =
         useChat({ scopeId, scopeType, initial: initialMessages })
 
     const jump = () => {
         setJumpToken((t) => t + 1)
         jumpToPresent()
+    }
+
+    // Fetches the message's window if it isn't already loaded (useChat's
+    // job), then tells MessageList where to scroll and flash (this
+    // component's job — see CLAUDE.md's "go to message").
+    const jumpToMessageAndHighlight = async (messageId: string) => {
+        await jumpToMessage(messageId)
+        setHighlight((h) => ({ id: messageId, token: (h?.token ?? 0) + 1 }))
     }
 
     return (
@@ -50,6 +70,8 @@ export function TextChannelContent({
                 onLoadNewer={loadNewer}
                 jumpToken={jumpToken}
                 onReply={setReplyTo}
+                onJumpToMessage={jumpToMessageAndHighlight}
+                scrollTo={highlight}
                 emptyState={emptyState}
             />
 

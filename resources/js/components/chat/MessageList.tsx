@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { MessageRow } from './MessageRow'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import type { Message, User } from '@/types'
@@ -14,8 +14,18 @@ interface Props {
     /** Increment to send the view back to the live tail — see TextChannelContent. */
     jumpToken?: number
     onReply: (m: Message) => void
+    onJumpToMessage: (messageId: string) => void
+    /**
+     * "Go to message" (see CLAUDE.md) — scroll to and briefly flash this row.
+     * `token` is bumped on every jump so re-jumping to the same id (clicking
+     * the same reply twice) still re-triggers the effect rather than being a
+     * no-op state update. See TextChannelContent.
+     */
+    scrollTo?: { id: string; token: number } | null
     emptyState?: React.ReactNode
 }
+
+const FLASH_DURATION_MS = 2000
 
 // Group consecutive messages from the same author within 7 minutes
 function isGrouped(prev: Message | undefined, curr: Message): boolean {
@@ -68,11 +78,12 @@ function firstVisibleRow(container: HTMLElement): HTMLElement | null {
 
 export function MessageList({
     messages, scopeId, currentUser, hasOlder, hasNewer, onLoadOlder, onLoadNewer, jumpToken = 0,
-    onReply, emptyState,
+    onReply, onJumpToMessage, scrollTo, emptyState,
 }: Props) {
     const { ref, onScroll, stickToBottom } = useAutoScroll(messages.length, !hasNewer)
     const topSentinel = useRef<HTMLDivElement>(null)
     const bottomSentinel = useRef<HTMLDivElement>(null)
+    const [flashId, setFlashId] = useState<string | null>(null)
 
     // Which message the reader is looking at, and how far below the top edge
     // it sits — kept current by every scroll event so it is never stale by the
@@ -110,6 +121,23 @@ export function MessageList({
     useEffect(() => {
         if (jumpToken) stickToBottom()
     }, [jumpToken])
+
+    // "Go to message" landing: scroll the target row into view and flash it
+    // briefly. Runs after the effects above in the same commit, so it wins
+    // over both anchor restoration (which no-ops here — a jump replaces the
+    // window, so the old anchor id is gone) and auto-scroll's stick-to-bottom
+    // (which jumpToken alone drives, untouched by a reply/link jump).
+    // scrollIntoView is optionally chained — jsdom ships no implementation.
+    useEffect(() => {
+        if (!scrollTo) return
+
+        const row = ref.current?.querySelector<HTMLElement>(`[data-message-id="${scrollTo.id}"]`)
+        row?.scrollIntoView?.({ block: 'center' })
+
+        setFlashId(scrollTo.id)
+        const timer = setTimeout(() => setFlashId(null), FLASH_DURATION_MS)
+        return () => clearTimeout(timer)
+    }, [scrollTo])
 
     // One observer per direction: older history above, and — once the window
     // has trimmed its tail — the messages it dropped below.
@@ -171,6 +199,8 @@ export function MessageList({
                             grouped={!newDay && isGrouped(prev, m)}
                             currentUser={currentUser}
                             onReply={onReply}
+                            onJumpToMessage={onJumpToMessage}
+                            highlighted={m.id === flashId}
                         />
                     </div>
                 )

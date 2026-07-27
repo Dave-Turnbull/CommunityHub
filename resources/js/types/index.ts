@@ -377,6 +377,12 @@ export interface ChannelPageProps extends SharedProps {
     // null for a voice channel — see ChannelController::show, MessageController's
     // matching guard against posting/listing text into a voice channel.
     messages: PaginatedMessages | null
+    // Set from a "go to message" direct link's ?message= (Web\MessageController
+    // redirects here after checking visibility) — when present, `messages` is
+    // already a window centered on it (TextMessageService::list's `around`
+    // cursor), and TextChannelContent scrolls to and briefly highlights it on
+    // mount. Null on a normal page load. See docs/messages-and-pagination.md.
+    highlight_message_id: string | null
     // ChannelPolicy::creatableTypeKeys($user, $room) — every registered
     // channel type key the viewer may create here. Drives ChannelSidebar's
     // "+ Add Channel" button (shown iff non-empty) and CreateChannelModal's
@@ -397,6 +403,8 @@ export interface ChannelPageProps extends SharedProps {
 export interface DMPageProps extends SharedProps {
     conversation: Conversation
     messages: PaginatedMessages
+    // See ChannelPageProps.highlight_message_id — same "go to message" mechanic.
+    highlight_message_id: string | null
 }
 
 export interface RoomRolesPageProps extends SharedProps {

@@ -8,7 +8,7 @@ import { channelTypeDescriptor } from '@/services/channelTypes'
 import type { DMPageProps } from '@/types'
 
 export default function DMShow({
-    auth, rooms, conversations, conversation, messages: initial, recentCustomStatuses,
+    auth, rooms, conversations, conversation, messages: initial, highlight_message_id, recentCustomStatuses,
 }: DMPageProps) {
     const [addingPeople, setAddingPeople] = useState(false)
 
@@ -70,7 +70,12 @@ export default function DMShow({
                         )}
 
                         {Content && (
-                            <Content conversation={conversation} currentUser={auth.user} initialMessages={initial} />
+                            <Content
+                                conversation={conversation}
+                                currentUser={auth.user}
+                                initialMessages={initial}
+                                initialHighlightMessageId={highlight_message_id}
+                            />
                         )}
                     </main>
                 </div>

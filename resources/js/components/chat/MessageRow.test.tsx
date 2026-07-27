@@ -64,14 +64,14 @@ describe('MessageRow', () => {
     })
 
     it('renders the author and content for an ungrouped message', () => {
-        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
 
         expect(screen.getByText('Author Name')).toBeInTheDocument()
         expect(screen.getByText('Hello world')).toBeInTheDocument()
     })
 
     it('hides the author header when grouped with the previous message', () => {
-        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
 
         expect(screen.queryByText('Author Name')).not.toBeInTheDocument()
         expect(screen.getByText('Hello world')).toBeInTheDocument()
@@ -84,7 +84,7 @@ describe('MessageRow', () => {
                 scopeId="chan-1"
                 grouped={false}
                 currentUser={viewer}
-                onReply={vi.fn()}
+                onReply={vi.fn()} onJumpToMessage={vi.fn()}
             />
         )
 
@@ -101,16 +101,46 @@ describe('MessageRow', () => {
                 scopeId="chan-1"
                 grouped={false}
                 currentUser={viewer}
-                onReply={vi.fn()}
+                onReply={vi.fn()} onJumpToMessage={vi.fn()}
             />
         )
 
         expect(screen.getByText('Original')).toBeInTheDocument()
     })
 
+    it('jumps to the replied-to message when the reply context is clicked', async () => {
+        const onJumpToMessage = vi.fn()
+        render(
+            <MessageRow
+                message={{
+                    ...baseMessage,
+                    reply_to_id: 'msg-0',
+                    reply_to: { ...baseMessage, id: 'msg-0', content: 'Original', author },
+                }}
+                scopeId="chan-1"
+                grouped={false}
+                currentUser={viewer}
+                onReply={vi.fn()}
+                onJumpToMessage={onJumpToMessage}
+            />
+        )
+
+        await userEvent.click(screen.getByText('Original'))
+
+        expect(onJumpToMessage).toHaveBeenCalledWith('msg-0')
+    })
+
+    it('renders a highlighted row with a flash background', () => {
+        const { container } = render(
+            <MessageRow message={baseMessage} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} highlighted />
+        )
+
+        expect(container.querySelector('.bg-accent-primary\\/10')).toBeInTheDocument()
+    })
+
     it('calls onReply with the message when the reply button is clicked', async () => {
         const onReply = vi.fn()
-        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={onReply} />)
+        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={onReply} onJumpToMessage={vi.fn()} />)
 
         await userEvent.click(screen.getByTitle('Reply'))
 
@@ -122,7 +152,7 @@ describe('MessageRow', () => {
             ...baseMessage,
             reactions: [{ emoji: '👍', count: 1, reacted: false }],
         }
-        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
 
         await userEvent.click(screen.getByText('👍'))
 
@@ -135,7 +165,7 @@ describe('MessageRow', () => {
             ...baseMessage,
             reactions: [{ emoji: '👍', count: 2, reacted: true }],
         }
-        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
 
         await userEvent.click(screen.getByText('👍'))
 
@@ -149,7 +179,7 @@ describe('MessageRow', () => {
         // Never resolves — so what the store holds is purely the optimistic guess.
         vi.mocked(api.addReaction).mockImplementation(() => new Promise(() => {}))
 
-        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
         await userEvent.click(screen.getByText('👍'))
 
         expect(useMessages.getState().messages['chan-1'][0].reactions)
@@ -161,7 +191,7 @@ describe('MessageRow', () => {
         seedStore(message)
         vi.mocked(api.addReaction).mockRejectedValue(new Error('nope'))
 
-        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
         await userEvent.click(screen.getByText('👍'))
 
         expect(useMessages.getState().messages['chan-1'][0].reactions)
@@ -169,7 +199,7 @@ describe('MessageRow', () => {
     })
 
     it('does not show the edit/delete menu for someone else\'s message', () => {
-        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={baseMessage} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
 
         expect(screen.queryByRole('button', { name: '⋯' })).not.toBeInTheDocument()
     })
@@ -181,7 +211,7 @@ describe('MessageRow', () => {
                 scopeId="chan-1"
                 grouped={false}
                 currentUser={viewer}
-                onReply={vi.fn()}
+                onReply={vi.fn()} onJumpToMessage={vi.fn()}
             />
         )
 
@@ -190,7 +220,7 @@ describe('MessageRow', () => {
 
     it('deletes the message via the dropdown menu for the author', async () => {
         const message = { ...baseMessage, author_id: viewer.id }
-        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
 
         await userEvent.click(screen.getByRole('button', { name: '⋯' }))
         const menu = await screen.findByRole('menu')
@@ -204,7 +234,7 @@ describe('MessageRow', () => {
         seedStore(message)
         vi.mocked(api.deleteMessage).mockImplementation(() => new Promise(() => {}))
 
-        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
         await userEvent.click(screen.getByRole('button', { name: '⋯' }))
         await userEvent.click(within(await screen.findByRole('menu')).getByText('Delete'))
 
@@ -214,7 +244,7 @@ describe('MessageRow', () => {
     it('edits the message via the dropdown menu for the author', async () => {
         const message = { ...baseMessage, author_id: viewer.id }
         seedStore(message)
-        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} />)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
 
         await userEvent.click(screen.getByRole('button', { name: '⋯' }))
         const menu = await screen.findByRole('menu')

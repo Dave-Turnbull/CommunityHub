@@ -115,7 +115,12 @@ app/
     Web/                      Inertia page controllers (return Inertia::render).
                                SettingsController::show computes can_manage_global_roles
                                (see docs/roles-and-permissions.md), which gates whether
-                               Settings/Index.tsx's Roles tab renders at all
+                               Settings/Index.tsx's Roles tab renders at all;
+                               MessageController::show is the "go to message" direct-link
+                               resolver — GET /messages/{message} checks the same
+                               visibility a normal page load would, then redirects to
+                               the channel/conversation with ?message= (see docs/
+                               messages-and-pagination.md's "Jumping to a message")
     Api/                      JSON controllers (axios targets), thin translators over
                                app/Services/ — see docs/service-layer.md.
                                ChannelFocusController is the focus/blur heartbeat
@@ -226,10 +231,15 @@ resources/
     components/
       chat/                   MessageList (the scroll container: a sentinel per
                                paging direction + element-anchored scroll
-                               preservation), MessageRow, MessageInput (its
+                               preservation, plus the `scrollTo` prop that scrolls to
+                               and briefly flashes a "go to message" landing target),
+                               MessageRow (its reply-context block is a button that
+                               jumps to the replied-to message), MessageInput (its
                                `leading` slot is where the jump-to-present button
                                renders, in line with the compose box),
-                               TextChannelContent — see docs/messages-and-pagination.md
+                               TextChannelContent (owns the highlight state "go to
+                               message" scrolls/flashes) — see docs/
+                               messages-and-pagination.md's "Jumping to a message"
                                and docs/capabilities-and-channel-types.md
       layout/                 RoomRail, ChannelSidebar (renders "+ Add Channel"/"🛡
                                Roles" affordances), DMSidebar, MemberList (renders a
@@ -398,6 +408,14 @@ assuming something is undocumented.
   `services/messageCache.ts`'s per-scope contiguous run rather than the network.
   See `docs/messages-and-pagination.md` before touching `useChat`, `MessageList`'s
   scroll anchoring, or either half of the cursor contract.
+- **"Go to message"** is the general mechanic for landing on one specific message —
+  a third cursor mode, `?around=`, centers the window on a target instead of
+  walking away from an edge. A reply preview click and a direct link
+  (`GET /messages/{message}`, see `Web\MessageController`) both use it today;
+  building search results or pinned-message jumping should reuse the same
+  `around` cursor / `useChat.jumpToMessage` / `MessageList`'s `scrollTo` prop
+  rather than growing a parallel path. See `docs/messages-and-pagination.md`'s
+  "Jumping to a message".
 - **A mutation a reader triggers is applied to the client first, then reconciled** —
   reactions, edits and deletes all go through `services/messageActions.ts`
   (optimistic write → await → replace with the server's payload, or restore the
@@ -580,6 +598,16 @@ short version, by group — read the full entry before touching adjacent code:
   current window doesn't page back in stale. Have the endpoint return the
   authoritative payload the reconcile step needs (both reaction endpoints return the
   full `ReactionSummary[]` for exactly this). See `docs/messages-and-pagination.md`.
+- **New way to land on a specific message (search result, pinned list, ...):**
+  don't build a new fetch-and-scroll path — reuse "go to message" (see
+  `docs/messages-and-pagination.md`'s "Jumping to a message"). Render a control
+  that calls `useChat`'s `jumpToMessage(id)` (a no-op if the message is already
+  in the window, otherwise an `?around=` fetch that replaces it) and set
+  `MessageList`'s `scrollTo` to `{ id, token }` to scroll/flash it, the same two
+  calls `TextChannelContent`'s reply-click handler already makes. A cross-scope
+  result (a different channel/conversation than the one currently open) instead
+  needs a full navigation to that scope's `?message={id}` URL — see
+  `Web\MessageController::show`, the direct-link resolver.
 - **New feature, either side:** add the Feature/Vitest test alongside it (see
   `## Testing`), then update the relevant `CLAUDE.md` section or `/docs/*.md`
   file in the same change (see `## Docs`).

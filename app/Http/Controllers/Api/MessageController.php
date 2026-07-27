@@ -21,6 +21,7 @@ class MessageController extends Controller
                 $request->user(),
                 $request->query('before'),
                 $request->query('after'),
+                $request->query('around'),
             )
         );
     }
@@ -42,6 +43,7 @@ class MessageController extends Controller
                 $request->user(),
                 $request->query('before'),
                 $request->query('after'),
+                $request->query('around'),
             )
         );
     }

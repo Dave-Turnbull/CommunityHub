@@ -61,6 +61,8 @@ describe('TextChannelContent', () => {
     beforeEach(() => {
         useMessages.setState({ messages: {}, windows: {}, typing: {} })
         setMessageCacheDriver(createMemoryDriver())
+        // jsdom ships no scrollIntoView — see MessageList's optional call.
+        Element.prototype.scrollIntoView = vi.fn()
     })
 
     afterEach(() => {
@@ -149,5 +151,57 @@ describe('TextChannelContent', () => {
         )
 
         expect(screen.getByText('Nothing here yet')).toBeInTheDocument()
+    })
+
+    describe('go to message', () => {
+        it('flashes the direct-link target on mount', () => {
+            const { container } = render(
+                <TextChannelContent
+                    scopeId="chan-1"
+                    scopeType="channel"
+                    currentUser={user}
+                    initialMessages={{ ...initial, data: [message('1'), message('2')] }}
+                    initialHighlightMessageId="2"
+                    placeholder="Message #general"
+                    emptyState={<div>Empty</div>}
+                />
+            )
+
+            expect(container.querySelector('[data-message-id="2"] .bg-accent-primary\\/10')).toBeInTheDocument()
+        })
+
+        it('jumping to a reply already in the window highlights it without fetching', async () => {
+            const target = message('1')
+            const reply = { ...message('2'), reply_to_id: '1', reply_to: target }
+            const { container } = renderContent({ ...initial, data: [target, reply] })
+
+            await userEvent.click(screen.getByRole('button', { name: /content-1/ }))
+
+            expect(api.fetchChannelMessages).not.toHaveBeenCalled()
+            expect(container.querySelector('[data-message-id="1"] .bg-accent-primary\\/10')).toBeInTheDocument()
+        })
+
+        it('jumping to a reply outside the window fetches a page centered on it', async () => {
+            const target = message('1')
+            const reply = { ...message('2'), reply_to_id: '1', reply_to: target }
+            vi.mocked(api.fetchChannelMessages).mockResolvedValue({
+                data: [target, reply],
+                has_older: false,
+                older_cursor: null,
+                has_newer: false,
+                newer_cursor: null,
+            })
+
+            // The window only holds the reply — the reply preview it renders
+            // still names the target, even though the target itself isn't loaded.
+            renderContent({ ...initial, data: [reply] })
+
+            await userEvent.click(screen.getByText('content-1'))
+
+            expect(api.fetchChannelMessages).toHaveBeenCalledWith('chan-1', { around: '1' })
+            await waitFor(() => {
+                expect(useMessages.getState().messages['chan-1'].map((m) => m.id)).toEqual(['1', '2'])
+            })
+        })
     })
 })
