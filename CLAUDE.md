@@ -139,12 +139,12 @@ app/
                                visibility_role_ids on update (see docs/
                                roles-and-permissions.md's "Channel visibility") — gated
                                separately from the rest of update (docs/
-                               capabilities-and-channel-types.md); RoleController
-                               (distinct from Web\RoleController) is store/update/destroy/
-                               addMember/removeMember for room roles, plus
-                               indexGlobal/storeGlobal/reorderGlobal for instance-wide
-                               roles — indexGlobal backs Settings' self-fetching Roles
-                               tab (see docs/roles-and-permissions.md); RoomMemberController is
+                               capabilities-and-channel-types.md); RoleController is
+                               index/store/update/destroy/addMember/removeMember for room
+                               roles, plus indexGlobal/storeGlobal/reorderGlobal for
+                               instance-wide roles — index/indexGlobal back
+                               RoomRolesPanel.tsx/Settings' self-fetching Roles tab
+                               respectively (see docs/roles-and-permissions.md); RoomMemberController is
                                destroy/ban/unban — kick/ban a room member (see docs/
                                roles-and-permissions.md's "Kick and ban");
                                ThemePreferenceController is
@@ -234,10 +234,12 @@ resources/
                                one global presence subscription (see trap #38) —
                                keyed off router's 'navigate' event, not any page
     pages/                    one file per Inertia page (Auth, Channels, DM, Rooms,
-                               Settings, Invite — the invite-accept landing page);
-                               Rooms/Roles.tsx is the minimal room role-management page
-                               — see docs/roles-and-permissions.md. Its instance-wide
-                               equivalent is a Settings tab, not a separate page — see
+                               Settings, Invite — the invite-accept landing page).
+                               Room role management has no page of its own — it's
+                               RoomRolesPanel.tsx, one of Channels/Show's inline
+                               `mainView` panels (see docs/roles-and-permissions.md and
+                               the ChannelSidebar/Channels entries below). Its
+                               instance-wide equivalent is a Settings tab instead — see
                                components/settings/GlobalRolesSettings.tsx below
     components/
       chat/                   MessageList (the scroll container: a sentinel per
@@ -268,22 +270,39 @@ resources/
                                message" scrolls/flashes) — see docs/
                                messages-and-pagination.md's "Jumping to a message"
                                and docs/capabilities-and-channel-types.md
-      layout/                 RoomRail, ChannelSidebar (renders "+ Add Channel"/"🛡
-                               Roles" affordances), DMSidebar, MemberList (renders a
-                               per-member kick/ban dropdown when roomId +
-                               canManageMembers/canBanMembers are passed, e.g. from
-                               Channels/Show — see docs/roles-and-permissions.md),
-                               ChannelVisibilityModal (the "visible to roles" editor,
-                               opened from Channels/Show's header lock icon), UserPanel
+      layout/                 RoomRail, ChannelSidebar (the "🛡 Roles"/"+ Add
+                               channel"/invite-people affordances don't open modals —
+                               they call back up to Channels/Show, which swaps its
+                               `mainView` state and renders the matching panel in place
+                               of the channel content, showing that affordance as
+                               "active" the same way an active channel row is — see
+                               docs/capabilities-and-channel-types.md), DMSidebar,
+                               MemberList (renders a per-member kick/ban dropdown when
+                               roomId + canManageMembers/canBanMembers are passed, e.g.
+                               from Channels/Show — see docs/roles-and-permissions.md),
+                               ChannelVisibilityPanel (the "visible to roles" editor —
+                               unlike the `mainView` panels above, this one is toggled by
+                               Channels/Show independently of `mainView`: absolutely
+                               positioned below the channel header (not a modal, not a
+                               floating Radix popover) so it reads as inline without
+                               resizing the channel content beneath it or moving the
+                               message list's scroll position; closes on a second click
+                               of the 🔒 button, a click outside the header, or Cancel/a
+                               successful save), UserPanel
                                (the avatar+name trigger — see docs/status.md),
                                UserStatusPopover (the popup itself: status switcher,
                                custom status color+text+save, recent statuses,
-                               Settings/Logout — see docs/status.md), InviteModal,
-                               CreateChannelModal
+                               Settings/Logout — see docs/status.md), InvitePanel,
+                               CreateChannelPanel — the latter two render inline in
+                               Channels/Show's main pane (see `mainView` above), not as
+                               centered modals
       roles/                  RoleCard — one role's permission checklist + member
                                management, scope-agnostic (every API call is keyed by
-                               role id, not room id) so it backs both Rooms/Roles.tsx
-                               and Settings' Roles tab — see docs/roles-and-permissions.md
+                               role id, not room id) so it backs both RoomRolesPanel.tsx
+                               and Settings' Roles tab — see docs/roles-and-permissions.md.
+                               RoomRolesPanel self-fetches via GET /api/rooms/{room}/roles
+                               (Api\RoleController::index) the same way
+                               GlobalRolesSettings.tsx self-fetches the Settings Roles tab
       rooms/                  OwnerTransferModal — the confirmation shown when
                                kicking/banning a room's Owner would make the acting
                                admin the new Owner, see docs/roles-and-permissions.md

@@ -7,7 +7,12 @@ interface Props {
     onClose: () => void
 }
 
-export function InviteModal({ room, onClose }: Props) {
+/**
+ * The "Invite people" affordance, rendered inline in Channels/Show's main
+ * pane (in place of the channel content) rather than as a centered modal —
+ * see ChannelSidebar's invite button / Channels/Show's `mainView` state.
+ */
+export function InvitePanel({ room, onClose }: Props) {
     const [email, setEmail] = useState('')
     const [error, setError] = useState<string | null>(null)
     const [busy, setBusy] = useState(false)
@@ -53,13 +58,8 @@ export function InviteModal({ room, onClose }: Props) {
     }
 
     return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-            <div
-                className="w-full max-w-md bg-second rounded-lg p-6 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <h2 className="text-lg font-semibold text-text-primary mb-1">Invite people to {room.name}</h2>
-
+        <div className="flex-1 min-h-0 overflow-y-auto bg-primary px-6 py-6">
+            <div className="max-w-2xl mx-auto">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2">
                     Invite link
                 </p>
@@ -123,13 +123,6 @@ export function InviteModal({ room, onClose }: Props) {
                         ))}
                     </div>
                 )}
-
-                <button
-                    onClick={onClose}
-                    className="w-full mt-5 px-4 py-2 rounded bg-fifth hover:bg-sixth text-text-secondary text-sm font-medium transition-colors duration-100"
-                >
-                    Done
-                </button>
             </div>
         </div>
     )

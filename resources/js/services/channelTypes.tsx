@@ -35,9 +35,9 @@ export interface ChannelTypeDescriptor {
     label: string
     icon: string
     order: number
-    /** Mirrors ChannelType::category() — 'standard' or 'mod' today. Drives CreateChannelModal's grouping. */
+    /** Mirrors ChannelType::category() — 'standard' or 'mod' today. Drives CreateChannelPanel's grouping. */
     category: string
-    /** Mirrors ChannelType::description() — short help text shown in CreateChannelModal. */
+    /** Mirrors ChannelType::description() — short help text shown in CreateChannelPanel. */
     description: string
     capabilities: string[]
     isTextCapable: boolean
@@ -135,7 +135,7 @@ export const KNOWN_CHANNEL_TYPES: ChannelTypeDescriptor[] = Object.values(REGIST
     .filter((d) => d.key !== 'conversation')
     .sort((a, b) => a.order - b.order)
 
-/** Display label per category — shared by CreateChannelModal's grouping and RoleCard's category checklist. An unrecognized future category falls back to the raw string. */
+/** Display label per category — shared by CreateChannelPanel's grouping and RoleCard's category checklist. An unrecognized future category falls back to the raw string. */
 export const CHANNEL_CATEGORY_LABELS: Record<string, string> = {
     standard: 'Standard',
     mod: 'Moderation',

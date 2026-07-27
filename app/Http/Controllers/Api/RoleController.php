@@ -45,6 +45,34 @@ class RoleController extends Controller
         ]);
     }
 
+    /**
+     * Room-scoped roles + members — backs RoomRolesPanel.tsx, the inline
+     * panel ChannelSidebar's "Roles" button swaps into the main pane (in
+     * place of a dedicated Inertia page). Self-fetched the same way
+     * indexGlobal() backs the Settings Roles tab.
+     */
+    public function index(Request $request, Room $room): JsonResponse
+    {
+        abort_unless($room->hasMember($request->user()->id), 403);
+        Gate::authorize('create', [Role::class, $room]);
+
+        $room->load([
+            'roles.rolePermissions',
+            'roles.channelCategories',
+            'roles.users:id,username,display_name,avatar_url',
+            'members.user:id,username,display_name,avatar_url',
+        ]);
+
+        $room->roles->each(
+            fn (Role $role) => $role->setAttribute('can_manage', Gate::allows('manage', $role))
+        );
+
+        return response()->json([
+            'roles'   => $room->roles,
+            'members' => $room->members,
+        ]);
+    }
+
     public function store(Request $request, Room $room): JsonResponse
     {
         Gate::authorize('create', [Role::class, $room]);
@@ -64,11 +92,11 @@ class RoleController extends Controller
         ]);
 
         $role->load(['rolePermissions', 'channelCategories']);
-        // Web\RoleController::index computes this per role for the page
-        // load; store() skipped it, so a role you just created came back
-        // with no can_manage at all — RoleCard's `role.can_manage ?? false`
-        // then rendered it as unmanageable (no add-member UI, etc.) until a
-        // full page refresh re-fetched it correctly. Compute it here too.
+        // index() computes this per role on every fetch; store() skipped it,
+        // so a role you just created came back with no can_manage at all —
+        // RoleCard's `role.can_manage ?? false` then rendered it as
+        // unmanageable (no add-member UI, etc.) until a refetch corrected it.
+        // Compute it here too.
         $role->setAttribute('can_manage', Gate::allows('manage', $role));
 
         return response()->json($role, 201);

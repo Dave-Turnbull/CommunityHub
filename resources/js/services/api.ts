@@ -14,6 +14,7 @@ import type {
     RecentCustomStatus,
     Role,
     RoomInvite,
+    RoomMember,
     User,
     UserStatus,
     VoiceDevicePreference,
@@ -152,6 +153,11 @@ export async function reorderChannels(roomId: string, channelIds: string[]): Pro
 }
 
 // ── Roles ────────────────────────────────────────────────────────────────
+
+export async function fetchRoomRoles(roomId: string): Promise<{ roles: Role[]; members: RoomMember[] }> {
+    const { data } = await axios.get(`/api/rooms/${roomId}/roles`)
+    return data
+}
 
 export async function createRole(roomId: string, name: string): Promise<Role> {
     const { data } = await axios.post(`/api/rooms/${roomId}/roles`, { name })

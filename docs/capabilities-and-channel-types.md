@@ -72,7 +72,7 @@ Interface: `App\Support\ChannelTypes\ChannelType`.
   (no PHP/DB enum). Only `'standard'` and `'mod'` are used by built-in types today. Drives
   creation-time permission gating — see "Category-based creation gating" below.
 - `description(): string` — short help text shown next to this type in
-  `CreateChannelModal`.
+  `CreateChannelPanel`.
 
 ### Category-based creation gating
 
@@ -91,7 +91,7 @@ category checklist.
 `ChannelPolicy::creatableTypeKeys(User $user, Room $room): array` computes every
 registered, user-creatable type key (excluding `conversation`) the viewer may create —
 this backs `Web\ChannelController::show`'s `creatable_channel_types` Inertia prop, which
-`ChannelSidebar`/`CreateChannelModal` use to show only the "+ Add Channel" affordance and
+`ChannelSidebar`/`CreateChannelPanel` use to show only the "+ Add Channel" affordance and
 type options the viewer is actually permitted to create.
 
 `FeatureRegistry::resolveGrants(array $requested): array` expands every group into its
@@ -160,9 +160,9 @@ channel-scoped equivalents do — conversations have no special-cased bypass.
   ones with an auto-generated label (`"drawing"` → `"Drawing Channels"`).
 - `ChannelType` (`types/index.ts`) is `string`, not a closed union — the registry, not
   the type system, is where a type's existence is declared.
-- `KNOWN_CHANNEL_TYPES` (the static list backing `CreateChannelModal`'s type picker)
+- `KNOWN_CHANNEL_TYPES` (the static list backing `CreateChannelPanel`'s type picker)
   excludes the `conversation` hybrid type (never user-creatable as a room channel) and
-  has no backend round-trip. `CreateChannelModal` filters it down to the
+  has no backend round-trip. `CreateChannelPanel` filters it down to the
   `creatable_channel_types` prop (see "Category-based creation gating" above) and groups
   what's left by `category`.
 - `Content`'s prop shape is not one fixed interface: a channel-scoped type's `Content`
@@ -212,15 +212,43 @@ literals), but both paths seed `settings` from the type's `defaultSettings()`.
 1. `Web\ChannelController::show` computes `can_manage_channels` (`Gate::allows('create',
    [Channel::class, $room])`) and passes it as an Inertia prop.
 2. `ChannelSidebar` only renders the "+" button when that prop is true (a UI
-   convenience — the same `Gate::authorize` re-runs server-side regardless) and opens
-   `CreateChannelModal`.
-3. The modal calls `createChannel()` (`resources/js/services/api.ts`).
+   convenience — the same `Gate::authorize` re-runs server-side regardless). Clicking it
+   calls back up to `Channels/Show`, which swaps its `mainView` state to render
+   `CreateChannelPanel` in the main pane, in place of the channel content, and shows the
+   "+" button as active while that panel is open (see "Inline panels" below).
+3. The panel calls `createChannel()` (`resources/js/services/api.ts`).
 4. `POST /api/rooms/{room}/channels` → `Api\ChannelController::store` re-checks
    authorization, validates `type`, creates the row (`position` = current max + 1,
    `settings` seeded from `defaultSettings()`), and broadcasts `ChannelCreated`.
-5. The HTTP response updates the creator's own tab (`onCreated` calls `addChannel()` on
-   the shared `useChannels` Zustand store) — no Inertia reload involved.
+5. The HTTP response updates the creator's own tab (`Channels/Show`'s `onCreated` calls
+   `addChannel()` on the shared `useChannels` Zustand store, then switches `mainView`
+   back to the channel) — no Inertia reload involved.
 6. Every other room member's tab picks up the change from the broadcast (below).
+
+### Inline panels
+
+`Channels/Show` tracks a `mainView: MainView` union (`types/index.ts`) — `{ type:
+'channel' }` normally, or `{ type: 'roles' | 'create-channel' | 'invite' }` while one of
+`ChannelSidebar`'s three room-management affordances (🛡 Roles, "+" Add channel, invite)
+is open. Its header and body both branch on `mainView.type`: the `'channel'` case is the
+normal channel header/content described above; the other three render a small header
+(icon, title, a "✕ Back to {channel}" button that resets `mainView`) and the matching
+panel — `RoomRolesPanel`/`CreateChannelPanel`/`InvitePanel` — in place of the channel
+content, none of them a centered modal. `ChannelSidebar` is purely presentational about
+this: it takes `activeView: MainView` plus `onSelectRoles`/`onSelectCreateChannel`/
+`onSelectInvite` callbacks rather than owning any open/closed state itself, and gives the
+triggering affordance the same active styling a selected channel row gets
+(`activeView.type === '…'`), while a channel row is only "active" when `activeView.type
+=== 'channel'` — so opening one of these panels visually deactivates whatever channel
+was previously showing. This state is plain `useState`, not a Zustand store: only
+`Channels/Show` needs it, and Inertia's default `preserveState: false` already remounts
+the page (resetting it for free) on every channel switch.
+
+`ChannelVisibilityPanel` (the 🔒 icon) is a different mechanic, not part of `mainView` —
+see `docs/roles-and-permissions.md`'s "Channel visibility" for why it's absolutely
+positioned below the channel header instead (reading as inline without actually
+resizing/pushing the channel content, so the message list's scroll position never
+moves), toggled independently of whichever `mainView` is showing.
 
 ### Realtime propagation
 

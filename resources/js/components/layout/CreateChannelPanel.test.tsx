@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { CreateChannelModal } from '@/components/layout/CreateChannelModal'
+import { CreateChannelPanel } from '@/components/layout/CreateChannelPanel'
 import * as api from '@/services/api'
 import type { Channel, Room } from '@/types'
 
@@ -20,26 +20,26 @@ const created: Channel = {
 
 const ALL_TYPES = ['announcement', 'text', 'voice']
 
-describe('CreateChannelModal', () => {
+describe('CreateChannelPanel', () => {
     afterEach(() => {
         vi.clearAllMocks()
     })
 
     it('defaults to the first available channel type', () => {
-        render(<CreateChannelModal room={room} creatableTypes={ALL_TYPES} onClose={vi.fn()} onCreated={vi.fn()} />)
+        render(<CreateChannelPanel room={room} creatableTypes={ALL_TYPES} onClose={vi.fn()} onCreated={vi.fn()} />)
 
         expect(screen.getByRole('button', { name: /announcement/i })).toHaveClass('border-accent-primary')
     })
 
     it('groups types into Standard and Moderation sections', () => {
-        render(<CreateChannelModal room={room} creatableTypes={ALL_TYPES} onClose={vi.fn()} onCreated={vi.fn()} />)
+        render(<CreateChannelPanel room={room} creatableTypes={ALL_TYPES} onClose={vi.fn()} onCreated={vi.fn()} />)
 
         expect(screen.getByText('Moderation')).toBeInTheDocument()
         expect(screen.getByText('Standard')).toBeInTheDocument()
     })
 
     it('only offers types present in creatableTypes', () => {
-        render(<CreateChannelModal room={room} creatableTypes={['text', 'voice']} onClose={vi.fn()} onCreated={vi.fn()} />)
+        render(<CreateChannelPanel room={room} creatableTypes={['text', 'voice']} onClose={vi.fn()} onCreated={vi.fn()} />)
 
         expect(screen.queryByRole('button', { name: /announcement/i })).not.toBeInTheDocument()
         expect(screen.queryByText('Moderation')).not.toBeInTheDocument()
@@ -48,7 +48,7 @@ describe('CreateChannelModal', () => {
     })
 
     it('shows a no-permission message and disables Create when nothing is creatable', () => {
-        render(<CreateChannelModal room={room} creatableTypes={[]} onClose={vi.fn()} onCreated={vi.fn()} />)
+        render(<CreateChannelPanel room={room} creatableTypes={[]} onClose={vi.fn()} onCreated={vi.fn()} />)
 
         expect(screen.getByText(/don't have permission/i)).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
@@ -60,7 +60,7 @@ describe('CreateChannelModal', () => {
         const onClose = vi.fn()
         const user = userEvent.setup()
 
-        render(<CreateChannelModal room={room} creatableTypes={ALL_TYPES} onClose={onClose} onCreated={onCreated} />)
+        render(<CreateChannelPanel room={room} creatableTypes={ALL_TYPES} onClose={onClose} onCreated={onCreated} />)
 
         await user.click(screen.getByRole('button', { name: /text/i }))
         await user.type(screen.getByPlaceholderText('new-channel'), 'new-channel')
@@ -79,7 +79,7 @@ describe('CreateChannelModal', () => {
         })
         const user = userEvent.setup()
 
-        render(<CreateChannelModal room={room} creatableTypes={ALL_TYPES} onClose={vi.fn()} onCreated={vi.fn()} />)
+        render(<CreateChannelPanel room={room} creatableTypes={ALL_TYPES} onClose={vi.fn()} onCreated={vi.fn()} />)
 
         await user.type(screen.getByPlaceholderText('new-channel'), 'general')
         await user.click(screen.getByRole('button', { name: 'Create' }))
@@ -88,7 +88,7 @@ describe('CreateChannelModal', () => {
     })
 
     it('disables Create until a name is entered', () => {
-        render(<CreateChannelModal room={room} creatableTypes={ALL_TYPES} onClose={vi.fn()} onCreated={vi.fn()} />)
+        render(<CreateChannelPanel room={room} creatableTypes={ALL_TYPES} onClose={vi.fn()} onCreated={vi.fn()} />)
 
         expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
     })

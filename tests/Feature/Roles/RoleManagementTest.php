@@ -569,4 +569,39 @@ class RoleManagementTest extends TestCase
         // covers the separate target-user comparison.
         $response->assertForbidden();
     }
+
+    // ── GET /api/rooms/{room}/roles — backs RoomRolesPanel.tsx's self-fetch ──
+
+    public function test_the_room_roles_endpoint_is_gated_by_manage_roles(): void
+    {
+        $room = Room::factory()->create();
+        $user = $this->plainMember($room);
+
+        $response = $this->actingAs($user)->getJson("/api/rooms/{$room->id}/roles");
+
+        $response->assertForbidden();
+    }
+
+    public function test_the_room_roles_endpoint_requires_room_membership(): void
+    {
+        $room = Room::factory()->create();
+        $outsider = User::factory()->create();
+
+        $response = $this->actingAs($outsider)->getJson("/api/rooms/{$room->id}/roles");
+
+        $response->assertForbidden();
+    }
+
+    public function test_a_user_with_manage_roles_can_fetch_room_roles_and_members(): void
+    {
+        $room = Room::factory()->create();
+        $user = $this->memberWithManageRoles($room);
+        Role::factory()->for($room)->create(['name' => 'Moderator']);
+
+        $response = $this->actingAs($user)->getJson("/api/rooms/{$room->id}/roles");
+
+        $response->assertOk();
+        $response->assertJsonFragment(['name' => 'Moderator']);
+        $response->assertJsonFragment(['id' => $user->id]);
+    }
 }

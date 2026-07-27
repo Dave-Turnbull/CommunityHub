@@ -31,7 +31,7 @@ const NON_MOD_CATEGORIES = KNOWN_CHANNEL_CATEGORIES.filter((c) => c !== 'mod')
 /**
  * Renders one role's permissions + member management. Scope-agnostic —
  * every API call here is keyed by role id, not a room id, so this same
- * component backs both Rooms/Roles.tsx (room-scoped roles) and
+ * component backs both RoomRolesPanel.tsx (room-scoped roles) and
  * Settings' Roles tab (components/settings/GlobalRolesSettings.tsx,
  * global/instance-wide roles). `onMemberChanged` lets
  * the parent re-sync from the server after a removal (see

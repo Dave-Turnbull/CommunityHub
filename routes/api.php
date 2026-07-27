@@ -35,6 +35,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('/rooms/{room}/channels/reorder',  [ChannelController::class, 'reorder']);
 
     // Roles — gated by RolePolicy (manage_roles permission + hierarchy, see PermissionChecker/Role::outranks)
+    Route::get('/rooms/{room}/roles',                        [RoleController::class, 'index']);
     Route::post('/rooms/{room}/roles',                       [RoleController::class, 'store']);
     Route::patch('/rooms/{room}/roles/reorder',              [RoleController::class, 'reorder']);
     Route::patch('/roles/{role}',                             [RoleController::class, 'update']);

@@ -65,7 +65,7 @@ to group" notification has no associated message).
 
 ## Invites
 
-`InviteModal` surfaces two independent invite mechanisms:
+`InvitePanel` surfaces two independent invite mechanisms:
 
 - **Shareable link**, built from `Room.invite_code` (generated in `Room::booted()`),
   pointing at `GET /join/{code}` (`RoomController::join` — `GET`, since it is meant to
