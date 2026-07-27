@@ -78,6 +78,28 @@ class ChannelMessageTest extends TestCase
         $this->assertDatabaseCount('messages', 0);
     }
 
+    public function test_replying_to_an_attachment_only_message_includes_its_attachments(): void
+    {
+        Event::fake([MessageSent::class]);
+
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $user = $this->member($room);
+
+        $original = Message::factory()->for($channel)->create(['content' => null]);
+        \App\Models\Attachment::factory()->for($original)->create(['filename' => 'vacation.png']);
+
+        $response = $this->actingAs($user)->postJson("/api/channels/{$channel->id}/messages", [
+            'content'      => 'nice!',
+            'reply_to_id'  => $original->id,
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('reply_to.id', $original->id);
+        $response->assertJsonPath('reply_to.content', null);
+        $response->assertJsonPath('reply_to.attachments.0.filename', 'vacation.png');
+    }
+
     public function test_a_member_can_list_channel_messages(): void
     {
         $room = Room::factory()->create();

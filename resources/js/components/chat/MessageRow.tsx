@@ -3,6 +3,8 @@ import { clsx } from 'clsx'
 import { Avatar } from '@/components/ui/Avatar'
 import { DropdownMenu } from '@/components/ui/DropdownMenu'
 import { EmojiPicker } from '@/components/emoji/EmojiPicker'
+import { MessageAttachments } from '@/components/chat/MessageAttachments'
+import { ReplyPreviewContent } from '@/components/chat/ReplyPreviewContent'
 import { removeMessage, saveEdit, toggleReaction } from '@/services/messageActions'
 import type { Message, User } from '@/types'
 
@@ -87,12 +89,12 @@ export function MessageRow({ message, scopeId, grouped, currentUser, onReply, on
                             type="button"
                             onClick={() => onJumpToMessage?.(message.reply_to_id!)}
                             className="flex items-center gap-1.5 mb-1 pl-2 border-l-2 border-sixth text-xs text-text-muted
-                                       hover:border-accent-primary hover:text-text-secondary transition-colors text-left"
+                                       hover:border-accent-primary hover:text-text-secondary transition-colors text-left min-w-0"
                         >
-                            <span className="font-medium text-text-secondary">
+                            <span className="font-medium text-text-secondary flex-shrink-0">
                                 {message.reply_to.author?.display_name}
                             </span>
-                            <span className="truncate">{message.reply_to.content}</span>
+                            <ReplyPreviewContent message={message.reply_to} />
                         </button>
                     )}
 
@@ -122,31 +124,8 @@ export function MessageRow({ message, scopeId, grouped, currentUser, onReply, on
                         </p>
                     )}
 
-                    {/* Attachments */}
                     {!!message.attachments?.length && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                            {message.attachments.map((a) =>
-                                a.mime_type.startsWith('image/') ? (
-                                    <a key={a.id} href={a.url} target="_blank" rel="noreferrer">
-                                        <img
-                                            src={a.url}
-                                            alt={a.filename}
-                                            className="max-w-sm max-h-80 rounded object-cover"
-                                        />
-                                    </a>
-                                ) : (
-                                    <a
-                                        key={a.id}
-                                        href={a.url}
-                                        download
-                                        className="px-3 py-2 bg-fifth border border-sixth rounded text-xs
-                                                   text-text-secondary hover:text-text-primary"
-                                    >
-                                        📎 {a.filename}
-                                    </a>
-                                )
-                            )}
-                        </div>
+                        <MessageAttachments attachments={message.attachments} />
                     )}
 
                     {/* Reactions */}

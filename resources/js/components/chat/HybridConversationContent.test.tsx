@@ -13,6 +13,10 @@ vi.mock('@/services/api', () => ({
     fetchConversationMessages: vi.fn(),
 }))
 
+vi.mock('@inertiajs/react', () => ({
+    usePage: () => ({ props: { maxUploadSizeBytes: 100 * 1024 * 1024 } }),
+}))
+
 vi.mock('@/services/clientId', () => ({
     getClientId: vi.fn(() => 'client-1'),
 }))

@@ -16,6 +16,7 @@ use App\Support\Permission;
 use App\Support\PermissionChecker;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
@@ -159,6 +160,7 @@ class TextMessageService
             'author:id,username,display_name,avatar_url,status',
             'attachments',
             'replyTo.author:id,display_name,avatar_url',
+            'replyTo.attachments',
         ]);
     }
 
@@ -222,6 +224,17 @@ class TextMessageService
 
         [$type, $id] = self::scope($message);
         $messageId = $message->id;
+
+        // The message itself only soft-deletes (kept for reply-context/audit
+        // purposes — see Message's SoftDeletes), but there's no reason to hang
+        // onto the actual file once its message is gone, so attachments are a
+        // real delete: storage first (in case the DB delete fails partway,
+        // an orphaned row is harmless — an orphaned file on disk isn't
+        // cleaned up by anything), then the row.
+        foreach ($message->attachments as $attachment) {
+            Storage::disk('local')->delete($attachment->path);
+            $attachment->delete();
+        }
 
         $message->delete();
 
@@ -321,7 +334,12 @@ class TextMessageService
 
     private static function hydrate(Message $message, string $userId): Message
     {
-        $message->load(['author:id,username,display_name,avatar_url,status', 'attachments', 'replyTo.author:id,display_name,avatar_url']);
+        $message->load([
+            'author:id,username,display_name,avatar_url,status',
+            'attachments',
+            'replyTo.author:id,display_name,avatar_url',
+            'replyTo.attachments',
+        ]);
         $message->setAttribute('reactions', $message->reactionSummary($userId));
 
         return $message;

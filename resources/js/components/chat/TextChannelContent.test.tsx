@@ -17,6 +17,10 @@ vi.mock('@/services/api', () => ({
     fetchConversationMessages: vi.fn(),
 }))
 
+vi.mock('@inertiajs/react', () => ({
+    usePage: () => ({ props: { maxUploadSizeBytes: 100 * 1024 * 1024 } }),
+}))
+
 const user: User = {
     id: 'user-1', username: 'alice', display_name: 'Alice', avatar_url: null, status: 'online',
 }

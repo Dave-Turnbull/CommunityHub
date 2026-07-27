@@ -260,4 +260,150 @@ describe('MessageRow', () => {
         // Applied locally and the editor closed, without waiting for the PATCH.
         expect(useMessages.getState().messages['chan-1'][0].content).toBe('Updated content')
     })
+
+    it('renders an image attachment as an inline thumbnail', () => {
+        const message: Message = {
+            ...baseMessage,
+            attachments: [{
+                id: 'att-1', url: '/storage/photo.png', filename: 'photo.png',
+                mime_type: 'image/png', size_bytes: 1024, width: 400, height: 300,
+            }],
+        }
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
+
+        const img = screen.getByAltText('photo.png') as HTMLImageElement
+        expect(img.src).toContain('/storage/photo.png')
+    })
+
+    it('renders a video attachment as an inline embed, not a bare download link', () => {
+        const message: Message = {
+            ...baseMessage,
+            attachments: [{
+                id: 'att-1', url: '/storage/clip.mp4', filename: 'clip.mp4',
+                mime_type: 'video/mp4', size_bytes: 2048, width: null, height: null,
+            }],
+        }
+        const { container } = render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
+
+        const video = container.querySelector('video') as HTMLVideoElement
+        expect(video).toBeInTheDocument()
+        expect(video.src).toContain('/storage/clip.mp4')
+        expect(screen.queryByText('📎 clip.mp4')).not.toBeInTheDocument()
+    })
+
+    it('renders a non-media attachment as a download link', () => {
+        const message: Message = {
+            ...baseMessage,
+            attachments: [{
+                id: 'att-1', url: '/storage/report.pdf', filename: 'report.pdf',
+                mime_type: 'application/pdf', size_bytes: 4096, width: null, height: null,
+            }],
+        }
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
+
+        const link = screen.getByText('📎 report.pdf').closest('a')
+        expect(link).toHaveAttribute('href', '/storage/report.pdf')
+        expect(link).toHaveAttribute('download')
+    })
+
+    it('opens a preview modal when an image attachment thumbnail is clicked', async () => {
+        const message: Message = {
+            ...baseMessage,
+            attachments: [{
+                id: 'att-1', url: '/storage/photo.png', filename: 'photo.png',
+                mime_type: 'image/png', size_bytes: 1024, width: 400, height: 300,
+            }],
+        }
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
+
+        expect(screen.queryByText('Download')).not.toBeInTheDocument()
+        await userEvent.click(screen.getByAltText('photo.png'))
+
+        expect(screen.getByText('Download')).toBeInTheDocument()
+        expect(screen.getAllByAltText('photo.png')).toHaveLength(2)
+    })
+
+    it('falls back to the attachment filename in the reply preview when the replied-to message has no content', () => {
+        render(
+            <MessageRow
+                message={{
+                    ...baseMessage,
+                    reply_to_id: 'msg-0',
+                    reply_to: {
+                        ...baseMessage,
+                        id: 'msg-0',
+                        content: null,
+                        author,
+                        attachments: [{
+                            id: 'att-1', url: '/storage/report.pdf', filename: 'report.pdf',
+                            mime_type: 'application/pdf', size_bytes: 1024, width: null, height: null,
+                        }],
+                    },
+                }}
+                scopeId="chan-1"
+                grouped={false}
+                currentUser={viewer}
+                onReply={vi.fn()} onJumpToMessage={vi.fn()}
+            />
+        )
+
+        expect(screen.getByText('📎 report.pdf')).toBeInTheDocument()
+    })
+
+    it('prefers the replied-to message content over its attachment filename in the reply preview', () => {
+        render(
+            <MessageRow
+                message={{
+                    ...baseMessage,
+                    reply_to_id: 'msg-0',
+                    reply_to: {
+                        ...baseMessage,
+                        id: 'msg-0',
+                        content: 'check this out',
+                        author,
+                        attachments: [{
+                            id: 'att-1', url: '/storage/report.pdf', filename: 'report.pdf',
+                            mime_type: 'application/pdf', size_bytes: 1024, width: null, height: null,
+                        }],
+                    },
+                }}
+                scopeId="chan-1"
+                grouped={false}
+                currentUser={viewer}
+                onReply={vi.fn()} onJumpToMessage={vi.fn()}
+            />
+        )
+
+        expect(screen.getByText('check this out')).toBeInTheDocument()
+        expect(screen.queryByText('📎 report.pdf')).not.toBeInTheDocument()
+    })
+
+    it('shows an actual image thumbnail in the reply preview, not just the filename', () => {
+        render(
+            <MessageRow
+                message={{
+                    ...baseMessage,
+                    reply_to_id: 'msg-0',
+                    reply_to: {
+                        ...baseMessage,
+                        id: 'msg-0',
+                        content: null,
+                        author,
+                        attachments: [{
+                            id: 'att-1', url: '/storage/vacation.png', filename: 'vacation.png',
+                            mime_type: 'image/png', size_bytes: 1024, width: 400, height: 300,
+                        }],
+                    },
+                }}
+                scopeId="chan-1"
+                grouped={false}
+                currentUser={viewer}
+                onReply={vi.fn()} onJumpToMessage={vi.fn()}
+            />
+        )
+
+        const thumbnail = screen.getByAltText('vacation.png') as HTMLImageElement
+        expect(thumbnail.src).toContain('/storage/vacation.png')
+        expect(screen.queryByText('📎 vacation.png')).not.toBeInTheDocument()
+    })
 })

@@ -23,6 +23,11 @@ class HandleInertiaRequests extends Middleware
         return array_merge(parent::share($request), [
             'appName' => config('app.name'),
 
+            // The user-facing upload size ceiling (config/uploads.php) — threaded
+            // through so MessageInput's client-side check matches whatever the
+            // server actually enforces, without hardcoding a duplicate number.
+            'maxUploadSizeBytes' => config('uploads.max_size_kb') * 1024,
+
             'auth' => [
                 'user' => $user?->only([
                     'id', 'username', 'display_name', 'avatar_url',

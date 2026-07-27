@@ -118,9 +118,14 @@ app/
                                Settings/Index.tsx's Roles tab renders at all;
                                MessageController::show is the "go to message" direct-link
                                resolver — GET /messages/{message} checks the same
-                               visibility a normal page load would, then redirects to
+                               visibility a normal page load would (via MessagePolicy,
+                               see docs/attachments.md), then redirects to
                                the channel/conversation with ?message= (see docs/
-                               messages-and-pagination.md's "Jumping to a message")
+                               messages-and-pagination.md's "Jumping to a message");
+                               AttachmentController::show is the only place an
+                               attachment's bytes are ever served from — GET
+                               /attachments/{attachment}, gated by AttachmentPolicy
+                               (see docs/attachments.md), never a direct storage URL
     Api/                      JSON controllers (axios targets), thin translators over
                                app/Services/ — see docs/service-layer.md.
                                ChannelFocusController is the focus/blur heartbeat
@@ -166,7 +171,13 @@ app/
                                RoomMember (Laravel's convention-based auto-discovery
                                maps the RoomMember model to it) — kick/ban, a different
                                hierarchy comparison than RolePolicy's, see docs/
-                               roles-and-permissions.md
+                               roles-and-permissions.md; MessagePolicy::view is "can this
+                               user see this message" (channel room-membership +
+                               visibility, or conversation participancy) starting from a
+                               Message row — used by Web\MessageController::show and by
+                               AttachmentPolicy::view, which defers to it once an
+                               attachment is on a sent message (uploader-only before
+                               that) — see docs/attachments.md
   Providers/
     ChannelTypeServiceProvider.php  registers every built-in ChannelType — see docs/
                                capabilities-and-channel-types.md
@@ -234,9 +245,25 @@ resources/
                                preservation, plus the `scrollTo` prop that scrolls to
                                and briefly flashes a "go to message" landing target),
                                MessageRow (its reply-context block is a button that
-                               jumps to the replied-to message), MessageInput (its
+                               jumps to the replied-to message, rendering
+                               ReplyPreviewContent for what it's replying to),
+                               ReplyPreviewContent (the reply-target preview shared by
+                               MessageRow's reply-context and MessageInput's "Replying
+                               to…" bar — an actual thumbnail for an image attachment,
+                               not just its filename; text content if present alongside
+                               it; a plain 📎 filename fallback only for a non-image
+                               attachment with no content; nothing extra if neither),
+                               MessageAttachments
+                               (renders a message's `attachments[]` as inline embeds —
+                               image/video thumbnail or a generic 📎 download link —
+                               reusable anywhere a list of Attachment needs rendering,
+                               not just MessageRow), AttachmentPreviewModal (the
+                               lightbox MessageAttachments opens on an image/video
+                               thumbnail click), MessageInput (its
                                `leading` slot is where the jump-to-present button
-                               renders, in line with the compose box),
+                               renders, in line with the compose box; it also owns a
+                               composer-scoped error stack — see the Conventions bullet
+                               on composer errors below),
                                TextChannelContent (owns the highlight state "go to
                                message" scrolls/flashes) — see docs/
                                messages-and-pagination.md's "Jumping to a message"
@@ -291,7 +318,12 @@ resources/
                                music player's listener count, a per-channel elapsed-time
                                display) would also want, not something specific to voice
                                itself. See docs/voice.md.
-      emoji/ ui/               EmojiPicker, Avatar, Tooltip, Tabs (generic tabbed
+      emoji/ ui/               EmojiPicker (wraps its lazy-loaded picker chunk in an
+                               error boundary — a failed dynamic import degrades to a
+                               small in-place fallback instead of crashing the channel
+                               view, and calls the optional `onError` prop so a caller
+                               like MessageInput can also surface it in its own error
+                               stack), Avatar, Tooltip, Tabs (generic tabbed
                                container), Toggle (custom, no Radix Switch dependency),
                                Popover, DropdownMenu (thin Radix wrappers — EmojiPicker
                                and MessageRow's edit/delete menu are built on these
@@ -422,8 +454,53 @@ assuming something is undocumented.
   previous state and rethrow). Don't call `api.addReaction`/`editMessage`/
   `deleteMessage` straight from a component; that's what made these feel laggy
   before. See `docs/messages-and-pagination.md`.
-- **File uploads** go to the `public` disk in dev; production swaps
-  `FILESYSTEM_DISK=r2` (Cloudflare R2, S3-compatible) — see `config/filesystems.php`.
+- **Message attachments go to the private `local` disk, never `public`**, and are only
+  ever served through the authorized `GET /attachments/{attachment}` route — never a
+  direct storage URL. `UploadController` hardcodes the `local` disk regardless of
+  `FILESYSTEM_DISK`/`config('filesystems.default')` (that env var — `public` dev /
+  `r2` prod, see `config/filesystems.php` — governs the *default* disk other,
+  unrelated code might use, not attachment storage specifically). See
+  `docs/attachments.md` for storage, visibility (`AttachmentPolicy`/`MessagePolicy` —
+  an attachment is exactly as accessible as the message it's on), and deletion.
+- **Images are compressed client-side before upload**, in `services/imageCompression.ts`'s
+  `compressImageFile()` — called from `services/api.ts`'s `uploadFile`, so every caller of
+  the one reusable upload path gets it automatically rather than needing to remember to
+  compress. Downscales to a 1920px max dimension and re-encodes (JPEG/WebP get a quality
+  pass, PNG stays lossless to preserve transparency); GIF and SVG are skipped outright
+  (canvas would flatten GIF animation to one frame and rasterize SVG), as are files
+  already under 300 KB. Fails open at every step — no canvas/`createImageBitmap` support,
+  a decode error, or a "compressed" result that isn't actually smaller all fall back to
+  the original file untouched, so a browser quirk never blocks the upload. Video has no
+  client-side compression yet — only images.
+- **The upload size limit is one config value, not three independent hardcoded ones.**
+  `config/uploads.php`'s `max_size_kb` (`UPLOAD_MAX_SIZE_KB` env var, default 100 MB) is
+  the actual, user-facing limit — `UploadController` validates against it, and it's
+  threaded to the frontend as `maxUploadSizeBytes` on every Inertia page (see
+  `HandleInertiaRequests::share()`/`SharedProps`), which is what `MessageInput` checks
+  client-side before ever uploading a file. nginx's `client_max_body_size`
+  (`docker/nginx/default.conf`) and php.ini's `upload_max_filesize`/`post_max_size`
+  (`docker/app/php.ini`) are separate, hard-coded ceilings set comfortably above this
+  value — they exist so an over-limit request gets rejected at the edge instead of
+  reaching PHP, not to be the tunable number themselves. Raising `UPLOAD_MAX_SIZE_KB`
+  without also raising those ceilings just moves the 413 to a lower, still-wrong
+  threshold — this exact mismatch (nginx defaulting to 1 MB with no override) is what
+  originally made video uploads 413 before ever reaching Laravel's own (then 8 MB)
+  validation.
+- **The composer (`MessageInput`) has its own error stack**, local `useState`, scoped to
+  that one composer instance — not a global toast system. It renders above the reply
+  bar/file previews/textarea, inside the channel, one closable card per error (closing
+  one never affects the others — see the id-capture note in `pushError`, a real bug this
+  shipped with once already: capture the id before calling `setErrors`, don't read the
+  ref from inside the updater). Every step of sending a message pushes into the same
+  stack on failure: a rejected `sendChannelMessage`/`sendConversationMessage`/`onSend`,
+  a rejected per-file `uploadFile` (named after the failing file), an oversized file
+  caught client-side at selection/drop time (before ever uploading), and an
+  `EmojiPicker` chunk-load failure (via its `onError` prop). `services/errorMessages.ts`'s
+  `describeApiError()` turns an axios error into the user-facing sentence; a failed
+  per-file upload wraps its message in `ComposerFriendlyError` first so send()'s outer
+  catch knows not to re-describe it and lose the filename context. The whole stack
+  clears at the start of the next send attempt (not on unmount, not on scope switch —
+  same as the draft text/file list, which also don't reset on a channel switch today).
 - **Every color, corner radius, border width, and typography value is a themed CSS
   variable, not a literal.** `tailwind.config.js` points its `colors`/`borderRadius`/
   `borderWidth`/`fontSize`/`fontWeight`/`fontFamily` theme keys at CSS custom
@@ -541,7 +618,11 @@ short version, by group — read the full entry before touching adjacent code:
   automatic, `.env`-reload timing for the `worker`/`reverb` containers,
   config-merging surprises (`mail.php`/`services.php`), migrations not
   auto-applying to the dev DB, rebuilding one of `app`/`worker`/`reverb`
-  without the others, and a Postgres-volume rename gotcha.
+  without the others, a Postgres-volume rename gotcha, nginx's default
+  `client_max_body_size` (1 MB) silently 413-ing uploads php.ini/Laravel would
+  otherwise allow, and `app_storage` needing to be mounted into `nginx` too
+  (not just `app`/`worker`/`reverb`) or every uploaded file 404s — which looks
+  exactly like a broken `<img>`/`<video>` frontend bug, not an infra one.
 - **Model/table naming** — `CustomEmoji`'s pluralizer collision,
   `user_notifications` vs. Laravel's reserved `notifications` shape.
 - **Auth & sessions** — stateful Sanctum requirements, the `Referer` header a
@@ -818,6 +899,10 @@ which is `localhost` for the browser — see trap #21) + `REVERB_PORT`/`REVERB_S
 scaling, `config/reverb.php` `servers.reverb.scaling`, `true` here since Redis is
 already a hard dependency — lets multiple Reverb instances share subscriber state),
 `FILESYSTEM_DISK` (`public` dev / `r2` prod), `AWS_*` for R2,
+`UPLOAD_MAX_SIZE_KB` (default 102400, i.e. 100 MB — `config/uploads.php`'s `max_size_kb`,
+the real upload size limit; raising it also means raising `docker/nginx/default.conf`'s
+`client_max_body_size` and `docker/app/php.ini`'s `upload_max_filesize`/`post_max_size`,
+see the Conventions bullet above),
 `MAIL_MAILER=mailpit` (dev default; other options: `smtp`, `ses`, `log`, `array`
 — see README's `## Email`) + `MAIL_HOST`/`MAIL_PORT`/`MAIL_USERNAME`/
 `MAIL_PASSWORD`/`MAIL_ENCRYPTION` (used by `mailpit`/`smtp`) +

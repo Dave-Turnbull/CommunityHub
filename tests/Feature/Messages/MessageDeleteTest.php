@@ -3,10 +3,13 @@
 namespace Tests\Feature\Messages;
 
 use App\Events\MessageDeleted;
+use App\Models\Attachment;
 use App\Models\Message;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class MessageDeleteTest extends TestCase
@@ -39,5 +42,24 @@ class MessageDeleteTest extends TestCase
 
         $response->assertForbidden();
         $this->assertDatabaseHas('messages', ['id' => $message->id, 'deleted_at' => null]);
+    }
+
+    public function test_deleting_a_message_removes_its_attachments_file_and_row(): void
+    {
+        Storage::fake('local');
+        $path = UploadedFile::fake()->image('photo.jpg')->store('uploads', 'local');
+
+        $author = User::factory()->create();
+        $message = Message::factory()->create(['author_id' => $author->id]);
+        $attachment = Attachment::factory()->for($message)->create(['path' => $path]);
+
+        Storage::disk('local')->assertExists($path);
+
+        $this->actingAs($author)->deleteJson("/api/messages/{$message->id}")->assertOk();
+
+        Storage::disk('local')->assertMissing($path);
+        $this->assertDatabaseMissing('attachments', ['id' => $attachment->id]);
+        // The message itself only soft-deletes — unaffected by attachment cleanup.
+        $this->assertSoftDeleted('messages', ['id' => $message->id]);
     }
 }

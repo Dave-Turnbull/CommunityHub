@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { clsx } from 'clsx'
+import { usePage } from '@inertiajs/react'
 import { useDropzone } from 'react-dropzone'
 import { EmojiPicker } from '@/components/emoji/EmojiPicker'
+import { ReplyPreviewContent } from '@/components/chat/ReplyPreviewContent'
+import { describeApiError } from '@/services/errorMessages'
 import { uploadFile, sendChannelMessage, sendConversationMessage } from '@/services/api'
 import { useMessages } from '@/stores'
-import type { Message } from '@/types'
+import type { Message, SharedProps } from '@/types'
 import type { SendPayload } from '@/services/api'
 
 interface Props {
@@ -26,23 +29,65 @@ interface Props {
     leading?: ReactNode
 }
 
+interface ComposerError {
+    id: number
+    message: string
+}
+
+// Marks a message already turned into a user-facing sentence (a per-file
+// upload failure, named after the file) so the outer catch in send() doesn't
+// re-run describeApiError against it and lose that context.
+class ComposerFriendlyError extends Error {}
+
 export function MessageInput({
     scopeId, scopeType, placeholder, replyTo, onClearReply, onSend, onSent, leading,
 }: Props) {
     const [text, setText] = useState('')
     const [files, setFiles] = useState<File[]>([])
     const [busy, setBusy] = useState(false)
+    const [errors, setErrors] = useState<ComposerError[]>([])
     const areaRef = useRef<HTMLTextAreaElement>(null)
+    const nextErrorId = useRef(0)
+
+    // The one server-configured upload ceiling (config/uploads.php) — see CLAUDE.md.
+    // SharedProps lacks the index signature usePage's generic constraint wants, so
+    // it's cast rather than passed as the type param (same shape Page<T>.props has
+    // at runtime — it's always exactly what HandleInertiaRequests::share() sent).
+    const { maxUploadSizeBytes } = usePage().props as unknown as SharedProps
 
     // The sender adds their own message locally — the broadcast uses toOthers()
     const addMessage = useMessages((s) => s.add)
     const commit = onSent ?? ((message: Message) => addMessage(scopeId!, message))
 
+    // Errors here are scoped to this composer instance and cover the whole
+    // send pipeline — message send, file upload, emoji picker load failure —
+    // stacked and independently closable, cleared on the next send attempt.
+    const pushError = (message: string) => {
+        // Captured now, not read inside the updater — the updater runs later,
+        // by which point a second pushError in the same tick would already
+        // have bumped the ref, handing both errors the same id.
+        const id = ++nextErrorId.current
+        setErrors((prev) => [...prev, { id, message }])
+    }
+    const dismissError = (id: number) => setErrors((prev) => prev.filter((e) => e.id !== id))
+
+    const addFiles = (candidates: File[]) => {
+        const accepted: File[] = []
+        for (const file of candidates) {
+            if (file.size > maxUploadSizeBytes) {
+                const maxMb = Math.round(maxUploadSizeBytes / (1024 * 1024))
+                pushError(`${file.name} is too large to upload (max ${maxMb} MB).`)
+            } else {
+                accepted.push(file)
+            }
+        }
+        if (accepted.length) setFiles((f) => [...f, ...accepted])
+    }
+
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         noClick: true,
         noKeyboard: true,
-        maxSize: 8 * 1024 * 1024,
-        onDrop: (dropped) => setFiles((f) => [...f, ...dropped]),
+        onDrop: addFiles,
     })
 
     const grow = () => {
@@ -56,9 +101,16 @@ export function MessageInput({
         const content = text.trim()
         if ((!content && !files.length) || busy) return
 
+        setErrors([])
         setBusy(true)
         try {
-            const uploaded = await Promise.all(files.map(uploadFile))
+            const uploaded = await Promise.all(files.map(async (file) => {
+                try {
+                    return await uploadFile(file)
+                } catch (e) {
+                    throw new ComposerFriendlyError(describeApiError(e, file.name))
+                }
+            }))
 
             const payload: SendPayload = {
                 content: content || undefined,
@@ -80,6 +132,8 @@ export function MessageInput({
             setFiles([])
             onClearReply()
             if (areaRef.current) areaRef.current.style.height = 'auto'
+        } catch (e) {
+            pushError(e instanceof ComposerFriendlyError ? e.message : describeApiError(e, 'Your message'))
         } finally {
             setBusy(false)
         }
@@ -90,18 +144,41 @@ export function MessageInput({
             {leading}
 
             <div className="flex-1 min-w-0">
+                {!!errors.length && (
+                    <div className="flex flex-col gap-1.5 mb-1.5">
+                        {errors.map((e) => (
+                            <div
+                                key={e.id}
+                                className="flex items-start gap-2 px-3 py-2 rounded-lg bg-danger/10 border
+                                           border-danger/30 text-xs text-danger"
+                            >
+                                <span className="flex-1">{e.message}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => dismissError(e.id)}
+                                    aria-label="Dismiss"
+                                    className="flex-shrink-0 hover:text-text-primary"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 {replyTo && (
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-fifth rounded-t-lg
-                                    border-b border-sixth text-xs text-text-muted">
-                        <span>
+                                    border-b border-sixth text-xs text-text-muted min-w-0">
+                        <span className="flex-shrink-0">
                             Replying to{' '}
                             <strong className="text-text-secondary">
                                 {replyTo.author?.display_name}
                             </strong>
                         </span>
+                        <ReplyPreviewContent message={replyTo} />
                         <button
                             onClick={onClearReply}
-                            className="ml-auto hover:text-text-primary"
+                            className="ml-auto hover:text-text-primary flex-shrink-0"
                         >
                             ✕
                         </button>
@@ -153,7 +230,7 @@ export function MessageInput({
                             multiple
                             className="hidden"
                             onChange={(e) => {
-                                setFiles((f) => [...f, ...Array.from(e.target.files ?? [])])
+                                addFiles(Array.from(e.target.files ?? []))
                                 e.target.value = ''
                             }}
                         />
@@ -173,7 +250,10 @@ export function MessageInput({
                                    placeholder:text-text-muted focus:outline-none resize-none leading-relaxed"
                     />
 
-                    <EmojiPicker onSelect={(e) => { setText((t) => t + e); areaRef.current?.focus() }}>
+                    <EmojiPicker
+                        onSelect={(e) => { setText((t) => t + e); areaRef.current?.focus() }}
+                        onError={() => pushError("Couldn't load the emoji picker. Try again.")}
+                    >
                         <button className="p-3 text-text-muted hover:text-text-primary text-lg leading-none">
                             😀
                         </button>

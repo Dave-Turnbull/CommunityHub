@@ -149,12 +149,41 @@ old references/commit messages still resolve.
     container-to-container requests still work as the differentiator, and know that a
     daemon restart (not just a compose cycle) may be the actual fix.
 
+16. **(#52) nginx has no `client_max_body_size` by default — 1 MB, well under any
+    real image/video upload.** A request over that limit gets a 413 from nginx itself,
+    before it ever reaches php-fpm/Laravel, regardless of what `upload_max_filesize`/
+    `post_max_size` in `docker/app/php.ini` or the app's own validation (`config/
+    uploads.php`'s `max_size_kb`) allow. `docker/nginx/default.conf` now sets
+    `client_max_body_size` explicitly, comfortably above the app-level limit. The three
+    layers (nginx, php.ini, `config/uploads.php`) are independent ceilings/limits that
+    must be kept in that relative order (nginx/php.ini >= `config/uploads.php`) — raising
+    only the Laravel-level config value without also raising the other two just moves
+    the 413 to a lower, still-wrong threshold instead of fixing it.
+
+17. **(#53) `app_storage` (the named volume holding `storage/app`, and so
+    `storage/app/public` — every uploaded file) was mounted into `app`/`worker`/`reverb`
+    but not `nginx`.** `public/storage` is an absolute-path symlink
+    (`/var/www/html/storage/app/public`, made by `storage:link`), and nginx serves
+    `/storage/*` as a static file straight off disk via `try_files`. Without the volume
+    mounted, nginx's copy of that path resolved through the bind-mounted host repo
+    instead of the named volume — an empty directory — so every upload 404'd (Laravel's
+    catch-all route, not nginx's own 404) no matter how correct the upload/API/frontend
+    layers were. The failure mode looks like a frontend bug, not an infra one: a 404'd
+    `<img>` renders its `alt` text (the filename) in place of the broken image, and a
+    `<video>` fed an HTML error page instead of real bytes throws exactly "no video with
+    supported format and MIME type found." `docker-compose.yml` now mounts
+    `app_storage:/var/www/html/storage/app:ro` into `nginx` too. If a newly-uploaded
+    file's URL 404s (or a browser reports a format/MIME error for a file you can prove
+    decodes fine), curl the URL directly and check whether nginx or Laravel answered
+    (`X-Powered-By: PHP` means Laravel's catch-all, i.e. nginx never found the file on
+    disk) before suspecting the application code.
+
 ### Model/table naming
 
-16. **(#3) Model table names.** Laravel's pluralizer treats "Emoji" as already plural.
+18. **(#3) Model table names.** Laravel's pluralizer treats "Emoji" as already plural.
     `CustomEmoji` needs `protected $table = 'custom_emojis'`. Check the pluralizer
     before trusting a convention-derived table name.
-17. **(#22) The `user_notifications` table is deliberately not named `notifications`.**
+19. **(#22) The `user_notifications` table is deliberately not named `notifications`.**
     Laravel's own `Illuminate\Notifications\Notifiable` trait (used by `User` for
     password-reset emails) defines a `notifications()` MorphMany that expects a
     `notifications` table with `notifiable_type`/`notifiable_id` morph columns — a
@@ -168,10 +197,10 @@ old references/commit messages still resolve.
 
 ## Auth & sessions
 
-18. **(#2) `/api/*` needs stateful Sanctum.** `bootstrap/app.php` prepends
+20. **(#2) `/api/*` needs stateful Sanctum.** `bootstrap/app.php` prepends
     `EnsureFrontendRequestsAreStateful` to the `api` middleware group, and axios
     sets `withCredentials` + `withXSRFToken`. Without both, every `/api` call 401s.
-19. **(#27) A `curl`-driven session against `/api/*` 401s with `{"message":"Unauthenticated."}`
+21. **(#27) A `curl`-driven session against `/api/*` 401s with `{"message":"Unauthenticated."}`
     even with a valid, freshly-logged-in `communityhub_session` cookie in the jar — unless
     the request also carries a `Referer` (or `Origin`) header matching one of
     `SANCTUM_STATEFUL_DOMAINS` (`config/sanctum.php`; defaults include
@@ -186,11 +215,11 @@ old references/commit messages still resolve.
 
 ## Frontend/CSS
 
-20. **(#5) `@apply group` is illegal.** `group` is a marker class; apply it in JSX, not
+22. **(#5) `@apply group` is illegal.** `group` is a marker class; apply it in JSX, not
     in a CSS `@apply` rule.
-21. **(#6) Flex sidebars need `min-h-0`** on the scrolling `<nav>` or the UserPanel gets
+23. **(#6) Flex sidebars need `min-h-0`** on the scrolling `<nav>` or the UserPanel gets
     pushed off-screen.
-22. **(#16) `@routes` in `app.blade.php` with no Ziggy installed renders as literal
+24. **(#16) `@routes` in `app.blade.php` with no Ziggy installed renders as literal
     text**, not a directive. Blade leaves an unrecognized `@word` as plain text
     in the compiled view; because it sat in `<head>`, the HTML5 parser's error
     recovery moved that stray text node to the *start of `<body>`* (text tokens
@@ -201,7 +230,7 @@ old references/commit messages still resolve.
     so the fix was deleting the directive, not installing `tightenco/ziggy`.
     If `route()` ever gets used from the frontend, install Ziggy properly
     instead of re-adding a bare `@routes`.
-23. **(#36) `app.tsx`'s Inertia page resolver eagerly globs every `.tsx` file under
+25. **(#36) `app.tsx`'s Inertia page resolver eagerly globs every `.tsx` file under
     `pages/`, including test files, and executes them all in the browser at
     startup.** `resolve: (name) => import.meta.glob('./pages/**/*.tsx', {
     eager: true })` — `eager: true` means Vite doesn't just register these
@@ -221,7 +250,7 @@ old references/commit messages still resolve.
     future `.test.tsx` file needs to live somewhere this exclusion doesn't
     cover — a subfolder glob pattern changes, for instance — re-verify this
     still holds rather than assuming it does.
-24. **(#43) `min-h-screen` does not make a page scrollable — `h-screen` does.**
+26. **(#43) `min-h-screen` does not make a page scrollable — `h-screen` does.**
     `Settings/Index.tsx` used `min-h-screen bg-surface-600 overflow-y-auto` as its
     root div, and as the Voice settings tab grew (device pickers, audio-processing
     toggles, mic test, sensitivity controls) the page silently stopped scrolling to
@@ -244,10 +273,10 @@ old references/commit messages still resolve.
 
 ## Testing
 
-25. **(#10) `pdo_sqlite`/`sqlite3` are already in the PHP image** (bundled with
+27. **(#10) `pdo_sqlite`/`sqlite3` are already in the PHP image** (bundled with
     `php:8.4-fpm-alpine`) — no Dockerfile change was needed to add the test
     suite's in-memory SQLite connection in `config/database.php`.
-26. **(#12) `config/inertia.php` didn't exist**, so Inertia fell back to its package
+28. **(#12) `config/inertia.php` didn't exist**, so Inertia fell back to its package
     defaults: `page_paths` pointed at `resources/js/Pages` (capital P — this
     repo uses lowercase `pages`) and `ssr.enabled` defaulted to `true` with no
     SSR bundle or service anywhere in the stack. The first broke
@@ -255,14 +284,14 @@ old references/commit messages still resolve.
     exist"); the second meant every page render silently attempted (and
     swallowed the failure of) an SSR HTTP call. `config/inertia.php` now pins
     the real page path and turns SSR off explicitly.
-27. **(#15) Vitest 4's `vi.fn().mockImplementation(fn)` respects real constructor
+29. **(#15) Vitest 4's `vi.fn().mockImplementation(fn)` respects real constructor
     semantics** — if the mocked module is invoked with `new` (e.g. mocking
     `laravel-echo`'s default export), the implementation must be a `function`,
     not an arrow function, or `new` throws "is not a constructor". This broke
     `echo.test.ts`'s `laravel-echo` mock when bumping vitest 2 → 4 (`npm audit
     fix --force`, needed to clear the esbuild/vite dev-server advisories since
     they aren't fixed on any vite version vitest 2 can depend on).
-28. **(#25) Vitest's default `forks` pool is unstable inside the `vite` container** —
+30. **(#25) Vitest's default `forks` pool is unstable inside the `vite` container** —
     workers randomly segfault or time out (`Worker exited unexpectedly` / `Timeout
     terminating forks worker`), a different test file each run, with no code change
     involved; a failed run tells you nothing about correctness. `vitest.config.ts` now
@@ -271,7 +300,7 @@ old references/commit messages still resolve.
     reports a file-level crash (not a normal assertion failure) rather than a specific
     failing test, suspect this class of issue again before suspecting the test itself
     — rerun with `npx vitest run --pool=threads` to check whether it's real.
-29. **(#26) `assertJsonFragment` checks that each field's value appears *somewhere* in the
+31. **(#26) `assertJsonFragment` checks that each field's value appears *somewhere* in the
     response, not that they all appear *together* on the same element.** A test
     asserting `assertJsonFragment(['category' => 'direct_message', 'email' => true,
     'in_app' => false])` against a 3-element array response passed even when no single
@@ -287,7 +316,7 @@ old references/commit messages still resolve.
 
 ## Realtime & presence (general)
 
-30. **(#13) `Broadcast::channel()` registers against whatever the *default*
+32. **(#13) `Broadcast::channel()` registers against whatever the *default*
     broadcaster is at the moment `routes/channels.php` runs** (app boot), not
     at request time. Switching `config(['broadcasting.default' => ...])`
     later (e.g. mid-test) does not move the already-registered channel
@@ -295,7 +324,7 @@ old references/commit messages still resolve.
     base_path('routes/channels.php')` after switching, or the new driver's
     channel registry is empty and every `/broadcasting/auth` call 403s with
     "no channel matched," authorized or not.
-31. **(#21) `REVERB_HOST` cannot be one value for both the browser and the app/worker
+33. **(#21) `REVERB_HOST` cannot be one value for both the browser and the app/worker
     containers.** The browser (via `VITE_REVERB_HOST` → `services/echo.ts`) needs
     `localhost`, since it's reaching Reverb through the port docker-compose publishes
     to the host. But the `app`/`worker` containers use the *same-named* `REVERB_HOST`
@@ -314,7 +343,7 @@ old references/commit messages still resolve.
     `storage/logs/laravel.log` for this exact cURL error before assuming the bug is in
     application code — and remember `docker compose restart worker` after touching
     either var.
-32. **(#38) Presence (`presence.global`) must not be subscribed from inside a specific
+34. **(#38) Presence (`presence.global`) must not be subscribed from inside a specific
     page component.** `subscribePresence()` used to be called from `Channels/Show.tsx`
     and `DM/Show.tsx`'s own `useEffect`, which meant a user only showed up as "online"
     to everyone else while sitting on one of those two page types — visiting Settings,
@@ -332,16 +361,16 @@ old references/commit messages still resolve.
 
 ## Voice — see [voice.md](voice.md) for the full design these traps sit inside
 
-33. **(#29) coturn port-range/Docker networking** — see the Infrastructure group above
+35. **(#29) coturn port-range/Docker networking** — see the Infrastructure group above
     (shared with every other published port, not voice-specific in cause).
-34. **(#31) There is deliberately no `VITE_TURN_*` env var pair, unlike `REVERB_HOST`/
+36. **(#31) There is deliberately no `VITE_TURN_*` env var pair, unlike `REVERB_HOST`/
     `VITE_REVERB_HOST`.** Reverb's browser-facing host has to be baked into the JS
     bundle at build time (Echo connects directly on page load), but TURN credentials
     are ephemeral and fetched at runtime from an authenticated endpoint — the browser
     gets the host from that JSON response, not `import.meta.env`. Don't "fix" the
     apparent asymmetry by adding a `VITE_TURN_HOST` — it would be dead code the bundle
     never reads.
-35. **(#32) A presence channel's `.here()` callback only fires once, at the moment its own
+37. **(#32) A presence channel's `.here()` callback only fires once, at the moment its own
     subscription succeeds — Echo/Pusher don't replay it for a callback registered
     afterward.** Early voice code had both `ChannelSidebar` (wanting a read-only
     roster) and `services/webrtc.ts` (wanting to actually join the call) independently
@@ -356,7 +385,7 @@ old references/commit messages still resolve.
     one channel, only one teardown) also applies to the per-user
     `App.Models.User.{id}` channel — see `subscribeVoiceCallGuard()`'s cleanup note
     below.
-36. **(#33) Presence-channel *subscription* is not "being in the call" — don't conflate
+38. **(#33) Presence-channel *subscription* is not "being in the call" — don't conflate
     them, that was a real bug here.** The very first version of the sidebar roster
     feature populated `useVoiceRoster` directly from `.here()/.joining()/.leaving()`
     — raw presence membership, which can't distinguish an observer from a real
@@ -365,7 +394,7 @@ old references/commit messages still resolve.
     voice-adjacent feature needs to know who's *really* in a call, it must key off
     `useVoiceRoster` or `useVoice.selfParticipant` — never off a presence channel's
     raw member list.
-37. **(#37) A hook shared by multiple mounted consumers must not tie a side effect to any
+39. **(#37) A hook shared by multiple mounted consumers must not tie a side effect to any
     one consumer's unmount.** `useVoiceChannel` originally left the call in an
     unmount cleanup ("navigating away from the page mid-call should hang up") — fine
     when only `VoiceChannelPanel`/`VoiceBar` called it. Once `VoiceChannelSidebarItem`
@@ -379,7 +408,7 @@ old references/commit messages still resolve.
     — a call now only ends via an explicit Leave click, joining a different call, or a
     real socket disconnect. Every consumer of `useVoiceChannel` unmounts on every
     in-app navigation, shared hook or page-specific — don't reintroduce a leave there.
-38. **(#40) `subscribeVoiceRoster`'s ref-counted teardown originally assumed the last
+40. **(#40) `subscribeVoiceRoster`'s ref-counted teardown originally assumed the last
     subscriber's unmount and the next subscriber's mount happen in the same tick** —
     true for a React StrictMode double-invoke, false for an Inertia page navigation,
     which is an async fetch. Double-clicking a voice channel's sidebar name to join it
@@ -397,7 +426,7 @@ old references/commit messages still resolve.
     from scratch. Don't remove this grace period to "simplify" the ref-counting back
     to synchronous — the whole point is covering a gap that isn't guaranteed to be
     zero-width.
-39. **(#42) A value captured once at `joinVoice()` time is not "live" just because a
+41. **(#42) A value captured once at `joinVoice()` time is not "live" just because a
     Settings page can change it** — the mic-sensitivity threshold
     (`VoiceDevicePreference.send_threshold`) was originally passed into
     `startVoiceActivation()` as a plain `number` argument, baked in at join time.
@@ -419,7 +448,7 @@ old references/commit messages still resolve.
     before assuming the underlying feature is broken — and don't declare a
     hardware/audio-behavior bug fixed from passing unit tests alone; unit tests here
     exercise wiring with synthetic signals, not real microphone/DSP behavior.
-40. **(#44) A single per-frame `computeLevel()` reading is not a substitute for peak
+42. **(#44) A single per-frame `computeLevel()` reading is not a substitute for peak
     tracking, and removing the peak-hold layer to "simplify" the level meter or gate
     would reintroduce a real, reported bug.** `computeLevel()` is an instantaneous RMS
     over one small (~10ms) analyser window, sampled once per animation frame
@@ -436,7 +465,7 @@ old references/commit messages still resolve.
     strip this back to a bare `computeLevel()` call thinking it's redundant
     indirection — it's the fix for a real, user-reported failure mode, not
     speculative hardening.
-41. **(#45) `null` is a meaningful stored value for `close_threshold_timeout_ms`
+43. **(#45) `null` is a meaningful stored value for `close_threshold_timeout_ms`
     ("Off"), not "field omitted" — `??`/`?:` coalescing would silently erase it.**
     Same shape as the `Rule::exists()` boolean gotcha in
     [roles-and-permissions.md](roles-and-permissions.md)'s own trap note: a
@@ -453,7 +482,7 @@ old references/commit messages still resolve.
 
 ## Status — see [status.md](status.md)
 
-42. **(#39) `.here()`/`.joining()` only ever fire once, at the moment a tab's own
+44. **(#39) `.here()`/`.joining()` only ever fire once, at the moment a tab's own
     `presence.global` subscription is (re)established — a status change afterward
     (the status popover, or the forced online/offline `UserStatusService::setStatus`
     does on login/logout) is invisible to every already-connected tab, including the
@@ -472,7 +501,7 @@ old references/commit messages still resolve.
     exclude. Any future status-adjacent change should go through
     `UserStatusService`, not a direct `$user->update(['status' => ...])`, or it
     silently won't broadcast.
-43. **(#41) Status went through two overcomplicated designs before landing on the current
+45. **(#41) Status went through two overcomplicated designs before landing on the current
     one — a single `status` column with 5 values, where `custom_status`/
     `custom_status_color` only ever hold something when `status === 'custom'`.**
     Earlier iterations tried to track a plain status and a custom status as two
@@ -489,7 +518,7 @@ old references/commit messages still resolve.
 
 ## Messages & pagination — see [messages-and-pagination.md](messages-and-pagination.md)
 
-44. **(#46) A message store that drops messages must record *that* it dropped them —
+46. **(#46) A message store that drops messages must record *that* it dropped them —
     "not loaded" and "does not exist" are different states, and conflating them
     silently loses messages.** The client holds a 150-message window, so paging up
     far enough trims the newest rows out of memory. The first thing that breaks if
@@ -503,7 +532,7 @@ old references/commit messages still resolve.
     tail. Any future change to windowing, the cache, or live message handling needs
     to keep "I know I am missing something here" a real, stored fact rather than
     something inferred from array length.
-45. **(#47) `has_more`/`next_cursor` was renamed to `has_older`/`older_cursor` +
+47. **(#47) `has_more`/`next_cursor` was renamed to `has_older`/`older_cursor` +
     `has_newer`/`newer_cursor` in one pass, deliberately.** Once the messages
     endpoint gained an `?after=` direction, a field literally called `has_more`
     sitting next to `has_newer` is a trap — nothing in the name says which direction
@@ -511,7 +540,7 @@ old references/commit messages still resolve.
     behaviour rather than a type error. The same rename covered `PaginatedMessages`
     in `types/index.ts` and every caller/test, so there is no half-migrated name
     left; don't reintroduce a direction-less name for a two-directional cursor.
-46. **(#48) `offsetTop` is only measured from the scroll container if that container
+48. **(#48) `offsetTop` is only measured from the scroll container if that container
     is the `offsetParent`.** `MessageList`'s scroll anchoring reads `row.offsetTop`
     and compares it to `container.scrollTop`; those are only in the same coordinate
     space because the container carries `relative`. Without it, `offsetParent`
@@ -522,7 +551,7 @@ old references/commit messages still resolve.
 
 ## Roles & permissions — see [roles-and-permissions.md](roles-and-permissions.md)
 
-47. **(#35) `Rule::exists(...)->where($column, false)` silently never matches —
+49. **(#35) `Rule::exists(...)->where($column, false)` silently never matches —
     pass `0`, not `false`.** Laravel's `Exists`/`Unique` validation rules aren't a
     query builder call; `where()` just appends to an array that later gets
     serialized into the classic `exists:table,column,field,"value"` string form via
@@ -581,7 +610,7 @@ old references/commit messages still resolve.
 
 ## Notifications — see [notifications.md](notifications.md)
 
-48. **(#24) A `NotificationPreference` category with no producer is silently inert.**
+50. **(#24) A `NotificationPreference` category with no producer is silently inert.**
     When `room_message` (Room Messages) was added to `NotificationPreference::
     DEFAULTS` and the Settings UI, no controller anywhere ever called
     `Notification::notify($userId, 'room_message', ...)` — the toggle rendered,
@@ -595,7 +624,7 @@ old references/commit messages still resolve.
 
 ## Channel types & capabilities — see [capabilities-and-channel-types.md](capabilities-and-channel-types.md)
 
-49. **(#30) `channels.type`/`conversations.voice_mode` have no DB-level enum constraint** —
+51. **(#30) `channels.type`/`conversations.voice_mode` have no DB-level enum constraint** —
     same shape as the model-naming traps above's "looks safe by convention, isn't
     actually enforced." Before voice channels existed, nothing stopped
     `MessageController` from accepting a message against any channel regardless of

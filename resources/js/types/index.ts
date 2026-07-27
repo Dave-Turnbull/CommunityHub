@@ -362,6 +362,7 @@ export interface NotificationPreference {
 // ── Inertia shared props ─────────────────────────────────────────────────
 export interface SharedProps {
     appName: string
+    maxUploadSizeBytes: number
     auth: { user: User }
     rooms: Room[]
     conversations: Conversation[]
