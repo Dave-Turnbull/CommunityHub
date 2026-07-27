@@ -263,9 +263,13 @@ resources/
                                lightbox MessageAttachments opens on an image/video
                                thumbnail click), MessageInput (its
                                `leading` slot is where the jump-to-present button
-                               renders, in line with the compose box; it also owns a
-                               composer-scoped error stack — see the Conventions bullet
-                               on composer errors below),
+                               renders, in line with the compose box, when a composer is
+                               shown at all — `TextChannelContent` renders that same
+                               button standalone instead when `canPost` is false, since
+                               jumping to the present isn't a posting action and must
+                               keep working even with no composer to hold it; it also
+                               owns a composer-scoped error stack — see the Conventions
+                               bullet on composer errors below),
                                TextChannelContent (owns the highlight state "go to
                                message" scrolls/flashes) — see docs/
                                messages-and-pagination.md's "Jumping to a message"

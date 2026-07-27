@@ -273,6 +273,10 @@ class TextMessageService
             abort_unless(PermissionChecker::can($user, Permission::SendDirectMessages), 403, 'You are not allowed to send direct messages.');
         }
 
+        if ($this->entity instanceof Channel && $this->entity->type === 'announcement') {
+            abort_unless(PermissionChecker::can($user, Permission::PostAnnouncements, $this->entity->room), 403, 'Only owners and moderators can post announcements.');
+        }
+
         if (! blank($validated['content'] ?? null)) {
             abort_unless($this->entity->hasCapability('text.send_text'), 403, 'This channel cannot receive text messages.');
         }

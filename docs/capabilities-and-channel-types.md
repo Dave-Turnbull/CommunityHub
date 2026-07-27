@@ -129,6 +129,22 @@ type-string comparison. `Web\RoomController::show`/`join` land on the room's fir
 *text-capable* channel via `ChannelTypeRegistry::typeKeysWithCapability('text.read')`
 rather than a hardcoded `where('type', 'text')`.
 
+### Announcement channels also gate *posting*, not just creation
+
+`announcement`'s `['text.all']` capability grant is identical to plain `text`'s — the
+capability layer alone would let any room member post there, same as any text channel.
+The "only moderators can send" behavior (see the type's `description()`) instead comes
+from RBAC, layered on top the same way `SendDirectMessages` gates a `Conversation`:
+`TextMessageService::authorizeSend()` has a literal `$this->entity->type ===
+'announcement'` branch requiring `Permission::PostAnnouncements`, alongside (not instead
+of) the normal `text.send_text` capability check. This is deliberately **not** driven by
+`category() === 'mod'` — category gates *creating* a channel (see above), a different
+question from *posting into* one that already exists, and a future `'reports'`-type
+`'mod'`-category type is not assumed to want the same posting restriction just because
+it shares a category. See `docs/roles-and-permissions.md`'s "Default roles" and
+`ChannelPolicy::post()` (the `can_post` Inertia prop `TextChannelContent` reads to hide
+the composer — an affordance only; the Service call above is the actual boundary).
+
 ### Conversations join the same system without merging data models
 
 `Conversation` and `Channel` remain separate Eloquent models/tables with their own

@@ -126,8 +126,8 @@ class Role extends Model
      * (baseline, no elevated permissions yet) auto-assigned to every new
      * member, plus a "Moderator" role pre-granted the day-to-day moderation
      * permission set (ManageChannels/ManageChannelVisibility/ManageMembers/
-     * BanMembers — see docs/roles-and-permissions.md's permission category
-     * scheme). Owner and Member are is_system: true — undeletable/
+     * BanMembers/PostAnnouncements — see docs/roles-and-permissions.md's
+     * permission category scheme). Owner and Member are is_system: true — undeletable/
      * unrenamable via the API, see RolePolicy. Moderator is deliberately
      * NOT is_system and NOT auto-assigned to anyone: it's a real, ordinary
      * custom role from the API's point of view (editable, reorderable,
@@ -160,6 +160,7 @@ class Role extends Model
         $moderator->grant(Permission::ManageChannelVisibility);
         $moderator->grant(Permission::ManageMembers);
         $moderator->grant(Permission::BanMembers);
+        $moderator->grant(Permission::PostAnnouncements);
 
         $member = $room->roles()->create([
             'name'       => 'Member',

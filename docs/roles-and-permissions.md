@@ -24,15 +24,17 @@
 `App\Support\Permission` is the closed enum of grantable keys: `Administrator`,
 `ManageRoom`, `ManageRoles`, `ManageChannels`, `ManageModChannels`, `ManageMembers`,
 `BanMembers`, `ManageMessages`, `ManageEmojis`, `SeeAllChannels`,
-`ManageChannelVisibility`, `SendDirectMessages`. **Adding a case does not make it do
-anything** — enforcement sites today: `Administrator` (implies every permission,
-checked first), `ManageChannels`/`ManageModChannels`/`ManageRoles`
+`ManageChannelVisibility`, `SendDirectMessages`, `PostAnnouncements`. **Adding a case
+does not make it do anything** — enforcement sites today: `Administrator` (implies
+every permission, checked first), `ManageChannels`/`ManageModChannels`/`ManageRoles`
 (`ChannelPolicy`/`RolePolicy` — see "Channel creation is category-gated" below),
 `ManageMembers`/`BanMembers` (`RoomMemberPolicy` — kick/ban, see "Kick and ban" below),
 `SeeAllChannels`/`ManageChannelVisibility` (`Channel::isVisibleTo`/`ChannelPolicy::
 manageVisibility` — see "Channel visibility" below), `SendDirectMessages`
 (`Api\ConversationController::store`/`TextMessageService::authorizeSend` — see
-"Direct message restriction" below). `ManageRoom`/`ManageMessages`/`ManageEmojis`
+"Direct message restriction" below), `PostAnnouncements`
+(`TextMessageService::authorizeSend`/`ChannelPolicy::post` — see "Announcement posting
+restriction" below). `ManageRoom`/`ManageMessages`/`ManageEmojis`
 are declared for schema stability but are currently inert.
 
 Renaming or removing a case only silently orphans existing `role_permissions` rows —
@@ -54,11 +56,11 @@ only, no backend equivalent — nothing server-side needs to know about it) sort
 - **Admin** — `Administrator`, `ManageRoom`, `ManageRoles`, `ManageModChannels`,
   `SeeAllChannels`. Instance-of-power/visibility-bypass concerns.
 - **Moderator** — `ManageChannels`, `ManageChannelVisibility`, `ManageMembers`,
-  `BanMembers`, `ManageMessages`, `ManageEmojis`. Day-to-day room moderation — this is
-  the exact permission set the seeded Moderator role (see "Default roles" below) starts
-  with, though the mapping is a label, not an enforced link: nothing stops a room owner
-  from granting a Moderator-category permission to a role that also holds Admin-category
-  ones, or vice versa.
+  `BanMembers`, `ManageMessages`, `ManageEmojis`, `PostAnnouncements`. Day-to-day room
+  moderation — this is the exact permission set the seeded Moderator role (see "Default
+  roles" below) starts with, though the mapping is a label, not an enforced link: nothing
+  stops a room owner from granting a Moderator-category permission to a role that also
+  holds Admin-category ones, or vice versa.
 - **User** — `SendDirectMessages`. Baseline capabilities an ordinary member might hold.
 
 `SendDirectMessages` is also special-cased out of the checklist entirely for a
@@ -87,8 +89,8 @@ Every new room is seeded with three roles by `Role::seedDefaultsForRoom(Room $ro
   entirely read-only (no name/position/permission edit, undeletable).
 - **Moderator** — an ordinary custom role (`is_system: false`, `is_default: false`) that
   just starts pre-configured instead of blank: `ManageChannels`, `ManageChannelVisibility`,
-  `ManageMembers`, `BanMembers` (the "moderator" category from "Permission categories"
-  below). Nobody is auto-assigned to it — a room owner assigns members explicitly, same
+  `ManageMembers`, `BanMembers`, `PostAnnouncements` (the "moderator" category from
+  "Permission categories" below). Nobody is auto-assigned to it — a room owner assigns members explicitly, same
   as any custom role — and because it's a normal `is_system: false` row, it can be
   renamed, reordered, re-permissioned, or deleted via the same API any other custom role
   uses (`RolePolicy`/`Api\RoleController` don't special-case it at all). A room owner who
@@ -437,6 +439,32 @@ permissions) via Settings → Roles — removing their `SendDirectMessages` gran
 removing its source, not by an override mechanism. This is a real operational step, not
 a UI nicety: an admin doing this should confirm the user holds no *other* role that
 also grants `SendDirectMessages` before assuming the restriction took effect.
+
+## Announcement posting restriction
+
+`PostAnnouncements` gates sending into an `announcement`-type channel specifically —
+`TextMessageService::authorizeSend` has a literal `$this->entity->type ===
+'announcement'` branch requiring it, checked in addition to (not instead of) the normal
+`hasCapability('text.send_text')` capability check every channel type goes through (see
+`docs/capabilities-and-channel-types.md`'s "Announcement channels also gate posting, not
+just creation" for why this is layered RBAC-on-capabilities rather than a capability
+itself). Granted to the seeded Moderator role by default; Owner already holds it via
+`Administrator`. Reading an announcement channel is unrestricted — only sending is
+gated, same read/write split every other channel type has.
+
+`ChannelPolicy::post(User, Channel): bool` mirrors the same check (`true` for every
+non-`announcement` type) and backs `Web\ChannelController::show`'s `channel.can_post`
+prop — `TextChannelContent` reads it to swap the composer for a read-only notice
+instead of rendering a control that would just 403 on submit. This is the frontend
+affordance only; `TextMessageService::authorizeSend` remains the actual enforcement
+boundary, same pattern as every other `can_*` prop in this doc.
+
+Like `SendDirectMessages`, there's no per-user override — moving a user off a role that
+grants `PostAnnouncements` (or never granting it) is the only lever. Unlike
+`SendDirectMessages`, this permission is checked with the room passed
+(`PermissionChecker::can($user, Permission::PostAnnouncements, $room)`), so a
+room-scoped role granting it works normally — no global-only special-case in `RoleCard`
+is needed here.
 
 ## Kick and ban
 

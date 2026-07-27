@@ -3,9 +3,12 @@
 namespace Tests\Feature\Channels;
 
 use App\Models\Channel;
+use App\Models\Role;
+use App\Models\RoleAssignment;
 use App\Models\Room;
 use App\Models\RoomMember;
 use App\Models\User;
+use App\Support\Permission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -77,9 +80,17 @@ class ChannelTextCapabilityGuardTest extends TestCase
 
     public function test_announcement_channels_remain_text_capable(): void
     {
+        // PostAnnouncements (see AnnouncementPermissionTest) is a separate,
+        // orthogonal restriction on top of the capability layer this test
+        // covers — grant it here so a plain member without it doesn't mask
+        // what's actually under test: that 'announcement' still carries
+        // 'text.all' at the ChannelType/FeatureRegistry layer.
         $room    = Room::factory()->create();
         $channel = Channel::factory()->for($room)->create(['type' => 'announcement']);
         $user    = $this->member($room);
+        $role    = Role::factory()->for($room)->create();
+        $role->grant(Permission::PostAnnouncements);
+        RoleAssignment::factory()->for($role)->for($user)->create();
 
         $response = $this->actingAs($user)
             ->postJson("/api/channels/{$channel->id}/messages", ['content' => 'Hello!']);

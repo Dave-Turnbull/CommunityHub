@@ -76,6 +76,7 @@ export type PermissionKey =
     | 'see_all_channels'
     | 'manage_channel_visibility'
     | 'send_direct_messages'
+    | 'post_announcements'
 
 // Purely a UI grouping/labeling concern — doesn't change what any permission
 // actually does, and any role can still be granted a permission from any
@@ -105,6 +106,7 @@ export const PERMISSION_CATEGORIES: Record<PermissionKey, PermissionCategory> = 
     ban_members: 'moderator',
     manage_messages: 'moderator',
     manage_emojis: 'moderator',
+    post_announcements: 'moderator',
     send_direct_messages: 'user',
 }
 
@@ -120,6 +122,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
     manage_emojis: 'Manage Emojis',
     see_all_channels: 'See All Channels',
     manage_channel_visibility: 'Manage Channel Visibility',
+    post_announcements: 'Post Announcements',
     // Global-scope-only (checked with room = null, see App\Support\Permission)
     // — granting this to a room-scoped role is a no-op, so RoleCard hides it
     // entirely there and only shows it for global roles (Settings' Roles tab).
@@ -171,6 +174,12 @@ export interface Channel {
     // ManageChannelVisibility). Only present when the backend eager-loads it
     // (Web\ChannelController::show), not on every Channel payload.
     visibility_roles?: Role[]
+    // Whether the viewer may send into this channel — true for every type
+    // except 'announcement' (see ChannelPolicy::post/Permission::
+    // PostAnnouncements). Only computed on Web\ChannelController::show's
+    // active channel, not on every Channel payload (e.g. the sidebar list) —
+    // drives whether TextChannelTypeContent renders MessageInput at all.
+    can_post?: boolean
 }
 
 export interface Attachment {

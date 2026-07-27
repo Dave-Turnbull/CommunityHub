@@ -72,4 +72,20 @@ enum Permission: string
      * docs/roles-and-permissions.md.
      */
     case SendDirectMessages = 'send_direct_messages';
+
+    /**
+     * Room-scoped. Gates sending into an 'announcement'-type channel
+     * specifically — see TextMessageService::authorizeSend's
+     * `$this->entity->type === 'announcement'` branch. Every other channel
+     * type has no send-side permission check at all (membership +
+     * `hasCapability('text.send_text')` is enough); this is the one
+     * exception, mirroring how SendDirectMessages is Conversation-specific
+     * rather than a capability. Granted to the seeded Moderator role by
+     * default (see Role::seedDefaultsForRoom) — Owner already has it via
+     * Administrator. Not implied by ManageModChannels/ManageChannels: those
+     * gate creating/managing a mod-category channel, not posting into
+     * one that already exists, and Moderator deliberately holds this
+     * without holding ManageModChannels.
+     */
+    case PostAnnouncements = 'post_announcements';
 }
