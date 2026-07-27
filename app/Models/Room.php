@@ -28,10 +28,16 @@ class Room extends Model
     public function customEmojis(): HasMany   { return $this->hasMany(CustomEmoji::class); }
     public function invites(): HasMany        { return $this->hasMany(RoomInvite::class); }
     public function roles(): HasMany          { return $this->hasMany(Role::class)->orderByDesc('position'); }
+    public function bans(): HasMany           { return $this->hasMany(RoomBan::class); }
 
     public function hasMember(string $userId): bool
     {
         return $this->members()->where('user_id', $userId)->exists();
+    }
+
+    public function isBanned(string $userId): bool
+    {
+        return $this->bans()->where('user_id', $userId)->exists();
     }
 
     /**
@@ -44,6 +50,8 @@ class Room extends Model
      */
     public function addMember(User $user, bool $asOwner = false): RoomMember
     {
+        abort_if($this->isBanned($user->id), 403, 'You are banned from this room.');
+
         $member = RoomMember::firstOrCreate(
             ['room_id' => $this->id, 'user_id' => $user->id],
             ['joined_at' => now()],

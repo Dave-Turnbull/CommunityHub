@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Broadcast;
 // Room text channel — presence channel so we get a member list for free.
 Broadcast::channel('channel.{channelId}', function ($user, string $channelId) {
     $channel = Channel::find($channelId);
-    if (! $channel || ! $channel->room->hasMember($user->id)) {
+    if (! $channel || ! $channel->room->hasMember($user->id) || ! $channel->isVisibleTo($user)) {
         return false;
     }
 

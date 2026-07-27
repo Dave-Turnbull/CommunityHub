@@ -1,16 +1,21 @@
+import { useState } from 'react'
 import { Head } from '@inertiajs/react'
 import { RoomRail } from '@/components/layout/RoomRail'
 import { ChannelSidebar } from '@/components/layout/ChannelSidebar'
 import { MemberList } from '@/components/layout/MemberList'
+import { ChannelVisibilityModal } from '@/components/layout/ChannelVisibilityModal'
 import { useChannelFocus } from '@/hooks/useChannelFocus'
 import { useUI } from '@/stores'
 import { channelTypeDescriptor, isTextCapableChannelType } from '@/services/channelTypes'
 import type { ChannelPageProps } from '@/types'
 
 export default function ChannelShow({
-    auth, rooms, room, channel, members, messages: initial, can_manage_channels, can_manage_roles,
-    recentCustomStatuses,
+    auth, rooms, room, channel: initialChannel, members, messages: initial, can_manage_channels, can_manage_roles,
+    can_manage_channel_visibility, can_manage_members, can_ban_members, recentCustomStatuses,
 }: ChannelPageProps) {
+    const [channel, setChannel] = useState(initialChannel)
+    const [editingVisibility, setEditingVisibility] = useState(false)
+
     const isTextCapable = isTextCapableChannelType(channel.type)
     const descriptor = channelTypeDescriptor(channel.type)
     const Content = descriptor.Content
@@ -49,6 +54,16 @@ export default function ChannelShow({
                                 </>
                             )}
 
+                            {can_manage_channel_visibility && (
+                                <button
+                                    onClick={() => setEditingVisibility(true)}
+                                    className="p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-fifth"
+                                    title="Channel visibility"
+                                >
+                                    🔒
+                                </button>
+                            )}
+
                             <button
                                 onClick={toggleMemberList}
                                 className="ml-auto p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-fifth"
@@ -67,9 +82,26 @@ export default function ChannelShow({
                         )}
                     </main>
 
-                    {memberListOpen && <MemberList members={members} />}
+                    {memberListOpen && (
+                        <MemberList
+                            members={members}
+                            roomId={room.id}
+                            currentUserId={auth.user.id}
+                            canManageMembers={can_manage_members}
+                            canBanMembers={can_ban_members}
+                        />
+                    )}
                 </div>
             </div>
+
+            {editingVisibility && (
+                <ChannelVisibilityModal
+                    channel={channel}
+                    roomRoles={room.roles ?? []}
+                    onClose={() => setEditingVisibility(false)}
+                    onUpdated={setChannel}
+                />
+            )}
         </>
     )
 }

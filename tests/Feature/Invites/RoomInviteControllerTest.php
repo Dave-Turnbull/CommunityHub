@@ -5,10 +5,13 @@ namespace Tests\Feature\Invites;
 use App\Mail\RoomInviteMail;
 use App\Models\Notification;
 use App\Models\NotificationPreference;
+use App\Models\Role;
+use App\Models\RoleAssignment;
 use App\Models\Room;
 use App\Models\RoomInvite;
 use App\Models\RoomMember;
 use App\Models\User;
+use App\Support\Permission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -49,6 +52,24 @@ class RoomInviteControllerTest extends TestCase
 
         $response->assertForbidden();
         Mail::assertNothingOutgoing();
+    }
+
+    public function test_a_non_member_holding_global_manage_members_can_invite(): void
+    {
+        Mail::fake();
+
+        $room = Room::factory()->create();
+        $staff = User::factory()->create();
+
+        $globalRole = Role::factory()->global()->create();
+        $globalRole->grant(Permission::ManageMembers);
+        RoleAssignment::factory()->for($globalRole)->for($staff)->create();
+
+        $response = $this->actingAs($staff)
+            ->postJson("/api/rooms/{$room->id}/invites", ['email' => 'newperson@example.com']);
+
+        $response->assertCreated();
+        Mail::assertQueued(RoomInviteMail::class);
     }
 
     public function test_cannot_invite_an_email_that_is_already_a_member(): void

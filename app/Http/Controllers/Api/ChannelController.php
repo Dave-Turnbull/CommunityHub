@@ -7,8 +7,12 @@ use App\Events\ChannelDeleted;
 use App\Events\ChannelUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\Channel;
+use App\Models\ChannelRoleVisibility;
+use App\Models\Role;
 use App\Models\Room;
 use App\Support\ChannelTypes\ChannelTypeRegistry;
+use App\Support\Permission;
+use App\Support\PermissionChecker;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -44,20 +48,77 @@ class ChannelController extends Controller
 
     public function update(Request $request, Channel $channel): JsonResponse
     {
-        Gate::authorize('manage', $channel);
+        // visibility_role_ids is gated by its own ManageChannelVisibility
+        // permission (see updateVisibility()), deliberately separate from
+        // ManageChannels below — an actor who only holds the former can
+        // restrict a channel without being able to rename/delete it.
+        if ($request->hasAny(['name', 'topic', 'is_nsfw', 'slow_mode_seconds'])) {
+            Gate::authorize('manage', $channel);
 
-        $validated = $request->validate([
-            'name'              => ['sometimes', 'string', 'max:100'],
-            'topic'             => ['sometimes', 'nullable', 'string', 'max:1024'],
-            'is_nsfw'           => ['sometimes', 'boolean'],
-            'slow_mode_seconds' => ['sometimes', 'integer', 'min:0', 'max:21600'],
-        ]);
+            $validated = $request->validate([
+                'name'              => ['sometimes', 'string', 'max:100'],
+                'topic'             => ['sometimes', 'nullable', 'string', 'max:1024'],
+                'is_nsfw'           => ['sometimes', 'boolean'],
+                'slow_mode_seconds' => ['sometimes', 'integer', 'min:0', 'max:21600'],
+            ]);
 
-        $channel->update($validated);
+            $channel->update($validated);
+        }
+
+        if ($request->has('visibility_role_ids')) {
+            $this->updateVisibility($request, $channel);
+        }
 
         broadcast(new ChannelUpdated($channel))->toOthers();
 
-        return response()->json($channel);
+        return response()->json($channel->fresh()->load('visibilityRoles'));
+    }
+
+    /**
+     * A lower-ranked role can never lock a higher-ranked one out of a
+     * channel — see Permission::ManageChannelVisibility's docblock and
+     * docs/roles-and-permissions.md. An actor whose ManageChannelVisibility
+     * grant comes from a global role is exempt (mirrors
+     * Role::effectiveModerationRank's global-supersedes-room-hierarchy
+     * pattern) since they hold no room-scoped rank to compare against.
+     *
+     * Rows are written via the ChannelRoleVisibility model directly
+     * (create/delete), not BelongsToMany::sync() — sync() performs a bulk
+     * query-builder insert that bypasses Eloquent's `creating` event, which
+     * is what HasUuids relies on to generate the pivot's `id`. Matches the
+     * same reason role_permissions/role_assignments are written through
+     * their models rather than attach()/sync() elsewhere in this codebase.
+     */
+    private function updateVisibility(Request $request, Channel $channel): void
+    {
+        Gate::authorize('manageVisibility', $channel);
+
+        $room = $channel->room;
+
+        $validated = $request->validate([
+            'visibility_role_ids'   => ['present', 'array'],
+            'visibility_role_ids.*' => ['uuid', Rule::exists('roles', 'id')->where('room_id', $room->id)],
+        ]);
+
+        $roleIds = $validated['visibility_role_ids'];
+
+        if (! empty($roleIds)) {
+            $actorIsGloballyGranted = PermissionChecker::can($request->user(), Permission::ManageChannelVisibility, null);
+            $actorRank = $actorIsGloballyGranted ? INF : (Role::highestRoleFor($request->user(), $room)?->rank() ?? -INF);
+
+            foreach ($room->roles as $role) {
+                abort_if(
+                    $role->rank() > $actorRank && ! in_array($role->id, $roleIds, true),
+                    422,
+                    'Cannot restrict a role that outranks your own.'
+                );
+            }
+        }
+
+        ChannelRoleVisibility::where('channel_id', $channel->id)->whereNotIn('role_id', $roleIds)->delete();
+        foreach ($roleIds as $roleId) {
+            ChannelRoleVisibility::firstOrCreate(['channel_id' => $channel->id, 'role_id' => $roleId]);
+        }
     }
 
     public function destroy(Request $request, Channel $channel): JsonResponse

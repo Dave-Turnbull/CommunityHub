@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Models\Role;
+use App\Models\RoleAssignment;
 use App\Models\RoomInvite;
 use App\Models\User;
 use App\Services\UserStatusService;
@@ -66,6 +68,10 @@ class AuthController extends Controller
             'password'     => Hash::make($validated['password']),
         ]);
         $this->status->setStatus($user, 'online');
+
+        // Every user needs at least one (global) role — see
+        // Role::seedGlobalDefaults()/docs/roles-and-permissions.md.
+        RoleAssignment::firstOrCreate(['role_id' => Role::seedGlobalDefaults()->id, 'user_id' => $user->id]);
 
         Auth::login($user);
         $request->session()->regenerate();

@@ -10,6 +10,8 @@ use App\Models\ConversationParticipant;
 use App\Models\Message;
 use App\Models\Notification;
 use App\Models\User;
+use App\Support\Permission;
+use App\Support\PermissionChecker;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -44,6 +46,7 @@ class ConversationController extends Controller
     public function store(Request $request): JsonResponse
     {
         $user = $request->user();
+        abort_unless(PermissionChecker::can($user, Permission::SendDirectMessages), 403, 'You are not allowed to send direct messages.');
         $participantIds = $this->validateParticipants($request, $user);
 
         $validated = $request->validate([

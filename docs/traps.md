@@ -540,6 +540,23 @@ old references/commit messages still resolve.
     `Rule::exists()` check is unexpectedly failing for rows that plainly satisfy
     every condition, suspect a boolean `where()` value before suspecting the data.
 
+50. **`BelongsToMany::attach()`/`sync()` bypass `HasUuids`' id generation — write
+    pivot rows with UUID PKs through their own model, not attach()/sync().** Every
+    UUID-PK pivot table in this app (`role_permissions`, `role_assignments`,
+    `channel_role_visibility`) generates its `id` via `HasUuids`' `creating` model
+    event. `attach()`/`sync()` on a `BelongsToMany` relation insert pivot rows with a
+    bulk query-builder statement, not by instantiating and saving an Eloquent model —
+    so the `creating` event never fires, `id` is never set, and the insert throws a
+    `NOT NULL constraint failed` (sqlite) / equivalent integrity error at the database
+    layer. Hit this building `Channel::visibilityRoles()->sync($roleIds)` in
+    `Api\ChannelController::updateVisibility` — every insert failed. Fixed by writing
+    through the `ChannelRoleVisibility` model directly (`::create()`/`::delete()` by
+    id pair) instead of `sync()`, matching how `role_permissions`/`role_assignments`
+    were already written through their own models elsewhere in this codebase rather
+    than pivot helpers — that existing pattern was the answer, not a new one. If a new
+    UUID-PK join table needs `attach`/`detach`/`sync`-shaped semantics, either give the
+    pivot model an explicit `id` before insert, or just don't use those helpers.
+
 ## Notifications — see [notifications.md](notifications.md)
 
 48. **(#24) A `NotificationPreference` category with no producer is silently inert.**

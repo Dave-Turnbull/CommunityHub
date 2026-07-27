@@ -12,6 +12,8 @@ use App\Models\Message;
 use App\Models\Notification;
 use App\Models\User;
 use App\Support\ChannelFocus;
+use App\Support\Permission;
+use App\Support\PermissionChecker;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -131,7 +133,7 @@ class TextMessageService
     {
         $this->assertMember($user);
         abort_unless($this->entity->hasCapability('text.read'), 422, 'This channel has no text chat.');
-        $this->authorizeSend($validated);
+        $this->authorizeSend($user, $validated);
 
         $attributes = [
             'author_id'   => $user->id,
@@ -207,8 +209,12 @@ class TextMessageService
      * — plain content needs 'text.send_text', each attachment needs
      * 'text.send_images' or 'text.send_video' depending on its mime type.
      */
-    private function authorizeSend(array $validated): void
+    private function authorizeSend(User $user, array $validated): void
     {
+        if ($this->entity instanceof Conversation) {
+            abort_unless(PermissionChecker::can($user, Permission::SendDirectMessages), 403, 'You are not allowed to send direct messages.');
+        }
+
         if (! blank($validated['content'] ?? null)) {
             abort_unless($this->entity->hasCapability('text.send_text'), 403, 'This channel cannot receive text messages.');
         }

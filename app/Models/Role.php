@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\Permission;
+use App\Support\PermissionChecker;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -134,5 +135,50 @@ class Role extends Model
         ]);
 
         return ['owner' => $owner, 'member' => $member];
+    }
+
+    /**
+     * The single instance-wide "@everyone" baseline every user is assigned on
+     * registration — the global mirror of seedDefaultsForRoom()'s room
+     * Member. Idempotent (firstOrCreate on room_id null + is_default true),
+     * safe to call from a migration and from every user-creation call site.
+     * Grants SendDirectMessages by default; there is no global Owner
+     * equivalent seeded here — the very first global Administrator role is
+     * created by the `app:bootstrap-admin` console command instead, since
+     * "who may create the first one" can't be answered by this method alone.
+     */
+    public static function seedGlobalDefaults(): self
+    {
+        $member = static::firstOrCreate(
+            ['room_id' => null, 'is_default' => true],
+            ['name' => 'Member', 'position' => 0, 'is_system' => true],
+        );
+
+        $member->grant(Permission::SendDirectMessages);
+
+        return $member;
+    }
+
+    /**
+     * A user's effective rank for room-member moderation actions (kick/ban —
+     * see RoomMemberPolicy/RoomMembershipService), not role management.
+     * Deliberately a *different* comparison than RolePolicy::manage's: a
+     * global Administrator ties Owner's rank (INF) here rather than being
+     * excluded from the per-room hierarchy the way highestRoleFor() normally
+     * treats global roles — this is what lets a global Administrator act on
+     * a room's Owner (kick/ban), which nothing room-scoped can ever do, while
+     * PHP has no float above INF to represent "strictly above Owner" with.
+     * Callers use `>=`, per docs/roles-and-permissions.md's "The hierarchy is
+     * broader than role management" section, not outranks()'s strict `>` —
+     * same-rank peers (e.g. two Members, one with BanMembers) may act on one
+     * another.
+     */
+    public static function effectiveModerationRank(User $user, Room $room): float
+    {
+        if (PermissionChecker::can($user, Permission::Administrator, null)) {
+            return INF;
+        }
+
+        return static::highestRoleFor($user, $room)?->rank() ?? -INF;
     }
 }

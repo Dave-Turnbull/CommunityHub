@@ -100,8 +100,15 @@ app/
   Events/                     ShouldBroadcast events (Message*, ReactionChanged,
                                NotificationCreated, Channel* — see docs/
                                capabilities-and-channel-types.md)
+  Console/Commands/
+    BootstrapGlobalAdmin.php  `app:bootstrap-admin {email}` — the one bootstrap path for
+                               the first instance-wide Administrator role, see docs/
+                               roles-and-permissions.md
   Http/Controllers/
-    Web/                      Inertia page controllers (return Inertia::render)
+    Web/                      Inertia page controllers (return Inertia::render).
+                               SettingsController::show computes can_manage_global_roles
+                               (see docs/roles-and-permissions.md), which gates whether
+                               Settings/Index.tsx's Roles tab renders at all
     Api/                      JSON controllers (axios targets), thin translators over
                                app/Services/ — see docs/service-layer.md.
                                ChannelFocusController is the focus/blur heartbeat
@@ -111,11 +118,19 @@ app/
                                conversations-and-invites.md); VoiceIceServersController/
                                VoiceDevicePreferenceController (see docs/voice.md);
                                ChannelController (distinct from Web\ChannelController) is
-                               store/update/destroy/reorder — channel CRUD (see docs/
+                               store/update/destroy/reorder — channel CRUD, plus
+                               visibility_role_ids on update (see docs/
+                               roles-and-permissions.md's "Channel visibility") — gated
+                               separately from the rest of update (docs/
                                capabilities-and-channel-types.md); RoleController
                                (distinct from Web\RoleController) is store/update/destroy/
-                               addMember/removeMember for room roles (see docs/
-                               roles-and-permissions.md); ThemePreferenceController is
+                               addMember/removeMember for room roles, plus
+                               indexGlobal/storeGlobal/reorderGlobal for instance-wide
+                               roles — indexGlobal backs Settings' self-fetching Roles
+                               tab (see docs/roles-and-permissions.md); RoomMemberController is
+                               destroy/ban/unban — kick/ban a room member (see docs/
+                               roles-and-permissions.md's "Kick and ban");
+                               ThemePreferenceController is
                                show/update for the Appearance panel's preset + per-variable
                                overrides (see docs/theming.md)
     Controller.php            empty abstract base — Laravel ships none by default, keep it
@@ -128,13 +143,18 @@ app/
                                the "table name matches model" convention — see trap #22.
                                NotificationPreference/VoiceDevicePreference — see docs/
                                notifications.md and docs/voice.md; Role/RolePermission/
-                               RoleAssignment — see docs/roles-and-permissions.md;
-                               RecentCustomStatus — see docs/status.md; ThemePreference
+                               RoleAssignment, ChannelRoleVisibility, RoomBan — see docs/
+                               roles-and-permissions.md; RecentCustomStatus — see docs/
+                               status.md; ThemePreference
                                (one row per user: preset + jsonb overrides) — see docs/
                                theming.md
   Policies/                   authorization seams beyond simple membership checks —
                                see docs/roles-and-permissions.md and docs/
-                               conversations-and-invites.md
+                               conversations-and-invites.md. RoomMemberPolicy backs
+                               RoomMember (Laravel's convention-based auto-discovery
+                               maps the RoomMember model to it) — kick/ban, a different
+                               hierarchy comparison than RolePolicy's, see docs/
+                               roles-and-permissions.md
   Providers/
     ChannelTypeServiceProvider.php  registers every built-in ChannelType — see docs/
                                capabilities-and-channel-types.md
@@ -145,7 +165,10 @@ app/
   Services/                   {Operation}Service classes — see docs/service-layer.md.
                                Not the same thing as Support/Capabilities' Feature — a
                                Feature declares what a capability *is*, a Service is
-                               where the operation actually lives and gets authorized
+                               where the operation actually lives and gets authorized.
+                               RoomMembershipService is kick/ban + the owner-transfer
+                               flow when the target is a room's Owner (see docs/
+                               roles-and-permissions.md)
   Support/                    ChannelFocus (see docs/notifications.md); Permission/
                                PermissionChecker (see docs/roles-and-permissions.md);
                                ChannelTypes/ + Capabilities/ (see docs/
@@ -190,7 +213,9 @@ resources/
     pages/                    one file per Inertia page (Auth, Channels, DM, Rooms,
                                Settings, Invite — the invite-accept landing page);
                                Rooms/Roles.tsx is the minimal room role-management page
-                               — see docs/roles-and-permissions.md
+                               — see docs/roles-and-permissions.md. Its instance-wide
+                               equivalent is a Settings tab, not a separate page — see
+                               components/settings/GlobalRolesSettings.tsx below
     components/
       chat/                   MessageList (the scroll container: a sentinel per
                                paging direction + element-anchored scroll
@@ -200,18 +225,35 @@ resources/
                                TextChannelContent — see docs/messages-and-pagination.md
                                and docs/capabilities-and-channel-types.md
       layout/                 RoomRail, ChannelSidebar (renders "+ Add Channel"/"🛡
-                               Roles" affordances), DMSidebar, MemberList, UserPanel
+                               Roles" affordances), DMSidebar, MemberList (renders a
+                               per-member kick/ban dropdown when roomId +
+                               canManageMembers/canBanMembers are passed, e.g. from
+                               Channels/Show — see docs/roles-and-permissions.md),
+                               ChannelVisibilityModal (the "visible to roles" editor,
+                               opened from Channels/Show's header lock icon), UserPanel
                                (the avatar+name trigger — see docs/status.md),
                                UserStatusPopover (the popup itself: status switcher,
                                custom status color+text+save, recent statuses,
                                Settings/Logout — see docs/status.md), InviteModal,
                                CreateChannelModal
+      roles/                  RoleCard — one role's permission checklist + member
+                               management, scope-agnostic (every API call is keyed by
+                               role id, not room id) so it backs both Rooms/Roles.tsx
+                               and Settings' Roles tab — see docs/roles-and-permissions.md
+      rooms/                  OwnerTransferModal — the confirmation shown when
+                               kicking/banning a room's Owner would make the acting
+                               admin the new Owner, see docs/roles-and-permissions.md
       messages/                NotificationFeed (see docs/notifications.md); UserPicker
                                — see docs/conversations-and-invites.md
       settings/                NotificationPreferences (see docs/notifications.md);
                                AudioSettings (see docs/voice.md); AppearanceSettings —
                                the Settings → Appearance panel: preset picker + a
-                               generated control per theme variable (see docs/theming.md)
+                               generated control per theme variable (see docs/theming.md);
+                               GlobalRolesSettings — the Roles tab, self-fetching (GET
+                               /api/settings/roles) like the other settings tabs rather
+                               than Inertia-prop-driven, only rendered when
+                               SettingsController::show's can_manage_global_roles is
+                               true (see docs/roles-and-permissions.md)
       voice/                  VoiceChannelPanel, VoiceBar — a channel/conversation's
                                main-pane voice UI. Both render ParticipantVolumeControl
                                per remote participant (speaking-ring Avatar + volume
@@ -276,9 +318,14 @@ resources/
     **/*.test.ts(x)           co-located next to the file under test
 routes/
   web.php                     guest + auth Inertia routes
-  api.php                     /api/* under auth (session), axios targets
-  channels.php                broadcast auth: channel.{id} presence, conversation.{id}
-                               private, room.{id} private (see docs/
+  api.php                     /api/* under auth (session), axios targets, including
+                               /settings/roles (global role list/store/reorder, self-
+                               fetched by Settings' Roles tab) and /rooms/{room}/
+                               members|bans (kick/ban — see docs/roles-and-permissions.md)
+  channels.php                broadcast auth: channel.{id} presence (now also checks
+                               Channel::isVisibleTo() — see docs/
+                               roles-and-permissions.md's "Channel visibility"),
+                               conversation.{id} private, room.{id} private (see docs/
                                capabilities-and-channel-types.md), voice.channel.{id}/
                                voice.conversation.{id} presence (see docs/voice.md)
   console.php
@@ -287,9 +334,13 @@ tests/
                                Messages, Conversations, Reactions, Uploads, Settings,
                                Broadcasting, Invites, Notifications, Voice, Roles) — routes
                                through the real HTTP kernel
-  Unit/Models/                pure model logic (reactionSummary, hasMember, sharesRoomWith, ...)
+  Unit/Models/                pure model logic (reactionSummary, hasMember, sharesRoomWith,
+                               Role::effectiveModerationRank, ...)
   Unit/Support/               ChannelFocus cache-logic tests — no HTTP, no RefreshDatabase;
                                PermissionCheckerTest — pure Role/RoleAssignment logic;
+                               PermissionEnumStabilityTest — pins every Permission case's
+                               string value, since nothing else validates it against
+                               role_permissions rows (see docs/roles-and-permissions.md);
                                FeatureRegistryTest — group/wildcard expansion, unknown-key
                                rejection, against a throwaway fake Feature, no HTTP
 phpunit.xml                   sqlite :memory:, null broadcaster, sync queue — see Testing
@@ -456,7 +507,7 @@ of proving a change works and needs nothing installed:
 
 ## Traps already hit — do NOT reintroduce
 
-Full write-ups (49 of them) live in [docs/traps.md](docs/traps.md), grouped by
+Full write-ups (50 of them) live in [docs/traps.md](docs/traps.md), grouped by
 subsystem, with the original numbering preserved for old references. The
 short version, by group — read the full entry before touching adjacent code:
 
@@ -492,7 +543,8 @@ short version, by group — read the full entry before touching adjacent code:
   `has_older`/`has_newer` rename, `offsetTop`'s `offsetParent` requirement.
 - **Roles & permissions** (see also
   [docs/roles-and-permissions.md](docs/roles-and-permissions.md)) —
-  `Rule::exists()->where()` against a boolean column.
+  `Rule::exists()->where()` against a boolean column, `BelongsToMany::attach()`/
+  `sync()` bypassing `HasUuids`' id generation on a UUID-PK pivot table.
 - **Notifications** (see also [docs/notifications.md](docs/notifications.md))
   — a preference category with no `Notification::notify()` producer is
   silently inert.
@@ -663,26 +715,15 @@ mechanism this app doesn't have yet) and deserves its own explicit go-ahead.
   The focus-suppression piece doesn't need inventing when this lands — `mention` is
   channel-scoped, so it should check `App\Support\ChannelFocus::isFocused()` before
   notifying, the same way `room_message` does (see `docs/notifications.md`).
-- **Instance-wide (global) role management UI.** The `Role`/`RolePermission`/
-  `RoleAssignment` schema and `PermissionChecker` (see `docs/roles-and-permissions.md`)
-  already fully support a `room_id: null` global role that grants a permission in
-  every room — this was built deliberately, not as a stub — but there is no UI to
-  create or assign one yet, nor a concept of who is allowed to create one (an
-  instance-admin/superuser notion this app doesn't have at all today). Needs: a "who
-  can manage global roles" seam (almost certainly *not* `PermissionChecker` itself,
-  since that would be circular), a settings surface outside any single room's context,
-  and a decision on bootstrapping the very first instance admin (env var? first
-  registered user? a console command?).
-- **More `Permission` cases getting real enforcement, and the user-hierarchy
-  comparison they need.** `ManageMembers` (kick), `BanMembers`,
-  `ManageMessages` (delete/pin others' messages), and `ManageEmojis` are
-  declared in `App\Support\Permission` but have no `PermissionChecker::can()`
-  call site anywhere yet — see the trap-#24-shaped warning in
-  `docs/roles-and-permissions.md`. Each needs the actual moderation feature built (a
-  kick endpoint, a ban list, etc.), not just a permission check. See `docs/
-  roles-and-permissions.md`'s "The hierarchy is broader than role management" section
-  for the comparison semantics a moderation action needs — don't reuse `RolePolicy::
-  manage`'s exact shape for it without picking the right one deliberately.
+- **Remaining `Permission` cases getting real enforcement.** `ManageMessages`
+  (delete/pin others' messages) and `ManageEmojis` are declared in `App\Support\
+  Permission` but have no `PermissionChecker::can()` call site anywhere yet — see the
+  trap-#24-shaped warning in `docs/roles-and-permissions.md`. `ManageMembers`/
+  `BanMembers` (kick/ban) now do — see `docs/roles-and-permissions.md`'s "Kick and ban"
+  section for the `Role::effectiveModerationRank`-based comparison a future
+  `ManageMessages` moderation feature should look at before picking its own hierarchy
+  semantics, since it likely wants the peer-eligible `>=` shape, not `RolePolicy::
+  manage`'s role-management one.
 - **Runtime-installable channel-type plugins.** `App\Support\ChannelTypes\
   ChannelType` + `ChannelTypeRegistry` (see `docs/capabilities-and-channel-types.md`)
   is deliberately built as a **code-level** extension point — a new type ships

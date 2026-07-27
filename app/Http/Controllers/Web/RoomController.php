@@ -17,9 +17,13 @@ class RoomController extends Controller
     /** Redirect straight to the room's first text-capable channel. */
     public function show(Request $request, Room $room): RedirectResponse
     {
-        abort_unless($room->hasMember($request->user()->id), 403);
+        $user = $request->user();
+        abort_unless($room->hasMember($user->id), 403);
 
-        $first = $room->channels()->whereIn('type', ChannelTypeRegistry::typeKeysWithCapability('text.read'))->first();
+        $first = $room->channels()
+            ->whereIn('type', ChannelTypeRegistry::typeKeysWithCapability('text.read'))
+            ->get()
+            ->first(fn (Channel $channel) => $channel->isVisibleTo($user));
 
         return $first
             ? redirect("/channels/{$first->id}")
@@ -70,7 +74,10 @@ class RoomController extends Controller
 
         $room->addMember($request->user());
 
-        $first = $room->channels()->whereIn('type', ChannelTypeRegistry::typeKeysWithCapability('text.read'))->first();
+        $first = $room->channels()
+            ->whereIn('type', ChannelTypeRegistry::typeKeysWithCapability('text.read'))
+            ->get()
+            ->first(fn (Channel $channel) => $channel->isVisibleTo($request->user()));
 
         return redirect($first ? "/channels/{$first->id}" : '/');
     }

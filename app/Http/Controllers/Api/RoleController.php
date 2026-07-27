@@ -15,6 +15,33 @@ use Illuminate\Validation\Rule;
 
 class RoleController extends Controller
 {
+    /**
+     * Instance-wide (global) roles + every user (an assignment target isn't
+     * scoped to any one room's membership the way a room role's is) — backs
+     * the Roles tab in Settings (`components/settings/GlobalRolesSettings.tsx`).
+     * Self-fetched by that tab rather than threaded through Inertia props,
+     * matching NotificationPreferences/AudioSettings's pattern for settings
+     * tab content.
+     */
+    public function indexGlobal(): JsonResponse
+    {
+        Gate::authorize('create', [Role::class, null]);
+
+        $roles = Role::whereNull('room_id')
+            ->with(['rolePermissions', 'users:id,username,display_name,avatar_url'])
+            ->orderByDesc('position')
+            ->get();
+
+        $roles->each(
+            fn (Role $role) => $role->setAttribute('can_manage', Gate::allows('manage', $role))
+        );
+
+        return response()->json([
+            'roles' => $roles,
+            'users' => User::query()->orderBy('display_name')->get(['id', 'username', 'display_name', 'avatar_url']),
+        ]);
+    }
+
     public function store(Request $request, Room $room): JsonResponse
     {
         Gate::authorize('create', [Role::class, $room]);
@@ -39,6 +66,29 @@ class RoleController extends Controller
         // with no can_manage at all — RoleCard's `role.can_manage ?? false`
         // then rendered it as unmanageable (no add-member UI, etc.) until a
         // full page refresh re-fetched it correctly. Compute it here too.
+        $role->setAttribute('can_manage', Gate::allows('manage', $role));
+
+        return response()->json($role, 201);
+    }
+
+    /** Global/instance-wide equivalent of store() — creates a room_id: null role. */
+    public function storeGlobal(Request $request): JsonResponse
+    {
+        Gate::authorize('create', [Role::class, null]);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:50'],
+        ]);
+
+        $role = Role::create([
+            'room_id'    => null,
+            'name'       => $validated['name'],
+            'position'   => (int) Role::whereNull('room_id')->where('is_system', false)->max('position') + 1,
+            'is_default' => false,
+            'is_system'  => false,
+        ]);
+
+        $role->load('rolePermissions');
         $role->setAttribute('can_manage', Gate::allows('manage', $role));
 
         return response()->json($role, 201);
@@ -128,6 +178,33 @@ class RoleController extends Controller
         foreach ($validated['role_ids'] as $roleId) {
             abort_unless($highest->outranksOrEquals($roles[$roleId]), 403);
         }
+
+        $count = count($validated['role_ids']);
+        foreach (array_values($validated['role_ids']) as $index => $roleId) {
+            Role::where('id', $roleId)->update(['position' => $count - $index]);
+        }
+
+        return response()->json(['reordered' => true]);
+    }
+
+    /**
+     * Global/instance-wide equivalent of reorder(). Global roles have no
+     * per-room hierarchy to compare against (RolePolicy::manage's `!$role->room`
+     * branch already grants global role management on ManageRoles alone, with
+     * no outranks() check) — so unlike reorder(), this doesn't need the
+     * actor's highestRoleFor() gate.
+     */
+    public function reorderGlobal(Request $request): JsonResponse
+    {
+        Gate::authorize('create', [Role::class, null]);
+
+        $validated = $request->validate([
+            'role_ids'   => ['required', 'array'],
+            'role_ids.*' => ['uuid', Rule::exists('roles', 'id')->where('room_id', null)->where('is_system', 0)],
+        ]);
+
+        $customRoleCount = Role::whereNull('room_id')->where('is_system', false)->count();
+        abort_unless(count($validated['role_ids']) === $customRoleCount, 422, 'role_ids must include every custom global role.');
 
         $count = count($validated['role_ids']);
         foreach (array_values($validated['role_ids']) as $index => $roleId) {

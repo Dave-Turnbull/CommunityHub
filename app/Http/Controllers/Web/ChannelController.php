@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Channel;
 use App\Models\Role;
 use App\Services\TextMessageService;
+use App\Support\Permission;
+use App\Support\PermissionChecker;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -19,8 +21,10 @@ class ChannelController extends Controller
         $room = $channel->room;
 
         abort_unless($room->hasMember($user->id), 403);
+        abort_unless($channel->isVisibleTo($user), 403);
 
-        $room->load(['channels', 'customEmojis']);
+        $room->load(['channels', 'customEmojis', 'roles']);
+        $room->setRelation('channels', $room->channels->filter(fn (Channel $c) => $c->isVisibleTo($user))->values());
 
         $members = $room->members()
             ->with('user:id,username,display_name,avatar_url,status,custom_status')
@@ -35,14 +39,24 @@ class ChannelController extends Controller
             ? TextMessageService::for($channel)->list($user)
             : null;
 
+        $channel->load('visibilityRoles');
+
         return Inertia::render('Channels/Show', [
-            'room'                 => $room,
-            'channel'              => $channel,
-            'members'              => $members,
-            'custom_emojis'        => $room->customEmojis,
-            'messages'             => $messages,
-            'can_manage_channels'  => Gate::allows('create', [Channel::class, $room]),
-            'can_manage_roles'     => Gate::allows('create', [Role::class, $room]),
+            'room'                             => $room,
+            'channel'                          => $channel,
+            'members'                          => $members,
+            'custom_emojis'                    => $room->customEmojis,
+            'messages'                         => $messages,
+            'can_manage_channels'              => Gate::allows('create', [Channel::class, $room]),
+            'can_manage_roles'                 => Gate::allows('create', [Role::class, $room]),
+            'can_manage_channel_visibility'    => Gate::allows('manageVisibility', $channel),
+            // Whether the viewer holds ManageMembers/BanMembers at all — not
+            // per-target eligibility, which needs a specific target user and
+            // is checked by RoomMemberPolicy::kick/ban when a kick/ban is
+            // actually attempted. Drives whether kick/ban affordances render
+            // in the member list at all.
+            'can_manage_members'               => PermissionChecker::can($user, Permission::ManageMembers, $room),
+            'can_ban_members'                  => PermissionChecker::can($user, Permission::BanMembers, $room),
         ]);
     }
 }

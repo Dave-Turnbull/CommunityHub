@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\NotificationPreferenceController;
 use App\Http\Controllers\Api\ReactionController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\RoomInviteController;
+use App\Http\Controllers\Api\RoomMemberController;
 use App\Http\Controllers\Api\ThemePreferenceController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\UserStatusController;
@@ -40,6 +41,16 @@ Route::middleware('auth')->group(function () {
     Route::delete('/roles/{role}',                            [RoleController::class, 'destroy']);
     Route::post('/roles/{role}/members',                      [RoleController::class, 'addMember']);
     Route::delete('/roles/{role}/members/{user}',             [RoleController::class, 'removeMember']);
+
+    // Global/instance-wide roles — same RoleController, room-less endpoints.
+    Route::get('/settings/roles',               [RoleController::class, 'indexGlobal']);
+    Route::post('/settings/roles',              [RoleController::class, 'storeGlobal']);
+    Route::patch('/settings/roles/reorder',     [RoleController::class, 'reorderGlobal']);
+
+    // Room membership — kick/ban, gated by RoomMemberPolicy (see docs/roles-and-permissions.md).
+    Route::delete('/rooms/{room}/members/{user}',    [RoomMemberController::class, 'destroy']);
+    Route::post('/rooms/{room}/bans/{user}',         [RoomMemberController::class, 'ban']);
+    Route::delete('/rooms/{room}/bans/{user}',       [RoomMemberController::class, 'unban']);
 
     Route::get('/conversations/{conversation}/messages',  [MessageController::class, 'indexConversation']);
     Route::post('/conversations/{conversation}/messages', [MessageController::class, 'storeConversation']);

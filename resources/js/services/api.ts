@@ -132,6 +132,14 @@ export async function updateChannel(
     return data
 }
 
+// Separate from updateChannel — gated by ManageChannelVisibility, not
+// ManageChannels, so it can be called by an actor who only holds the former
+// (see Api\ChannelController::update's split authorization).
+export async function updateChannelVisibility(channelId: string, roleIds: string[]): Promise<Channel> {
+    const { data } = await axios.patch(`/api/channels/${channelId}`, { visibility_role_ids: roleIds })
+    return data
+}
+
 export async function deleteChannel(channelId: string): Promise<void> {
     await axios.delete(`/api/channels/${channelId}`)
 }
@@ -169,6 +177,61 @@ export async function addRoleMember(roleId: string, userId: string): Promise<voi
 
 export async function removeRoleMember(roleId: string, userId: string): Promise<void> {
     await axios.delete(`/api/roles/${roleId}/members/${userId}`)
+}
+
+// ── Global (instance-wide) roles ────────────────────────────────────────
+// update/delete/addMember/removeMember above are room-less already (keyed
+// by role id, not room id) and work unchanged for global roles — only
+// create/reorder need room-less endpoints, see Api\RoleController::
+// storeGlobal/reorderGlobal.
+
+export async function fetchGlobalRoles(): Promise<{ roles: Role[]; users: User[] }> {
+    const { data } = await axios.get('/api/settings/roles')
+    return data
+}
+
+export async function createGlobalRole(name: string): Promise<Role> {
+    const { data } = await axios.post('/api/settings/roles', { name })
+    return data
+}
+
+export async function reorderGlobalRoles(roleIds: string[]): Promise<void> {
+    await axios.patch('/api/settings/roles/reorder', { role_ids: roleIds })
+}
+
+// ── Room membership (kick/ban) ──────────────────────────────────────────
+// See RoomMemberPolicy/RoomMembershipService. Kicking or banning a room's
+// Owner 409s with { requires_owner_transfer: true } — the caller must
+// resubmit with confirmOwnerTransfer: true to proceed, which makes the
+// acting admin the room's new Owner.
+
+export class OwnerTransferRequiredError extends Error {}
+
+async function kickOrBan(
+    method: 'delete' | 'post',
+    url: string,
+    confirmOwnerTransfer: boolean
+): Promise<void> {
+    try {
+        await axios.request({ method, url, data: { confirm_owner_transfer: confirmOwnerTransfer } })
+    } catch (e: any) {
+        if (e.response?.status === 409 && e.response?.data?.requires_owner_transfer) {
+            throw new OwnerTransferRequiredError(e.response.data.message)
+        }
+        throw e
+    }
+}
+
+export async function kickRoomMember(roomId: string, userId: string, confirmOwnerTransfer = false): Promise<void> {
+    await kickOrBan('delete', `/api/rooms/${roomId}/members/${userId}`, confirmOwnerTransfer)
+}
+
+export async function banRoomMember(roomId: string, userId: string, confirmOwnerTransfer = false): Promise<void> {
+    await kickOrBan('post', `/api/rooms/${roomId}/bans/${userId}`, confirmOwnerTransfer)
+}
+
+export async function unbanRoomMember(roomId: string, userId: string): Promise<void> {
+    await axios.delete(`/api/rooms/${roomId}/bans/${userId}`)
 }
 
 // ── Room invites ─────────────────────────────────────────────────────────

@@ -27,7 +27,9 @@ encode the actual dependency graph between subsystems.
 - [voice.md](voice.md) — WebRTC call orchestration, presence vs. call-membership,
   signaling transport, the single-active-call guard, device preferences, TURN.
 - [roles-and-permissions.md](roles-and-permissions.md) — the RBAC schema, permission
-  resolution, default roles, the per-room rank hierarchy, and every enforcement point.
+  resolution, default roles (room and global/instance-wide), the per-room rank
+  hierarchy, channel visibility restriction, direct-message restriction, kick/ban, and
+  every enforcement point.
 - [notifications.md](notifications.md) — the notification model, producers, focus
   suppression, preferences, and the delivery surface.
 - [messages-and-pagination.md](messages-and-pagination.md) — the two-way cursor

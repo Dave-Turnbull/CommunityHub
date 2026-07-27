@@ -17,11 +17,22 @@
 
 `App\Support\Permission` is the closed enum of grantable keys: `Administrator`,
 `ManageRoom`, `ManageRoles`, `ManageChannels`, `ManageMembers`, `BanMembers`,
-`ManageMessages`, `ManageEmojis`. **Adding a case does not make it do anything** — only
-`Administrator` (implies every permission, checked first) and
-`ManageChannels`/`ManageRoles` have a real enforcement site today (`ChannelPolicy`/
-`RolePolicy`). `ManageMembers`/`BanMembers`/`ManageMessages`/`ManageEmojis` are declared
-for schema stability but are currently inert.
+`ManageMessages`, `ManageEmojis`, `SeeAllChannels`, `ManageChannelVisibility`,
+`SendDirectMessages`. **Adding a case does not make it do anything** — enforcement
+sites today: `Administrator` (implies every permission, checked first),
+`ManageChannels`/`ManageRoles` (`ChannelPolicy`/`RolePolicy`), `ManageMembers`/
+`BanMembers` (`RoomMemberPolicy` — kick/ban, see "Kick and ban" below),
+`SeeAllChannels`/`ManageChannelVisibility` (`Channel::isVisibleTo`/`ChannelPolicy::
+manageVisibility` — see "Channel visibility" below), `SendDirectMessages`
+(`Api\ConversationController::store`/`TextMessageService::authorizeSend` — see
+"Direct message restriction" below). `ManageRoom`/`ManageMessages`/`ManageEmojis`
+are declared for schema stability but are currently inert.
+
+Renaming or removing a case only silently orphans existing `role_permissions` rows —
+there is no boot-time registry validating the stored string against this enum, unlike
+`FeatureRegistry`'s capability keys. `Tests\Unit\Support\PermissionEnumStabilityTest`
+pins every case's value and fails immediately if one changes; a real rename needs a
+data migration backfilling `role_permissions.permission` alongside updating that test.
 
 ## Permission resolution
 
@@ -65,12 +76,18 @@ are the enforcement points. `Web\ChannelController::show` computes
 Inertia props — `ChannelSidebar`'s affordances are purely driven by these props, with no
 separate frontend permission check.
 
-`RoomPolicy::invite` still checks plain `Room::hasMember`, not `PermissionChecker` — it
-predates the RBAC system and has not been migrated onto it.
+`RoomPolicy::invite` checks `Room::hasMember` OR `PermissionChecker::can($user,
+Permission::ManageMembers, $room)` — membership remains sufficient (any member can
+invite, unchanged from before), with `ManageMembers` added as an override so
+instance-wide/room staff who hold it can invite even into a room they haven't joined.
 
 `Web\RoleController::index` (`GET /rooms/{room}/roles`) is the room role-management page
-(`Rooms/Roles.tsx`). There is no UI for global/instance-wide roles — a global role can
-only be created via `tinker`/a seeder.
+(`Rooms/Roles.tsx`); `Api\RoleController::indexGlobal` (`GET /api/settings/roles`) is its
+instance-wide equivalent, backing the Roles tab in Settings
+(`components/settings/GlobalRolesSettings.tsx`) — see "Global (instance-wide) roles"
+below. Both surfaces render the same `RoleCard` component
+(`resources/js/components/roles/RoleCard.tsx`), which is scope-agnostic — every API
+call it makes is keyed by role id, not room id.
 
 ## Hierarchy
 
@@ -162,14 +179,153 @@ e.g. Member?).
 
 ## The hierarchy is broader than role management
 
-This hierarchy is intentionally more than role-management needs today — it is also the
-seam a future per-user moderation feature (kick, ban) hooks into, with different
-comparison semantics than either check above: a moderation action should compare the
-actor's `highestRoleFor()` against the target user's using `rank() >=` (not
-`outranks()`'s strict `>`, and not the same as the `addMember`/`removeMember`
-target-user check either) — a Member with a granted `ban_members` permission acting on
-another Member (same rank) should succeed; only acting on someone in a strictly higher
-role should be blocked. See `CLAUDE.md`'s "Planned work" before building this.
+This hierarchy is more than role-management needs — it is also the seam the kick/ban
+moderation feature hooks into (see "Kick and ban" below), with different comparison
+semantics than either check above: a moderation action compares the actor's effective
+rank against the target's using `>=` (not `outranks()`'s strict `>`, and not the same
+as the `addMember`/`removeMember` target-user check either) — a Member with a granted
+`ban_members` permission acting on another Member (same rank) succeeds; only acting on
+someone in a strictly higher role is blocked.
+
+## Global (instance-wide) roles
+
+A global role (`room_id: null`) applies in every room — this has worked end-to-end in
+`PermissionChecker`/`RolePolicy` since the RBAC system's initial build; what was
+missing was a UI and a bootstrap path, both now present.
+
+**Bootstrap.** The very first global Administrator is granted via
+`php artisan app:bootstrap-admin {email}` (`app/Console/Commands/BootstrapGlobalAdmin.php`)
+— idempotent (`firstOrCreate` on the role, `firstOrCreate` on the assignment), run once
+at deploy time rather than via an env var or "first registered user" convention (both
+of which are races). **This command is also the only way to add a second (or third...)
+global Administrator** — re-run it with a different email; it reuses the same global
+Administrator role and just adds another `RoleAssignment`. There is deliberately no UI
+path to grant `Administrator` to a role: `Api\RoleController::update`'s `permissions`
+validation unconditionally rejects `administrator` in the payload for every role,
+global or room-scoped (it predates global roles having any UI at all, written with
+only room Owner's "top of the hierarchy" semantics in mind — see its "Administrator is
+exclusively the Owner tier" comment). A global role can hold any *other* permission via
+the Roles tab; `Administrator` specifically is console-only.
+
+**Default role.** `Role::seedGlobalDefaults()` idempotently creates the single global
+`is_default: true` "Member" role (granting `SendDirectMessages` by default) — the
+global mirror of `seedDefaultsForRoom()`'s room Member. Called from a one-time data
+migration (`2024_01_01_000027_seed_global_member_role.php`), `AuthController::register`
+(every new user), `DatabaseSeeder`, and `UserFactory::configure()`'s `afterCreating`
+hook (every factory-created user in tests) — the same "every user needs at least one
+role" guarantee room membership has, now enforced at the instance level too.
+`RoleAssignment::firstOrCreate` at each call site keeps this idempotent.
+
+**Management.** `ManageRoles` is reused for global role management, not a separate
+ability — `RolePolicy::manage`'s existing `!$role->room` branch already grants this on
+`ManageRoles` alone, with no hierarchy comparison (global roles have no per-room rank).
+`RolePolicy::create(User, ?Room $room = null)` accepts a null room for the same reason.
+`Api\RoleController::indexGlobal` (`GET /api/settings/roles`) returns every global role
++ every instance user, self-fetched by the Roles tab
+(`components/settings/GlobalRolesSettings.tsx`) in Settings — only rendered at all when
+`SettingsController::show`'s `can_manage_global_roles` prop (`Gate::allows('create',
+[Role::class, null])`) is true, so the tab is invisible to anyone who isn't server
+staff. `storeGlobal`/`reorderGlobal` are the room-less equivalents of `store`/`reorder`
+(`update`/`destroy`/`addMember`/`removeMember` are already room-less, keyed by role id,
+and work unchanged for global roles).
+
+## Channel visibility
+
+Opt-in per-channel restriction — a channel with no `channel_role_visibility` rows is
+visible to every room member (empty set means open, not closed, so existing channels
+are unaffected until someone deliberately restricts one).
+
+- `channel_role_visibility` (`channel_id`, `role_id`) — a join table, but written via
+  the `ChannelRoleVisibility` model directly (`create`/`delete`), never
+  `BelongsToMany::attach()`/`sync()`. Those bulk-insert through the query builder and
+  bypass Eloquent's `creating` event, which is what `HasUuids` relies on to generate
+  the row's `id` — the same reason `role_permissions`/`role_assignments` are written
+  through their models elsewhere in this codebase rather than pivot helpers.
+- `Channel::isVisibleTo(User $user): bool` — true if the visibility set is empty, if
+  the user holds `SeeAllChannels` (room-scoped; `Administrator` implies it), or if the
+  user holds any role in the channel's visibility set (room-scoped or global).
+  Enforced in `Web\ChannelController::show` (the channel itself, and filtering the
+  room's channel list passed to the page), `Web\RoomController::show`/`join`'s
+  "first text-capable channel" redirect, and `channel.{channelId}`'s presence-auth
+  callback in `routes/channels.php`.
+- Two permissions, deliberately separate: `SeeAllChannels` (bypass when *viewing*) and
+  `ManageChannelVisibility` (required to *set* the list) — kept apart from
+  `ManageChannels` so "who can restrict a channel" is delegable independently of full
+  channel CRUD. `Api\ChannelController::update` only requires `ManageChannels` when the
+  request touches name/topic/is_nsfw/slow_mode_seconds; a request containing only
+  `visibility_role_ids` is gated solely by `ChannelPolicy::manageVisibility`
+  (`ManageChannelVisibility`).
+- **Hierarchy guard**: a lower-ranked role can never lock a higher-ranked one out.
+  When `visibility_role_ids` is submitted, every room role whose `Role::rank()` exceeds
+  the actor's own rank must be included in the list (else 422) — practically, this
+  means Owner (`rank() === INF`) must be explicitly included in *any* non-empty
+  visibility list set by a room-scoped actor, since nothing in a room outranks Owner.
+  An actor whose `ManageChannelVisibility` grant is global (checked via
+  `PermissionChecker::can($user, Permission::ManageChannelVisibility, null)`) is exempt
+  from this guard entirely — they hold no room-scoped rank to compare against, mirroring
+  `Role::effectiveModerationRank`'s global-supersedes-room-hierarchy pattern below. The
+  frontend (`ChannelVisibilityModal`) doesn't replicate this rank comparison — it lets
+  any role be toggled and surfaces the backend's 422 message on save, keeping the
+  hierarchy logic in one place.
+
+## Direct message restriction
+
+`SendDirectMessages` gates both starting a new conversation
+(`Api\ConversationController::store`) and sending in an existing one
+(`TextMessageService::authorizeSend`, when the entity is a `Conversation`) — granted to
+the global Member role by default.
+
+Since `PermissionChecker` is a pure additive union with no explicit "deny," there is no
+way to revoke a permission from a specific user while they still hold a role that
+grants it. **The supported moderation workflow** is to move the user off the global
+Member role onto a different global role (e.g. a hand-created "Restricted" role with no
+permissions) via Settings → Roles — removing their `SendDirectMessages` grant by
+removing its source, not by an override mechanism. This is a real operational step, not
+a UI nicety: an admin doing this should confirm the user holds no *other* role that
+also grants `SendDirectMessages` before assuming the restriction took effect.
+
+## Kick and ban
+
+`ManageMembers` (kick) and `BanMembers` (kick + block rejoin) have real enforcement now
+— `RoomMemberPolicy::kick`/`ban`, backed by `RoomMembershipService`, called from
+`Api\RoomMemberController` (`DELETE /rooms/{room}/members/{user}`,
+`POST`/`DELETE /rooms/{room}/bans/{user}`).
+
+`Role::effectiveModerationRank(User $user, Room $room): float` is a **different**
+comparison from `highestRoleFor()`/`rank()` alone: it returns `INF` if the user holds a
+*global* `Administrator` role (checked via `PermissionChecker::can($user,
+Permission::Administrator, null)`), else falls back to their highest room-scoped role's
+rank (`-INF` if they hold none there). This is what lets a global Administrator act on
+a room's Owner — nothing room-scoped ever outranks Owner (`rank() === INF`), so only a
+global Administrator, tying at `INF`, can. `RoomMemberPolicy` compares both sides with
+`effectiveModerationRank(actor) >= effectiveModerationRank(target)` (`>=`, not
+`outranks()`'s strict `>` — same-rank peers, e.g. two Members where one holds
+`BanMembers`, may act on one another) and additionally requires the actor hold the
+relevant permission in that room and not be acting on themselves.
+
+This is deliberately **not** the same comparison `RolePolicy::manage` uses for role
+management — that policy's Owner-immutability guard
+(`abort_if($role->is_system && ..., 422, ...)` in `Api\RoleController::update`/
+`destroy`) is untouched by hierarchy and stays in force regardless: a global
+Administrator can act on a room's Owner *as a member* (kick/ban) but can never
+edit/delete the Owner *role* itself.
+
+**Ban** additionally writes a `room_bans` row (`room_id`, `user_id`, `banned_by_id`) —
+`Room::isBanned()` is checked in `Room::addMember()`, the single choke point every
+room-join path (`RoomController::store`/`join`, `RoomInvite::accept`) already funnels
+through, so a ban blocks rejoining via invite link, invite code, or email invite alike
+with one guard. Unbanning (`DELETE /rooms/{room}/bans/{user}`) is gated by the same
+`ban` ability.
+
+**Removing a room's Owner.** Since only a global Administrator can ever kick/ban
+Owner, and doing so necessarily leaves the room without one,
+`RoomMembershipService::removeMembership` doesn't auto-promote another member or block
+the action outright — the *acting admin becomes the room's new Owner* (both `owner_id`
+and the Owner role assignment transfer to them). This requires an explicit
+`confirm_owner_transfer: true` on the request; without it, the endpoint responds `409
+{ requires_owner_transfer: true, message }` (via `OwnerTransferRequiredException`) so
+the frontend can show `OwnerTransferModal`'s confirmation before resubmitting. The new
+owner can hand the role off again afterward through the normal room role UI.
 
 ## Backfill migration
 
