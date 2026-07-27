@@ -15,6 +15,7 @@ use App\Support\Permission;
 use App\Support\PermissionChecker;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
@@ -52,22 +53,42 @@ class ChannelController extends Controller
         // permission (see updateVisibility()), deliberately separate from
         // ManageChannels below — an actor who only holds the former can
         // restrict a channel without being able to rename/delete it.
-        if ($request->hasAny(['name', 'topic', 'is_nsfw', 'slow_mode_seconds'])) {
+        $hasOtherFields = $request->hasAny(['name', 'topic', 'is_nsfw', 'slow_mode_seconds']);
+        $hasVisibility  = $request->has('visibility_role_ids');
+
+        // Both authorizations are checked before *either* mutation runs —
+        // a mixed request (e.g. name + visibility_role_ids together) must
+        // never partially apply just because the actor lacks one of the two
+        // permissions it needs. Checking manage() then mutating then
+        // checking manageVisibility() would let the name change commit even
+        // though the overall request ends in a 403.
+        if ($hasOtherFields) {
             Gate::authorize('manage', $channel);
-
-            $validated = $request->validate([
-                'name'              => ['sometimes', 'string', 'max:100'],
-                'topic'             => ['sometimes', 'nullable', 'string', 'max:1024'],
-                'is_nsfw'           => ['sometimes', 'boolean'],
-                'slow_mode_seconds' => ['sometimes', 'integer', 'min:0', 'max:21600'],
-            ]);
-
-            $channel->update($validated);
+        }
+        if ($hasVisibility) {
+            Gate::authorize('manageVisibility', $channel);
         }
 
-        if ($request->has('visibility_role_ids')) {
-            $this->updateVisibility($request, $channel);
-        }
+        // Also transactional — updateVisibility() can still abort partway
+        // through (422, a role that outranks the actor) after $channel's
+        // other fields were already saved above; the transaction rolls that
+        // back too rather than leaving a half-applied update.
+        DB::transaction(function () use ($request, $channel, $hasOtherFields, $hasVisibility) {
+            if ($hasOtherFields) {
+                $validated = $request->validate([
+                    'name'              => ['sometimes', 'string', 'max:100'],
+                    'topic'             => ['sometimes', 'nullable', 'string', 'max:1024'],
+                    'is_nsfw'           => ['sometimes', 'boolean'],
+                    'slow_mode_seconds' => ['sometimes', 'integer', 'min:0', 'max:21600'],
+                ]);
+
+                $channel->update($validated);
+            }
+
+            if ($hasVisibility) {
+                $this->updateVisibility($request, $channel);
+            }
+        });
 
         broadcast(new ChannelUpdated($channel))->toOthers();
 

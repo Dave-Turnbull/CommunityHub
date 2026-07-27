@@ -221,25 +221,23 @@ class RoleController extends Controller
         abort_if($role->is_system, 422, 'This role is managed by the system and cannot be deleted.');
 
         // Anyone who held only this role would otherwise be left with none
-        // once it's gone — fall back to Member for them rather than leaving
-        // an orphan (see removeMember for the same rule on a single removal;
+        // once it's gone — fall back to the default role for their scope
+        // (room-scoped Member, or the global Member for a global role —
+        // see defaultRoleFor()/hasOtherRoleInScope() below, which compare on
+        // room_id directly rather than `$role->room`'s truthiness so a
+        // global role's fallback isn't silently skipped the way a
+        // room-scoped-only check would skip it) rather than leaving an
+        // orphan (see removeMember for the same rule on a single removal;
         // deleting the role itself is never blocked the way removeMember can
         // block a single removal, since there's no "role" left to keep them in).
-        if ($role->room) {
-            $default = $role->room->roles()->where('is_default', true)->first();
+        $default = $this->defaultRoleFor($role);
 
-            if ($default) {
-                $role->assignments()->pluck('user_id')->each(function (string $userId) use ($role, $default) {
-                    $hasOtherRole = $role->room->roles()
-                        ->whereHas('assignments', fn ($q) => $q->where('user_id', $userId))
-                        ->where('id', '!=', $role->id)
-                        ->exists();
-
-                    if (! $hasOtherRole) {
-                        RoleAssignment::firstOrCreate(['role_id' => $default->id, 'user_id' => $userId]);
-                    }
-                });
-            }
+        if ($default) {
+            $role->assignments()->pluck('user_id')->each(function (string $userId) use ($role, $default) {
+                if (! $this->hasOtherRoleInScope($role, $userId)) {
+                    RoleAssignment::firstOrCreate(['role_id' => $default->id, 'user_id' => $userId]);
+                }
+            });
         }
 
         $role->delete();
@@ -269,29 +267,45 @@ class RoleController extends Controller
     {
         Gate::authorize('manage', [$role, $user]);
 
-        // Every user needs at least one role in a room. Removing someone's
-        // last *custom* role doesn't block the removal — they fall back to
-        // Member instead. Member itself is the one role that can't be
-        // auto-backed-up by itself, so removing it while it's someone's only
-        // role is still a hard block, not a fallback.
-        if ($role->room) {
-            $hasOtherRole = $role->room->roles()
-                ->whereHas('assignments', fn ($q) => $q->where('user_id', $user->id))
-                ->where('id', '!=', $role->id)
-                ->exists();
+        // Every user needs at least one role in their scope (room, or
+        // globally for a global role — see hasOtherRoleInScope()/
+        // defaultRoleFor() below). Removing someone's last *custom* role
+        // doesn't block the removal — they fall back to the scope's default
+        // (Member) role instead. Member itself is the one role that can't
+        // be auto-backed-up by itself, so removing it while it's someone's
+        // only role in that scope is still a hard block, not a fallback.
+        if (! $this->hasOtherRoleInScope($role, $user->id)) {
+            abort_if($role->is_default, 422, 'A user must hold at least one role — Member is their last one.');
 
-            if (! $hasOtherRole) {
-                abort_if($role->is_default, 422, 'A user must hold at least one role — Member is their last one.');
-
-                $default = $role->room->roles()->where('is_default', true)->first();
-                if ($default) {
-                    RoleAssignment::firstOrCreate(['role_id' => $default->id, 'user_id' => $user->id]);
-                }
+            $default = $this->defaultRoleFor($role);
+            if ($default) {
+                RoleAssignment::firstOrCreate(['role_id' => $default->id, 'user_id' => $user->id]);
             }
         }
 
         RoleAssignment::where('role_id', $role->id)->where('user_id', $user->id)->delete();
 
         return response()->json(['removed' => true]);
+    }
+
+    /**
+     * Whether $userId holds any role in $role's scope (same room_id,
+     * including null/global) other than $role itself. Compares on room_id
+     * directly rather than `$role->room`'s truthiness — a boolean check
+     * there would silently skip this guard entirely for global roles (see
+     * trap: "every user needs at least one role" must hold in both scopes).
+     */
+    private function hasOtherRoleInScope(Role $role, string $userId): bool
+    {
+        return Role::where('room_id', $role->room_id)
+            ->where('id', '!=', $role->id)
+            ->whereHas('assignments', fn ($q) => $q->where('user_id', $userId))
+            ->exists();
+    }
+
+    /** The default (is_default: true) role in $role's own scope — room-scoped Member, or the global Member for a global role. */
+    private function defaultRoleFor(Role $role): ?Role
+    {
+        return Role::where('room_id', $role->room_id)->where('is_default', true)->first();
     }
 }

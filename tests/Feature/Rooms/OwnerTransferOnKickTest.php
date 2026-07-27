@@ -95,4 +95,42 @@ class OwnerTransferOnKickTest extends TestCase
 
         $response->assertForbidden();
     }
+
+    // ── Same owner-transfer flow via ban, not just kick ─────────────────────
+    // RoomMembershipService::ban() calls the same removeMembership() as
+    // kick() — these confirm the 409/confirm flow and the resulting ban row
+    // both happen correctly through that second entry point too.
+
+    public function test_banning_the_owner_without_confirmation_requires_owner_transfer(): void
+    {
+        $admin = $this->globalAdmin();
+        [$room, $owner] = $this->roomWithOwner();
+
+        $response = $this->actingAs($admin)->postJson("/api/rooms/{$room->id}/bans/{$owner->id}");
+
+        $response->assertStatus(409);
+        $this->assertTrue($response->json('requires_owner_transfer'));
+        $this->assertTrue($room->fresh()->hasMember($owner->id));
+        $this->assertDatabaseMissing('room_bans', ['room_id' => $room->id, 'user_id' => $owner->id]);
+    }
+
+    public function test_confirming_a_ban_on_the_owner_transfers_ownership_and_bans_them(): void
+    {
+        $admin = $this->globalAdmin();
+        [$room, $owner, $ownerRole] = $this->roomWithOwner();
+
+        $response = $this->actingAs($admin)->postJson("/api/rooms/{$room->id}/bans/{$owner->id}", [
+            'confirm_owner_transfer' => true,
+        ]);
+
+        $response->assertOk();
+
+        $room->refresh();
+        $this->assertSame($admin->id, $room->owner_id);
+        $this->assertFalse($room->hasMember($owner->id));
+        $this->assertDatabaseHas('room_bans', ['room_id' => $room->id, 'user_id' => $owner->id, 'banned_by_id' => $admin->id]);
+        $this->assertTrue(
+            RoleAssignment::where('role_id', $ownerRole->id)->where('user_id', $admin->id)->exists()
+        );
+    }
 }

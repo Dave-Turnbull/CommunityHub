@@ -81,4 +81,42 @@ class RoomBanTest extends TestCase
         $response->assertRedirect();
         $this->assertTrue($room->fresh()->hasMember($target->id));
     }
+
+    public function test_a_user_with_manage_members_but_not_ban_members_cannot_unban(): void
+    {
+        $room = Room::factory()->create();
+        [$banner] = $this->memberWithCustomRole($room, 90, Permission::BanMembers);
+        [$target] = $this->memberWithCustomRole($room, 10);
+        $this->actingAs($banner)->postJson("/api/rooms/{$room->id}/bans/{$target->id}")->assertOk();
+
+        [$mod] = $this->memberWithCustomRole($room, 80, Permission::ManageMembers);
+
+        $response = $this->actingAs($mod)->deleteJson("/api/rooms/{$room->id}/bans/{$target->id}");
+
+        $response->assertForbidden();
+        $this->assertDatabaseHas('room_bans', ['room_id' => $room->id, 'user_id' => $target->id]);
+    }
+
+    public function test_banning_an_already_banned_user_is_idempotent(): void
+    {
+        $room = Room::factory()->create();
+        [$mod] = $this->memberWithCustomRole($room, 90, Permission::BanMembers);
+        [$target] = $this->memberWithCustomRole($room, 10);
+
+        $this->actingAs($mod)->postJson("/api/rooms/{$room->id}/bans/{$target->id}")->assertOk();
+        $response = $this->actingAs($mod)->postJson("/api/rooms/{$room->id}/bans/{$target->id}");
+
+        $response->assertOk();
+        $this->assertDatabaseCount('room_bans', 1);
+    }
+
+    public function test_a_guest_cannot_ban(): void
+    {
+        $room = Room::factory()->create();
+        [$target] = $this->memberWithCustomRole($room, 10);
+
+        $response = $this->postJson("/api/rooms/{$room->id}/bans/{$target->id}");
+
+        $response->assertUnauthorized();
+    }
 }

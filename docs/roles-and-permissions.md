@@ -138,16 +138,33 @@ themselves from a lower secondary role they also hold.
 ### Every user needs at least one role
 
 The enforcement is not symmetric: losing your last *custom* role falls back to Member
-automatically; losing Member while it's your last role is a hard block.
+automatically; losing Member while it's your last role is a hard block. This applies
+identically in both scopes — room and global — via two private helpers on
+`Api\RoleController`:
 
-`Api\RoleController::removeMember` checks whether the target holds any other room-scoped
-role; if not, `$role->is_default` decides what happens next — `true` (removing Member
-itself) aborts 422, `false` (removing a custom role) instead
-`RoleAssignment::firstOrCreate`s them onto the room's default role before proceeding, so
-the request succeeds (200) and they land on Member. `destroy` (deleting a custom role
-outright) applies the same fallback to every assignee who would otherwise be orphaned,
-before the role itself is deleted. Both use `firstOrCreate` specifically so a user who
-already holds Member alongside the removed role does not get a duplicate row.
+- `hasOtherRoleInScope(Role $role, string $userId): bool` — does `$userId` hold any
+  *other* role with the same `room_id` as `$role` (room-scoped or global alike,
+  compared directly on `room_id` rather than on `$role->room`'s truthiness).
+- `defaultRoleFor(Role $role): ?Role` — the `is_default: true` role sharing that same
+  `room_id`.
+
+`removeMember` checks `hasOtherRoleInScope`; if false, `$role->is_default` decides what
+happens next — `true` (removing Member itself, room-scoped or global) aborts 422,
+`false` (removing a custom role) instead `RoleAssignment::firstOrCreate`s them onto
+`defaultRoleFor($role)` before proceeding, so the request succeeds (200) and they land
+on Member. `destroy` (deleting a custom role outright) applies the same fallback to
+every assignee who would otherwise be orphaned, before the role itself is deleted. Both
+use `firstOrCreate` specifically so a user who already holds Member alongside the
+removed role does not get a duplicate row.
+
+**Regression note:** both helpers used to be a single inline `if ($role->room) { ... }`
+block — since `$role->room` is always falsy for a global role, that gated the entire
+fallback/hard-block logic out of existence for global roles, silently letting a global
+role holder be left with zero global roles. `hasOtherRoleInScope`/`defaultRoleFor`
+compare on `room_id` (which correctly matches `whereNull` for a global role) instead of
+branching on `$role->room`'s truthiness, closing that gap — see
+`GlobalRoleTest::test_removing_a_users_only_global_role_the_default_member_role_is_blocked`
+and its neighboring tests.
 
 On the frontend, `RoleCard`'s `removeMember`, the page's `removeRole`, and
 `moveCustomRole` (reorder) all follow their optimistic local update with
@@ -255,6 +272,15 @@ are unaffected until someone deliberately restricts one).
   request touches name/topic/is_nsfw/slow_mode_seconds; a request containing only
   `visibility_role_ids` is gated solely by `ChannelPolicy::manageVisibility`
   (`ManageChannelVisibility`).
+- **Both authorizations for a mixed request are checked before either mutation runs**,
+  and the mutations themselves run inside one `DB::transaction()`. A request combining
+  e.g. `name` and `visibility_role_ids` needs both `ManageChannels` and
+  `ManageChannelVisibility` — checking one, mutating, then checking the other used to
+  let the first field's change commit even when the request as a whole ends in a 403 or
+  422 (the hierarchy guard below aborts *inside* `updateVisibility()`, after any
+  name/topic update already ran). See
+  `ChannelVisibilityTest::test_a_mixed_update_request_does_not_partially_apply_when_only_one_permission_is_held`
+  and `test_a_hierarchy_violation_in_a_mixed_request_rolls_back_the_name_change_too`.
 - **Hierarchy guard**: a lower-ranked role can never lock a higher-ranked one out.
   When `visibility_role_ids` is submitted, every room role whose `Role::rank()` exceeds
   the actor's own rank must be included in the list (else 422) — practically, this
@@ -270,10 +296,14 @@ are unaffected until someone deliberately restricts one).
 
 ## Direct message restriction
 
-`SendDirectMessages` gates both starting a new conversation
-(`Api\ConversationController::store`) and sending in an existing one
-(`TextMessageService::authorizeSend`, when the entity is a `Conversation`) — granted to
-the global Member role by default.
+`SendDirectMessages` gates starting a new conversation
+(`Api\ConversationController::store`), sending in an existing one
+(`TextMessageService::authorizeSend`, when the entity is a `Conversation`), and adding
+participants to a group (`Api\ConversationController::addParticipants` — added after an
+initial gap where a restricted user could still grow a group they were already in;
+`ConversationPolicy::addParticipants`'s membership/group-type check is orthogonal and
+stays in place alongside it) — granted to the global Member role by default. `resolve`/
+`candidates` (read-only lookups, not mutations) are deliberately not gated.
 
 Since `PermissionChecker` is a pure additive union with no explicit "deny," there is no
 way to revoke a permission from a specific user while they still hold a role that

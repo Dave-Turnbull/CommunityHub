@@ -91,4 +91,41 @@ class RoomKickTest extends TestCase
 
         $response->assertForbidden();
     }
+
+    public function test_ban_members_alone_does_not_permit_kicking(): void
+    {
+        // Symmetric to RoomBanTest's "manage_members alone does not permit
+        // banning" — the two permissions are deliberately not
+        // interchangeable, see RoomMemberPolicy::kick/ban.
+        $room = Room::factory()->create();
+        [$mod] = $this->memberWithCustomRole($room, 90, Permission::BanMembers);
+        [$target] = $this->memberWithCustomRole($room, 10);
+
+        $response = $this->actingAs($mod)->deleteJson("/api/rooms/{$room->id}/members/{$target->id}");
+
+        $response->assertForbidden();
+        $this->assertTrue($room->fresh()->hasMember($target->id));
+    }
+
+    public function test_a_guest_cannot_kick(): void
+    {
+        $room = Room::factory()->create();
+        [$target] = $this->memberWithCustomRole($room, 10);
+
+        $response = $this->deleteJson("/api/rooms/{$room->id}/members/{$target->id}");
+
+        $response->assertUnauthorized();
+    }
+
+    public function test_kicking_a_non_member_is_a_harmless_no_op(): void
+    {
+        $room = Room::factory()->create();
+        [$mod] = $this->memberWithCustomRole($room, 90, Permission::ManageMembers);
+        $stranger = User::factory()->create();
+
+        $response = $this->actingAs($mod)->deleteJson("/api/rooms/{$room->id}/members/{$stranger->id}");
+
+        $response->assertOk();
+        $this->assertFalse($room->fresh()->hasMember($stranger->id));
+    }
 }

@@ -507,7 +507,7 @@ of proving a change works and needs nothing installed:
 
 ## Traps already hit — do NOT reintroduce
 
-Full write-ups (50 of them) live in [docs/traps.md](docs/traps.md), grouped by
+Full write-ups (51 of them) live in [docs/traps.md](docs/traps.md), grouped by
 subsystem, with the original numbering preserved for old references. The
 short version, by group — read the full entry before touching adjacent code:
 
@@ -544,7 +544,9 @@ short version, by group — read the full entry before touching adjacent code:
 - **Roles & permissions** (see also
   [docs/roles-and-permissions.md](docs/roles-and-permissions.md)) —
   `Rule::exists()->where()` against a boolean column, `BelongsToMany::attach()`/
-  `sync()` bypassing `HasUuids`' id generation on a UUID-PK pivot table.
+  `sync()` bypassing `HasUuids`' id generation on a UUID-PK pivot table, an
+  `if ($role->room)`-gated safety net silently going dead once `room_id` became
+  legitimately nullable (global roles).
 - **Notifications** (see also [docs/notifications.md](docs/notifications.md))
   — a preference category with no `Notification::notify()` producer is
   silently inert.

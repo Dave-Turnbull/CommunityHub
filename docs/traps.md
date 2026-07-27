@@ -557,6 +557,28 @@ old references/commit messages still resolve.
     UUID-PK join table needs `attach`/`detach`/`sync`-shaped semantics, either give the
     pivot model an explicit `id` before insert, or just don't use those helpers.
 
+51. **A safety-net check gated on `if ($model->relation)` silently stops applying the
+    moment that relation can be legitimately null/absent — audit the null case
+    explicitly, don't assume "no relation" means "guard doesn't apply here."**
+    `Api\RoleController::removeMember`/`destroy`'s "every user needs at least one role"
+    fallback (reassign to the default role, or hard-block removing the last one) used
+    to be wrapped in `if ($role->room) { ... }`, written back when every `Role` was
+    room-scoped and `$role->room` was just a defensive null-check. Once global roles
+    (`room_id: null`) shipped, `$role->room` is *always* falsy for one, so the entire
+    fallback/hard-block block silently stopped running for global roles — a global
+    role holder could be removed from their last global role with no fallback and no
+    block, leaving them with zero roles at the instance level, contradicting the
+    documented "every user needs at least one role" invariant with no error of any
+    kind. Caught by asking "does this room-shaped guard still apply now that a
+    room-shaped precondition itself is nullable?" rather than by a failing test (none
+    existed for the global-scope case until added alongside the fix). Fixed by
+    comparing on `room_id` directly (`Role::where('room_id', $role->room_id)`, which
+    Eloquent correctly turns into `whereNull` for a null `room_id`) instead of
+    branching on `$role->room`'s truthiness. When a room-scoped invariant is extended
+    to also cover a global/room-less variant, re-audit every `if ($room)`-shaped guard
+    near it — the falsy check that used to mean "defensive, should never happen" can
+    silently become "this is the normal path for half of all cases now."
+
 ## Notifications — see [notifications.md](notifications.md)
 
 48. **(#24) A `NotificationPreference` category with no producer is silently inert.**

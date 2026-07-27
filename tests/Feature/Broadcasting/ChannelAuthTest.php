@@ -3,8 +3,11 @@
 namespace Tests\Feature\Broadcasting;
 
 use App\Models\Channel;
+use App\Models\ChannelRoleVisibility;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
+use App\Models\Role;
+use App\Models\RoleAssignment;
 use App\Models\Room;
 use App\Models\RoomMember;
 use App\Models\User;
@@ -64,6 +67,43 @@ class ChannelAuthTest extends TestCase
         ]);
 
         $response->assertForbidden();
+    }
+
+    public function test_a_room_member_without_the_required_visibility_role_cannot_authorize_a_restricted_channel(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $allowedRole = Role::factory()->for($room)->create();
+        ChannelRoleVisibility::create(['channel_id' => $channel->id, 'role_id' => $allowedRole->id]);
+
+        $user = User::factory()->create();
+        RoomMember::factory()->for($room)->for($user)->create();
+
+        $response = $this->actingAs($user)->postJson('/broadcasting/auth', [
+            'channel_name' => "presence-channel.{$channel->id}",
+            'socket_id'    => '1234.5678',
+        ]);
+
+        $response->assertForbidden();
+    }
+
+    public function test_a_room_member_holding_the_required_visibility_role_can_authorize_a_restricted_channel(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $allowedRole = Role::factory()->for($room)->create();
+        ChannelRoleVisibility::create(['channel_id' => $channel->id, 'role_id' => $allowedRole->id]);
+
+        $user = User::factory()->create();
+        RoomMember::factory()->for($room)->for($user)->create();
+        RoleAssignment::factory()->for($allowedRole)->for($user)->create();
+
+        $response = $this->actingAs($user)->postJson('/broadcasting/auth', [
+            'channel_name' => "presence-channel.{$channel->id}",
+            'socket_id'    => '1234.5678',
+        ]);
+
+        $response->assertOk();
     }
 
     public function test_a_participant_can_authorize_the_conversation_private_channel(): void

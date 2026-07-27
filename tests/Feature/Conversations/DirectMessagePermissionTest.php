@@ -106,4 +106,44 @@ class DirectMessagePermissionTest extends TestCase
 
         $response->assertCreated();
     }
+
+    public function test_a_restricted_user_cannot_add_participants_to_a_group(): void
+    {
+        $alice = User::factory()->create();
+        $bob = User::factory()->create();
+        $carol = User::factory()->create();
+        $this->shareARoom($alice, $bob, $carol);
+
+        $group = Conversation::create(['type' => 'group', 'name' => 'Group Chat']);
+        ConversationParticipant::create(['conversation_id' => $group->id, 'user_id' => $alice->id]);
+        ConversationParticipant::create(['conversation_id' => $group->id, 'user_id' => $bob->id]);
+
+        $this->restrict($alice);
+
+        $response = $this->actingAs($alice)->postJson("/api/conversations/{$group->id}/participants", [
+            'user_ids' => [$carol->id],
+        ]);
+
+        $response->assertForbidden();
+        $this->assertDatabaseMissing('conversation_participants', ['conversation_id' => $group->id, 'user_id' => $carol->id]);
+    }
+
+    public function test_a_non_restricted_user_can_add_participants_to_a_group(): void
+    {
+        $alice = User::factory()->create();
+        $bob = User::factory()->create();
+        $carol = User::factory()->create();
+        $this->shareARoom($alice, $bob, $carol);
+
+        $group = Conversation::create(['type' => 'group', 'name' => 'Group Chat']);
+        ConversationParticipant::create(['conversation_id' => $group->id, 'user_id' => $alice->id]);
+        ConversationParticipant::create(['conversation_id' => $group->id, 'user_id' => $bob->id]);
+
+        $response = $this->actingAs($alice)->postJson("/api/conversations/{$group->id}/participants", [
+            'user_ids' => [$carol->id],
+        ]);
+
+        $response->assertOk();
+        $this->assertDatabaseHas('conversation_participants', ['conversation_id' => $group->id, 'user_id' => $carol->id]);
+    }
 }
