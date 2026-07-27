@@ -49,6 +49,7 @@ const customLow = role({ id: 'custom-low', name: 'Trainee', position: 10, can_ma
 function buildProps(roles: Role[]): RoomRolesPageProps {
     return {
         appName: 'CommunityHub',
+        maxUploadSizeBytes: 100 * 1024 * 1024,
         auth: { user },
         rooms: [],
         conversations: [],

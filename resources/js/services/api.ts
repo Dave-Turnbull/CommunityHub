@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { compressImageFile } from '@/services/imageCompression'
 import type {
     AppNotification,
     Attachment,
@@ -105,8 +106,10 @@ export async function removeReaction(messageId: string, emoji: string): Promise<
 // ── Uploads ──────────────────────────────────────────────────────────────
 
 export async function uploadFile(file: File): Promise<Attachment> {
+    const upload = await compressImageFile(file)
+
     const form = new FormData()
-    form.append('file', file)
+    form.append('file', upload)
 
     const { data } = await axios.post('/api/upload', form, {
         headers: { 'Content-Type': 'multipart/form-data' },

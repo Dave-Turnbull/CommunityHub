@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Web\AttachmentController;
 use App\Http\Controllers\Web\AuthController;
 use App\Http\Controllers\Web\ChannelController;
 use App\Http\Controllers\Web\ConversationController;
@@ -36,6 +37,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/channels/{channel}',           [ChannelController::class, 'show']);
     Route::get('/conversations/{conversation}', [ConversationController::class, 'show']);
     Route::get('/messages/{message}',           [MessageController::class, 'show']);
+    Route::get('/attachments/{attachment}',     [AttachmentController::class, 'show'])->name('attachments.show');
 
     Route::get('/settings',   [SettingsController::class, 'show']);
     Route::patch('/settings', [SettingsController::class, 'update']);

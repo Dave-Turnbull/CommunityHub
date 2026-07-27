@@ -2,7 +2,7 @@
 
 [← All docs](README.md) · See also:
 [capabilities-and-channel-types.md](capabilities-and-channel-types.md) ·
-[service-layer.md](service-layer.md)
+[service-layer.md](service-layer.md) · [attachments.md](attachments.md)
 
 ## Schema
 

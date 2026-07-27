@@ -42,6 +42,7 @@ const user: User = {
 
 const props = (overrides: { can_manage_global_roles?: boolean } = {}): SharedProps & { user: User; can_manage_global_roles: boolean } => ({
     appName: 'CommunityHub',
+    maxUploadSizeBytes: 100 * 1024 * 1024,
     auth: { user },
     rooms: [],
     conversations: [],

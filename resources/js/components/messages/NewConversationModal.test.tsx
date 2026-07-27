@@ -16,6 +16,7 @@ vi.mock('@/services/api', () => ({
 
 vi.mock('@inertiajs/react', () => ({
     router: { visit: vi.fn() },
+    usePage: () => ({ props: { maxUploadSizeBytes: 100 * 1024 * 1024 } }),
 }))
 
 const bob: User = {

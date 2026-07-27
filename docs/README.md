@@ -48,6 +48,11 @@ encode the actual dependency graph between subsystems.
   optimistic edit/reaction/delete path.
 - [conversations-and-invites.md](conversations-and-invites.md) — message scoping,
   conversation creation/deduplication, group participants, and room invite mechanisms.
+- [attachments.md](attachments.md) — upload storage (the private `local` disk, not
+  `public`), why `Attachment::url` is a computed route rather than a direct storage
+  link, `AttachmentPolicy`/`MessagePolicy` (an attachment is exactly as visible as its
+  message), and why deleting a message really deletes its attachments even though the
+  message itself only soft-deletes.
 - [status.md](status.md) — the status/custom-status/color schema, `StatusFeature`,
   `UserStatusService`, the live-broadcast contract, and the `UserStatusPopover` UI.
 - [theming.md](theming.md) — the CSS-variable-backed theme token system
