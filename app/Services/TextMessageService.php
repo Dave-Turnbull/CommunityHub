@@ -74,7 +74,10 @@ class TextMessageService
             default         => $this->pageBefore($before),
         };
 
-        $messages->each(fn ($m) => $m->setAttribute('reactions', $m->reactionSummary($user->id)));
+        $messages->each(function ($m) use ($user) {
+            $m->setAttribute('reactions', $m->reactionSummary($user->id));
+            $m->setAttribute('votes', $m->voteSummary($user->id));
+        });
 
         return $this->describeWindow($messages);
     }
@@ -462,6 +465,7 @@ class TextMessageService
         ]);
         $message->loadCount('children as comment_count');
         $message->setAttribute('reactions', $message->reactionSummary($userId));
+        $message->setAttribute('votes', $message->voteSummary($userId));
 
         return $message;
     }
@@ -509,7 +513,10 @@ class TextMessageService
             ->skip($offset)
             ->take($limit)
             ->get()
-            ->each(fn ($m) => $m->setAttribute('reactions', $m->reactionSummary($user->id)));
+            ->each(function ($m) use ($user) {
+                $m->setAttribute('reactions', $m->reactionSummary($user->id));
+                $m->setAttribute('votes', $m->voteSummary($user->id));
+            });
 
         return [
             'data'         => $messages,

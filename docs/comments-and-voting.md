@@ -114,6 +114,17 @@ viewer's own vote or null.
 the row, broadcasts `MessageVoted`, returns the fresh summary. `POST`/`DELETE
 /api/messages/{message}/votes`.
 
+A message's `votes` summary must be attached everywhere a message is returned to a
+client, not just from the vote endpoints themselves — `TextMessageService::list()`,
+`listTop()`, and `hydrate()` (used by `send()`/`updateMessage()`) each call
+`$message->voteSummary($userId)` and set it as the `votes` attribute, mirroring how
+`reactions` is attached in the same three places. Missing this on even one of them
+means a message fetched through that path shows `votes: undefined` — the frontend's
+`VoteControl` defaults that to `{score: 0, mine: null}`, which looks like "the vote
+reset to 0 on refresh" and can make a repeat click on an already-cast vote look like
+a no-op (the client computes its optimistic delta from a wrong baseline). This
+happened once already — keep it in mind when adding a fourth message-returning path.
+
 ## Titles
 
 `Message::title` is an optional headline (max 300 chars), threaded through

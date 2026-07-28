@@ -139,4 +139,58 @@ class VoteTest extends TestCase
 
         $response->assertStatus(422);
     }
+
+    /**
+     * Regression: list()/listTop()/hydrate() only ever attached `reactions`
+     * to a message, never `votes` — every fetched/refreshed message showed
+     * votes:undefined, which the frontend defaults to {score: 0, mine:
+     * null}, making a real vote look like it "resets to 0 on refresh" and
+     * a repeat click on an already-cast vote look like a no-op (the client
+     * didn't know it had already voted). See docs/comments-and-voting.md.
+     */
+    public function test_channel_message_list_includes_the_authoritative_vote_summary(): void
+    {
+        $channel = $this->forumChannel();
+        $user = $this->member($channel->room);
+        $other = $this->member($channel->room);
+        $post = Message::factory()->for($channel)->create();
+
+        $this->actingAs($user)->postJson("/api/messages/{$post->id}/votes", ['value' => 1]);
+        $this->actingAs($other)->postJson("/api/messages/{$post->id}/votes", ['value' => 1]);
+
+        $response = $this->actingAs($user)->getJson("/api/channels/{$channel->id}/messages");
+
+        $response->assertJsonPath('data.0.votes.score', 2);
+        $response->assertJsonPath('data.0.votes.mine', 1);
+    }
+
+    public function test_top_sorted_list_includes_the_authoritative_vote_summary(): void
+    {
+        $channel = $this->forumChannel();
+        $user = $this->member($channel->room);
+        $post = Message::factory()->for($channel)->create();
+
+        $this->actingAs($user)->postJson("/api/messages/{$post->id}/votes", ['value' => -1]);
+
+        $response = $this->actingAs($user)
+            ->getJson("/api/channels/{$channel->id}/messages?sort=top&period=all");
+
+        $response->assertJsonPath('data.0.votes.score', -1);
+        $response->assertJsonPath('data.0.votes.mine', -1);
+    }
+
+    public function test_editing_a_message_preserves_the_vote_summary_in_the_response(): void
+    {
+        $channel = $this->forumChannel();
+        $user = $this->member($channel->room);
+        $post = Message::factory()->for($channel)->create(['author_id' => $user->id]);
+
+        $this->actingAs($user)->postJson("/api/messages/{$post->id}/votes", ['value' => 1]);
+
+        $response = $this->actingAs($user)
+            ->patchJson("/api/messages/{$post->id}", ['content' => 'edited']);
+
+        $response->assertJsonPath('votes.score', 1);
+        $response->assertJsonPath('votes.mine', 1);
+    }
 }
