@@ -59,6 +59,9 @@ encode the actual dependency graph between subsystems.
   (comments as messages whose parent is another message), the `comments_enabled`
   parameter + standalone `Permission::Comment`/`Vote`, the `vote` Feature, tombstone
   vs. cascade deletion, score+timeframe sorting, and the `forum` `ChannelType`.
+- [e2ee-proposal.md](e2ee-proposal.md) — **proposal, not implemented/approved.**
+  Requirements sketch for a purpose-built end-to-end-encrypted communication Feature
+  and the multi-device key system it depends on.
 - [theming.md](theming.md) — the CSS-variable-backed theme token system
   (backgrounds, panel borders, text, accent/status/feedback colors, radius,
   border width, typography), the
