@@ -88,4 +88,21 @@ enum Permission: string
      * without holding ManageModChannels.
      */
     case PostAnnouncements = 'post_announcements';
+
+    /**
+     * Room-scoped (global-scope-relevant too, same shape as
+     * SendDirectMessages). Gates *authorship* of a threaded comment —
+     * standalone, deliberately independent of whatever gates sending an
+     * ordinary message in the same channel (there is no generic "can send
+     * messages" permission to make this a sibling of). A role can hold
+     * Comment without holding posting rights on the channel otherwise, or
+     * vice versa. Checked in TextMessageService's comment-send branch,
+     * alongside (never instead of) the channel's `comments_enabled`
+     * setting — a parameter, not a capability, see docs/
+     * comments-and-voting.md. Granted to the seeded Member role by default.
+     */
+    case Comment = 'comment';
+
+    /** Room-scoped. Gates casting/removing a vote — see VoteService. */
+    case Vote = 'vote';
 }

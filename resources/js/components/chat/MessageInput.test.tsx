@@ -17,6 +17,7 @@ vi.mock('@/services/api', () => ({
     uploadFile: vi.fn(),
     sendChannelMessage: vi.fn(),
     sendConversationMessage: vi.fn(),
+    sendComment: vi.fn(),
 }))
 
 vi.mock('@/components/emoji/EmojiPicker', () => ({
@@ -62,6 +63,51 @@ describe('MessageInput', () => {
             content: 'hi', attachment_ids: [], reply_to_id: undefined,
         })
         expect(screen.getByPlaceholderText('Message #general')).toHaveValue('')
+    })
+
+    it('sends a comment via sendComment when scopeType is message', async () => {
+        vi.mocked(api.sendComment).mockResolvedValue({ id: 'comment-1', content: 'nice!' } as any)
+
+        render(
+            <MessageInput
+                scopeId="post-1"
+                scopeType="message"
+                placeholder="Write a comment…"
+                replyTo={null}
+                onClearReply={vi.fn()}
+            />
+        )
+
+        await userEvent.type(screen.getByPlaceholderText('Write a comment…'), 'nice!')
+        await userEvent.click(screen.getByText('Send'))
+
+        expect(api.sendComment).toHaveBeenCalledWith('post-1', {
+            content: 'nice!', attachment_ids: [], reply_to_id: undefined,
+        })
+        expect(api.sendChannelMessage).not.toHaveBeenCalled()
+    })
+
+    it('includes a title in the payload when showTitleField is set', async () => {
+        vi.mocked(api.sendChannelMessage).mockResolvedValue({ id: 'post-1', content: 'body' } as any)
+
+        render(
+            <MessageInput
+                scopeId="chan-1"
+                scopeType="channel"
+                placeholder="Start a new post…"
+                replyTo={null}
+                onClearReply={vi.fn()}
+                showTitleField
+            />
+        )
+
+        await userEvent.type(screen.getByPlaceholderText('Title (optional)'), 'My Post')
+        await userEvent.type(screen.getByPlaceholderText('Start a new post…'), 'body')
+        await userEvent.click(screen.getByText('Send'))
+
+        expect(api.sendChannelMessage).toHaveBeenCalledWith('chan-1', {
+            content: 'body', title: 'My Post', attachment_ids: [], reply_to_id: undefined,
+        })
     })
 
     it('rejects an oversized file at selection time with a dismissible error, without adding it', async () => {

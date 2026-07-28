@@ -8,9 +8,10 @@ const DESCRIPTIONS: Record<NotificationCategory, string> = {
     room_invite: 'Someone invites you to a room.',
     room_message: 'A new message is posted in a room you belong to.',
     direct_message: 'Someone sends you a direct message. Always on — this is your inbox.',
+    comment_reply: 'Someone replies to your message or comment.',
 }
 
-const CATEGORY_ORDER: NotificationCategory[] = ['room_invite', 'room_message', 'direct_message']
+const CATEGORY_ORDER: NotificationCategory[] = ['room_invite', 'room_message', 'direct_message', 'comment_reply']
 
 export function NotificationPreferences() {
     const [preferences, setPreferences] = useState<NotificationPreference[]>([])

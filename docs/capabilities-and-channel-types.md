@@ -69,7 +69,11 @@ Interface: `App\Support\ChannelTypes\ChannelType`.
 - `defaultSettings(): array` — seed value for `Channel.settings` when a channel of this
   type is created with none supplied.
 - `category(): string` — a free-form classification string, same convention as `key()`
-  (no PHP/DB enum). Only `'standard'` and `'mod'` are used by built-in types today. Drives
+  (no PHP/DB enum). `'standard'`, `'mod'`, and `'forum'` are used by built-in types
+  today — `'forum'` groups `ForumChannelType` on its own tab in `CreateChannelPanel`
+  (see `docs/comments-and-voting.md`) but requires the same `ManageChannels`
+  permission as `'standard'` to create (only `'mod'` branches to a different
+  permission — see below). Drives
   creation-time permission gating — see "Category-based creation gating" below.
 - `description(): string` — short help text shown next to this type in
   `CreateChannelPanel`.
@@ -122,6 +126,8 @@ from its own provider, nothing else in the app needs to change.
 | `announcement` | `['text.all']` | `mod` |
 | `voice` | `['voice.all']` | `standard` |
 | `conversation` (`HybridConversationType`) | `['text.all', 'voice.all']` | `standard` (inert — never user-creatable, see below) |
+| `forum` | `['text.all', 'vote.all']` | `forum` |
+| `message_and_comment` | `['text.all']` | `standard` |
 
 `channels.type` is a free string with no DB-level enum constraint. `routes/channels.php`'s
 voice broadcast-auth gates check `hasCapability('voice.join')` rather than a literal

@@ -18,6 +18,7 @@ import type {
     User,
     UserStatus,
     VoiceDevicePreference,
+    VoteSummary,
 } from '@/types'
 
 axios.defaults.withCredentials = true
@@ -25,6 +26,7 @@ axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest'
 
 export type SendPayload = {
     content?: string
+    title?: string
     attachment_ids?: string[]
     reply_to_id?: string
 }
@@ -75,6 +77,57 @@ export async function editMessage(messageId: string, content: string): Promise<M
 
 export async function deleteMessage(messageId: string): Promise<void> {
     await axios.delete(`/api/messages/${messageId}`)
+}
+
+// ── Comments ─────────────────────────────────────────────────────────────
+// A comment's parent is another message rather than a channel/conversation
+// — same cursor contract as the two message-list fetches above, see
+// docs/comments-and-voting.md.
+
+export async function fetchComments(
+    messageId: string,
+    cursor: MessageCursor = {}
+): Promise<PaginatedMessages> {
+    const { data } = await axios.get(`/api/messages/${messageId}/comments`, { params: cursor })
+    return data
+}
+
+export async function sendComment(messageId: string, payload: SendPayload): Promise<Message> {
+    const { data } = await axios.post(`/api/messages/${messageId}/comments`, payload)
+    return data
+}
+
+export type TopSortPeriod = 'hour' | 'day' | 'week' | 'month' | 'all' | 'custom'
+export type TopPage = { data: Message[]; next_offset: number; has_more: boolean }
+
+/**
+ * Score-ranked, timeframe-filtered, offset-paginated — a distinct contract
+ * from fetchChannelMessages/fetchComments' cursor pages (score is mutable,
+ * see TextMessageService::listTop). Works for a forum's top-level post list
+ * (channelId) the same way it works for top-sorted comments within a
+ * thread (pass a message id as `channelOrMessageId` against the comments
+ * route instead) — see docs/comments-and-voting.md.
+ */
+export async function fetchTopPosts(
+    channelId: string,
+    params: { period: TopSortPeriod; start?: string; end?: string; offset?: number }
+): Promise<TopPage> {
+    const { data } = await axios.get(`/api/channels/${channelId}/messages`, {
+        params: { sort: 'top', ...params },
+    })
+    return data
+}
+
+// ── Votes ────────────────────────────────────────────────────────────────
+
+export async function castVote(messageId: string, value: 1 | -1): Promise<VoteSummary> {
+    const { data } = await axios.post(`/api/messages/${messageId}/votes`, { value })
+    return data
+}
+
+export async function removeVote(messageId: string): Promise<VoteSummary> {
+    const { data } = await axios.delete(`/api/messages/${messageId}/votes`)
+    return data
 }
 
 // ── Channel focus ────────────────────────────────────────────────────────

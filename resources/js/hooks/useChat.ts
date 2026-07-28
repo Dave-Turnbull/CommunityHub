@@ -1,18 +1,25 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useMessages } from '@/stores'
 import { subscribe } from '@/services/echo'
-import { fetchChannelMessages, fetchConversationMessages } from '@/services/api'
+import { fetchChannelMessages, fetchComments, fetchConversationMessages } from '@/services/api'
 import * as cache from '@/services/messageCache'
 import type { Message, PaginatedMessages } from '@/types'
 import type { MessageCursor } from '@/services/api'
 
 interface Options {
     scopeId: string
-    scopeType: 'channel' | 'conversation'
+    scopeType: 'channel' | 'conversation' | 'message'
     initial: PaginatedMessages
     // false for a voice channel — no message history to seed/subscribe to
     // (see ChannelController::show / MessageController's voice-channel guard).
     enabled?: boolean
+    // A 'message' scope (a comment thread) has no broadcast channel of its
+    // own — it rides its root channel's/conversation's physical presence
+    // channel instead (see docs/comments-and-voting.md's "Realtime"
+    // section), so the websocket subscription needs that root's id/type
+    // even though every other call in this hook keys off scopeId/scopeType.
+    // Required when scopeType is 'message'; ignored otherwise.
+    broadcastScope?: { id: string; type: 'channel' | 'conversation' }
 }
 
 // Stable reference so the selector doesn't hand useSyncExternalStore a new
@@ -32,7 +39,7 @@ const PAGE_SIZE = 50
  * `hasNewer` is the "not looking at the present" signal that drives the
  * jump-to-present affordance. See docs/messages-and-pagination.md.
  */
-export function useChat({ scopeId, scopeType, initial, enabled = true }: Options) {
+export function useChat({ scopeId, scopeType, initial, enabled = true, broadcastScope }: Options) {
     const messages     = useMessages((s) => s.messages[scopeId] ?? EMPTY_MESSAGES)
     const windowState  = useMessages((s) => s.windows[scopeId])
     const setWindow    = useMessages((s) => s.setWindow)
@@ -42,9 +49,11 @@ export function useChat({ scopeId, scopeType, initial, enabled = true }: Options
     const loading = useRef(false)
 
     const fetchPage = useCallback(
-        (cursor: MessageCursor) => scopeType === 'channel'
-            ? fetchChannelMessages(scopeId, cursor)
-            : fetchConversationMessages(scopeId, cursor),
+        (cursor: MessageCursor) => {
+            if (scopeType === 'channel') return fetchChannelMessages(scopeId, cursor)
+            if (scopeType === 'conversation') return fetchConversationMessages(scopeId, cursor)
+            return fetchComments(scopeId, cursor)
+        },
         [scopeId, scopeType],
     )
 
@@ -57,11 +66,17 @@ export function useChat({ scopeId, scopeType, initial, enabled = true }: Options
         cache.seedRun(scopeId, initial)
     }, [scopeId, enabled])
 
-    // Websocket subscription
+    // Websocket subscription — a 'message' scope subscribes on its root's
+    // physical channel (see the Options.broadcastScope docblock), keyed here
+    // by that root's id/type rather than scopeId/scopeType.
     useEffect(() => {
         if (!enabled) return
+        if (scopeType === 'message') {
+            if (!broadcastScope) return
+            return subscribe(broadcastScope.id, broadcastScope.type)
+        }
         return subscribe(scopeId, scopeType)
-    }, [scopeId, scopeType, enabled])
+    }, [scopeId, scopeType, enabled, broadcastScope?.id, broadcastScope?.type])
 
     const loadOlder = useCallback(async () => {
         if (!enabled || loading.current) return

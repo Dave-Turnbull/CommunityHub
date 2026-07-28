@@ -168,6 +168,8 @@ class Role extends Model
             'is_default' => true,
             'is_system'  => true,
         ]);
+        $member->grant(Permission::Comment);
+        $member->grant(Permission::Vote);
 
         return ['owner' => $owner, 'member' => $member, 'moderator' => $moderator];
     }

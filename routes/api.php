@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\UserStatusController;
 use App\Http\Controllers\Api\VoiceDevicePreferenceController;
 use App\Http\Controllers\Api\VoiceIceServersController;
+use App\Http\Controllers\Api\VoteController;
 use Illuminate\Support\Facades\Route;
 
 // Session-authenticated API routes called from the React frontend via axios.
@@ -59,6 +60,10 @@ Route::middleware('auth')->group(function () {
     Route::patch('/messages/{message}',  [MessageController::class, 'update']);
     Route::delete('/messages/{message}', [MessageController::class, 'destroy']);
 
+    // Comments — a message's own children, see docs/comments-and-voting.md.
+    Route::get('/messages/{message}/comments',  [MessageController::class, 'indexComments']);
+    Route::post('/messages/{message}/comments', [MessageController::class, 'storeComment']);
+
     // Conversations — creation is deferred to the first message send, see
     // ConversationController::store. These literal-segment routes must stay
     // registered before any future GET /conversations/{conversation} route.
@@ -70,6 +75,10 @@ Route::middleware('auth')->group(function () {
     // Reactions
     Route::post('/messages/{message}/reactions',           [ReactionController::class, 'store']);
     Route::delete('/messages/{message}/reactions/{emoji}', [ReactionController::class, 'destroy']);
+
+    // Votes — see docs/comments-and-voting.md
+    Route::post('/messages/{message}/votes',   [VoteController::class, 'store']);
+    Route::delete('/messages/{message}/votes', [VoteController::class, 'destroy']);
 
     // Uploads
     Route::post('/upload', [UploadController::class, 'store']);
