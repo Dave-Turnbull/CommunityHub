@@ -6,14 +6,17 @@ import { useDropzone } from 'react-dropzone'
 import { EmojiPicker } from '@/components/emoji/EmojiPicker'
 import { ReplyPreviewContent } from '@/components/chat/ReplyPreviewContent'
 import { describeApiError } from '@/services/errorMessages'
-import { uploadFile, sendChannelMessage, sendConversationMessage } from '@/services/api'
+import { uploadFile, sendChannelMessage, sendComment, sendConversationMessage } from '@/services/api'
 import { useMessages } from '@/stores'
 import type { Message, SharedProps } from '@/types'
 import type { SendPayload } from '@/services/api'
 
 interface Props {
     scopeId?: string
-    scopeType?: 'channel' | 'conversation'
+    // 'message' sends a comment (scopeId is the parent message's id) — see
+    // docs/comments-and-voting.md. Same composer, same error stack, same
+    // attachment/emoji support as an ordinary channel/conversation message.
+    scopeType?: 'channel' | 'conversation' | 'message'
     placeholder: string
     replyTo: Message | null
     onClearReply: () => void
@@ -27,6 +30,12 @@ interface Props {
     onSent?: (message: Message) => void
     /** Rendered in line with the compose box, at its left — the jump-to-present slot. */
     leading?: ReactNode
+    /**
+     * Shows a headline input above the compose box, included in the payload
+     * as `title` — a forum post's title, see docs/comments-and-voting.md.
+     * Not offered for comments/ordinary messages, which have no headline.
+     */
+    showTitleField?: boolean
 }
 
 interface ComposerError {
@@ -40,9 +49,10 @@ interface ComposerError {
 class ComposerFriendlyError extends Error {}
 
 export function MessageInput({
-    scopeId, scopeType, placeholder, replyTo, onClearReply, onSend, onSent, leading,
+    scopeId, scopeType, placeholder, replyTo, onClearReply, onSend, onSent, leading, showTitleField,
 }: Props) {
     const [text, setText] = useState('')
+    const [title, setTitle] = useState('')
     const [files, setFiles] = useState<File[]>([])
     const [busy, setBusy] = useState(false)
     const [errors, setErrors] = useState<ComposerError[]>([])
@@ -99,7 +109,8 @@ export function MessageInput({
 
     const send = async () => {
         const content = text.trim()
-        if ((!content && !files.length) || busy) return
+        const hasTitle = showTitleField && title.trim().length > 0
+        if ((!content && !files.length && !hasTitle) || busy) return
 
         setErrors([])
         setBusy(true)
@@ -114,6 +125,7 @@ export function MessageInput({
 
             const payload: SendPayload = {
                 content: content || undefined,
+                title: showTitleField ? (title.trim() || undefined) : undefined,
                 attachment_ids: uploaded.map((a) => a.id),
                 reply_to_id: replyTo?.id,
             }
@@ -121,14 +133,15 @@ export function MessageInput({
             if (onSend) {
                 await onSend(payload)
             } else {
-                const message = scopeType === 'channel'
-                    ? await sendChannelMessage(scopeId!, payload)
-                    : await sendConversationMessage(scopeId!, payload)
+                const message = scopeType === 'channel' ? await sendChannelMessage(scopeId!, payload)
+                    : scopeType === 'conversation' ? await sendConversationMessage(scopeId!, payload)
+                    : await sendComment(scopeId!, payload)
 
                 commit(message)
             }
 
             setText('')
+            setTitle('')
             setFiles([])
             onClearReply()
             if (areaRef.current) areaRef.current.style.height = 'auto'
@@ -164,6 +177,18 @@ export function MessageInput({
                             </div>
                         ))}
                     </div>
+                )}
+
+                {showTitleField && (
+                    <input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="Title (optional)"
+                        maxLength={300}
+                        className="w-full bg-fifth rounded-t-lg border-panel border-panel-border border-b-0
+                                   px-3 py-2 text-sm font-semibold text-text-primary placeholder:text-text-muted
+                                   placeholder:font-normal focus:outline-none"
+                    />
                 )}
 
                 {replyTo && (
@@ -217,7 +242,7 @@ export function MessageInput({
                     {...getRootProps()}
                     className={clsx(
                         'flex items-center bg-fifth rounded-lg border-panel border-panel-border',
-                        (replyTo || files.length) && 'rounded-t-none',
+                        (showTitleField || replyTo || files.length) && 'rounded-t-none',
                         isDragActive && 'ring-2 ring-accent-primary',
                     )}
                 >
@@ -259,7 +284,7 @@ export function MessageInput({
                         </button>
                     </EmojiPicker>
 
-                    {(text.trim() || files.length > 0) && (
+                    {(text.trim() || files.length > 0 || (showTitleField && title.trim())) && (
                         <button
                             onClick={send}
                             disabled={busy}

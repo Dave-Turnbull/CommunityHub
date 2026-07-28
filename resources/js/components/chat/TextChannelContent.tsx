@@ -31,6 +31,15 @@ interface Props {
      * (TextMessageService::authorizeSend) — this is only the affordance.
      */
     canPost?: boolean
+    /**
+     * Shows an inline "comment" affordance under each message — used by the
+     * `message_and_comment` channel type (see docs/comments-and-voting.md).
+     * Omitted/false for every other type, matching `comments_enabled` being
+     * off by default. `maxCommentDepth` mirrors the channel's setting (1
+     * disables replying to a comment — `message_and_comment`'s default).
+     */
+    commentsEnabled?: boolean
+    maxCommentDepth?: number | null
 }
 
 /**
@@ -43,6 +52,7 @@ interface Props {
  */
 export function TextChannelContent({
     scopeId, scopeType, currentUser, initialMessages, placeholder, emptyState, initialHighlightMessageId, canPost = true,
+    commentsEnabled = false, maxCommentDepth = null,
 }: Props) {
     const [replyTo, setReplyTo] = useState<Message | null>(null)
     // Bumped per jump so MessageList re-pins to the bottom even when two jumps
@@ -101,6 +111,9 @@ export function TextChannelContent({
                 onJumpToMessage={jumpToMessageAndHighlight}
                 scrollTo={highlight}
                 emptyState={emptyState}
+                commentsEnabled={commentsEnabled}
+                maxCommentDepth={maxCommentDepth}
+                broadcastScope={{ id: scopeId, type: scopeType }}
             />
 
             {canPost ? (

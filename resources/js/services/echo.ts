@@ -39,26 +39,41 @@ export function subscribe(
 
     const chan = scopeType === 'channel' ? e.join(name) : e.private(name)
 
+    // A comment rides the physical channel.{id}/conversation.{id} presence
+    // channel of its root (no per-message channel — unbounded, see
+    // docs/comments-and-voting.md) but logically belongs to a different
+    // store scope: the parent message's id, not this channel/conversation's.
+    // Every event here carries scope_type/scope_id so live comment/vote
+    // updates route into the right windowed slice instead of the channel's.
+    const targetScope = (ev: { scope_type?: string; scope_id?: string }) =>
+        ev.scope_type === 'message' && ev.scope_id ? ev.scope_id : scopeId
+
     // Every live change is applied to the visible window AND to the cached run
     // behind it — a message edited or deleted while it sits outside the window
     // would otherwise page back in with its old content (see
     // services/messageCache.ts). The cache decides for itself what it can
     // safely take; the store's own window rules are independent of it.
-    chan.listen('.MessageSent', (ev: { message: Message }) => {
-        store.add(scopeId, ev.message)
-        cache.appendLive(scopeId, ev.message)
+    chan.listen('.MessageSent', (ev: { message: Message; scope_type?: string; scope_id?: string }) => {
+        const scope = targetScope(ev)
+        store.add(scope, ev.message)
+        cache.appendLive(scope, ev.message)
     })
-    chan.listen('.MessageUpdated', (ev: { message: Message }) => {
-        store.update(scopeId, ev.message)
-        cache.patchMessage(scopeId, ev.message)
+    chan.listen('.MessageUpdated', (ev: { message: Message; scope_type?: string; scope_id?: string }) => {
+        const scope = targetScope(ev)
+        store.update(scope, ev.message)
+        cache.patchMessage(scope, ev.message)
     })
-    chan.listen('.MessageDeleted', (ev: { message_id: string }) => {
-        store.remove(scopeId, ev.message_id)
-        cache.dropMessage(scopeId, ev.message_id)
+    chan.listen('.MessageDeleted', (ev: { message_id: string; scope_type?: string; scope_id?: string }) => {
+        const scope = targetScope(ev)
+        store.remove(scope, ev.message_id)
+        cache.dropMessage(scope, ev.message_id)
     })
     chan.listen('.ReactionChanged', (ev: { message_id: string; reactions: ReactionSummary[] }) => {
         store.setReactions(scopeId, ev.message_id, ev.reactions)
         cache.patchReactions(scopeId, ev.message_id, ev.reactions)
+    })
+    chan.listen('.MessageVoted', (ev: { message_id: string; score: number; scope_type?: string; scope_id?: string }) => {
+        store.setVoteScore(targetScope(ev), ev.message_id, ev.score)
     })
 
     return () => e.leave(name)

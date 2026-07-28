@@ -198,12 +198,23 @@ export interface ReactionSummary {
     reacted: boolean
 }
 
+export interface VoteSummary {
+    score: number
+    mine: 1 | -1 | null
+}
+
 export interface Message {
     id: string
     channel_id: string | null
     conversation_id: string | null
+    parent_message_id?: string | null
+    root_message_id?: string | null
+    depth?: number
+    is_tombstoned?: boolean
     author_id: string
     content: string | null
+    title?: string | null
+    comment_count?: number
     type: string
     is_edited: boolean
     is_pinned: boolean
@@ -212,6 +223,7 @@ export interface Message {
     author?: User
     attachments?: Attachment[]
     reactions?: ReactionSummary[]
+    votes?: VoteSummary
     reply_to?: Message
 }
 
@@ -337,16 +349,26 @@ export interface RoomInviteNotificationData {
     invite_token: string
 }
 
+export interface CommentReplyNotificationData {
+    message_id: string
+    parent_message_id: string
+    root_message_id: string
+    replier_id: string
+    replier_name: string
+    preview: string
+}
+
 // Discriminated on `type` — narrow with `if (n.type === '...')` before reading `data`.
 export type AppNotification =
     | (NotificationBase & { type: 'direct_message'; data: DirectMessageNotificationData })
     | (NotificationBase & { type: 'room_message'; data: RoomMessageNotificationData })
     | (NotificationBase & { type: 'room_invite'; data: RoomInviteNotificationData })
+    | (NotificationBase & { type: 'comment_reply'; data: CommentReplyNotificationData })
 
 // User-level notification preference categories. Room-by-room and
 // channel-by-channel categories/overrides are planned but not implemented —
 // see CLAUDE.md "## Planned work".
-export type NotificationCategory = 'room_invite' | 'room_message' | 'direct_message'
+export type NotificationCategory = 'room_invite' | 'room_message' | 'direct_message' | 'comment_reply'
 
 // Shared between Settings' NotificationPreferences panel and the Messages
 // page's NotificationFeed filter chips, so a label never drifts between the
@@ -356,6 +378,7 @@ export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> 
     room_invite: 'Room Invites',
     room_message: 'Room Messages',
     direct_message: 'Messages',
+    comment_reply: 'Comment Replies',
 }
 
 // Mirrors NotificationPreference::IN_APP_LOCKED on the backend, which is the

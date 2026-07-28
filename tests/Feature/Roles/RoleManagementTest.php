@@ -203,13 +203,17 @@ class RoleManagementTest extends TestCase
         $room    = Room::factory()->create();
         $user    = $this->memberWithManageRoles($room);
         $default = $room->roles()->where('is_default', true)->firstOrFail();
+        $permissionsBefore = $default->rolePermissions->pluck('permission')->map(fn ($p) => $p->value)->all();
 
         $response = $this->actingAs($user)->patchJson("/api/roles/{$default->id}", [
             'permissions' => ['administrator'],
         ]);
 
         $response->assertStatus(422);
-        $this->assertEmpty($default->fresh()->rolePermissions);
+        $this->assertEqualsCanonicalizing(
+            $permissionsBefore,
+            $default->fresh()->rolePermissions->pluck('permission')->map(fn ($p) => $p->value)->all()
+        );
     }
 
     public function test_the_default_roles_name_and_position_cannot_be_changed(): void

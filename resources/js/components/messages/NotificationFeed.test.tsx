@@ -57,6 +57,18 @@ const directMessage = (id: string): AppNotification => ({
     created_at: '2026-01-01T00:00:00Z',
 })
 
+const commentReply = (id: string): AppNotification => ({
+    id,
+    user_id: 'user-1',
+    type: 'comment_reply',
+    data: {
+        message_id: `msg-${id}`, parent_message_id: 'parent-1', root_message_id: 'root-1',
+        replier_id: 'user-3', replier_name: 'Dave', preview: 'nice post!',
+    },
+    read_at: null,
+    created_at: '2026-01-01T00:00:00Z',
+})
+
 describe('NotificationFeed', () => {
     afterEach(() => {
         vi.clearAllMocks()
@@ -79,6 +91,19 @@ describe('NotificationFeed', () => {
 
         expect(await screen.findByText('Carol')).toBeInTheDocument()
         expect(screen.getByText('Bob')).toBeInTheDocument()
+    })
+
+    it('renders a comment_reply notification', async () => {
+        vi.mocked(api.fetchNotifications).mockResolvedValue([commentReply('3')])
+        vi.mocked(api.fetchNotificationPreferences).mockResolvedValue([
+            ...allEnabled,
+            { category: 'comment_reply', email: false, in_app: true },
+        ])
+
+        render(<NotificationFeed userId="user-1" />)
+
+        expect(await screen.findByText('Dave replied')).toBeInTheDocument()
+        expect(screen.getByText('nice post!')).toBeInTheDocument()
     })
 
     it('hides notifications for a category the user has disabled', async () => {

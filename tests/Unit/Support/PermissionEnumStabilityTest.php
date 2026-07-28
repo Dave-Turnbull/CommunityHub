@@ -31,6 +31,8 @@ class PermissionEnumStabilityTest extends TestCase
             'manage_channel_visibility',
             'send_direct_messages',
             'post_announcements',
+            'comment',
+            'vote',
         ];
 
         $actual = array_map(fn (Permission $p) => $p->value, Permission::cases());

@@ -30,6 +30,7 @@ class NotificationPreference extends Model
         'room_invite'    => ['email' => true,  'in_app' => true],
         'room_message'   => ['email' => false, 'in_app' => false],
         'direct_message' => ['email' => false, 'in_app' => true],
+        'comment_reply'  => ['email' => false, 'in_app' => true],
     ];
 
     /**

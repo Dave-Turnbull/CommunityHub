@@ -164,7 +164,8 @@ app/
                                roles-and-permissions.md; RecentCustomStatus — see docs/
                                status.md; ThemePreference
                                (one row per user: preset + jsonb overrides) — see docs/
-                               theming.md
+                               theming.md; Vote, NotificationMute (schema only, not yet
+                               enforced) — see docs/comments-and-voting.md
   Policies/                   authorization seams beyond simple membership checks —
                                see docs/roles-and-permissions.md and docs/
                                conversations-and-invites.md. RoomMemberPolicy backs
@@ -173,25 +174,31 @@ app/
                                hierarchy comparison than RolePolicy's, see docs/
                                roles-and-permissions.md; MessagePolicy::view is "can this
                                user see this message" (channel room-membership +
-                               visibility, or conversation participancy) starting from a
+                               visibility, or conversation participancy — a comment
+                               defers to its root ancestor's scope, see docs/
+                               comments-and-voting.md) starting from a
                                Message row — used by Web\MessageController::show and by
                                AttachmentPolicy::view, which defers to it once an
                                attachment is on a sent message (uploader-only before
                                that) — see docs/attachments.md
   Providers/
     ChannelTypeServiceProvider.php  registers every built-in ChannelType — see docs/
-                               capabilities-and-channel-types.md
+                               capabilities-and-channel-types.md (ForumChannelType,
+                               MessageAndCommentChannelType — see docs/
+                               comments-and-voting.md)
     FeatureServiceProvider.php      registers every built-in Feature — see docs/
                                capabilities-and-channel-types.md (TextFeature/
                                VoiceFeature/StatusFeature — the latter has no
-                               ChannelType consumer yet, see docs/status.md)
+                               ChannelType consumer yet, see docs/status.md;
+                               VoteFeature — see docs/comments-and-voting.md)
   Services/                   {Operation}Service classes — see docs/service-layer.md.
                                Not the same thing as Support/Capabilities' Feature — a
                                Feature declares what a capability *is*, a Service is
                                where the operation actually lives and gets authorized.
                                RoomMembershipService is kick/ban + the owner-transfer
                                flow when the target is a room's Owner (see docs/
-                               roles-and-permissions.md)
+                               roles-and-permissions.md); VoteService — see docs/
+                               comments-and-voting.md
   Support/                    ChannelFocus (see docs/notifications.md); Permission/
                                PermissionChecker (see docs/roles-and-permissions.md);
                                ChannelTypes/ + Capabilities/ (see docs/
@@ -248,7 +255,16 @@ resources/
                                and briefly flashes a "go to message" landing target),
                                MessageRow (its reply-context block is a button that
                                jumps to the replied-to message, rendering
-                               ReplyPreviewContent for what it's replying to),
+                               ReplyPreviewContent for what it's replying to; its
+                               optional "💬 comment" popout — see
+                               `commentsEnabled`/`maxCommentDepth`/`broadcastScope`,
+                               forwarded from TextChannelContent via MessageList — is
+                               how the `message_and_comment` channel type surfaces
+                               inline comments, see docs/comments-and-voting.md),
+                               CommentThread (a message's comment tree — recursive,
+                               lazy-loaded children, shared by MessageRow's popout and
+                               ForumChannelContent's post detail — see docs/
+                               comments-and-voting.md),
                                ReplyPreviewContent (the reply-target preview shared by
                                MessageRow's reply-context and MessageInput's "Replying
                                to…" bar — an actual thumbnail for an image attachment,
@@ -269,11 +285,17 @@ resources/
                                jumping to the present isn't a posting action and must
                                keep working even with no composer to hold it; it also
                                owns a composer-scoped error stack — see the Conventions
-                               bullet on composer errors below),
+                               bullet on composer errors below; also reused as-is for
+                               a forum post/comment composer, `scopeType: 'message'`
+                               sending via `sendComment`, `showTitleField` for a
+                               post's optional headline — see docs/
+                               comments-and-voting.md),
                                TextChannelContent (owns the highlight state "go to
                                message" scrolls/flashes) — see docs/
                                messages-and-pagination.md's "Jumping to a message"
-                               and docs/capabilities-and-channel-types.md
+                               and docs/capabilities-and-channel-types.md;
+                               ForumChannelContent (the `forum` channel type's post
+                               list + detail view) — see docs/comments-and-voting.md
       layout/                 RoomRail, ChannelSidebar (the "🛡 Roles"/"+ Add
                                channel"/invite-people affordances don't open modals —
                                they call back up to Channels/Show, which swaps its
@@ -311,7 +333,8 @@ resources/
                                kicking/banning a room's Owner would make the acting
                                admin the new Owner, see docs/roles-and-permissions.md
       messages/                NotificationFeed (see docs/notifications.md); UserPicker
-                               — see docs/conversations-and-invites.md
+                               — see docs/conversations-and-invites.md; VoteControl —
+                               see docs/comments-and-voting.md
       settings/                NotificationPreferences (see docs/notifications.md);
                                AudioSettings (see docs/voice.md); AppearanceSettings —
                                the Settings → Appearance panel: preset picker + a
@@ -426,6 +449,14 @@ Short, cross-cutting rules that apply broadly. Feature-specific conventions live
 `/docs` (see `## Docs` above and `docs/README.md`'s index) — check there before
 assuming something is undocumented.
 
+- **Commenting is parameter-gated (`comments_enabled`), not capability-gated** —
+  don't add a `text.*` capability for it. Whether a channel/conversation allows
+  threaded comments is a per-instance setting (`channels.settings.comments_enabled`),
+  not a `ChannelType`-level grant; a comment is a message, so it reuses
+  `TextMessageService` almost unchanged. Who may author one is the separate,
+  standalone `Permission::Comment` (RBAC), deliberately independent of whatever
+  gates ordinary posting in the same channel — both are required, checked
+  independently. See `docs/comments-and-voting.md`.
 - **The display name ("CommunityHub") is one env var, not a hardcoded string** —
   `APP_NAME` (`config('app.name')`, default `CommunityHub`). Backend/Blade code reads
   `config('app.name')` directly. The React bundle can't call `config()`, so it's

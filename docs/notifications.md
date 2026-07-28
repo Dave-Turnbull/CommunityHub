@@ -31,6 +31,11 @@ relation is `appNotifications()`, not `notifications()`.
   `room_message`, default `in_app` off. Skips a focused recipient (see below).
 - `RoomInviteController::store` — category `room_invite`, only when the invited email
   belongs to an existing `User`.
+- `TextMessageService::send()` → `notifyParentAuthor` — a comment's immediate parent
+  message's author only (not every ancestor, not every other thread participant),
+  category `comment_reply`, default `in_app` on. Not focus-suppressed. See
+  [comments-and-voting.md](comments-and-voting.md) — that doc also covers
+  `notification_mutes`, a per-message mute table that exists but isn't enforced yet.
 
 **A category with no producer wired up is inert** — adding a category to
 `NotificationPreference::DEFAULTS` makes it visible and configurable, not functional.

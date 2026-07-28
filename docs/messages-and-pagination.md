@@ -24,6 +24,14 @@ have text at all is in
 method with no cursor for the first page a browser renders, so the server-rendered
 props and every subsequent fetch have identical shape by construction.
 
+A `Message` is also a valid scope for this same contract — `GET`/`POST
+/api/messages/{message}/comments` page a comment thread with the identical cursor
+shape described here (a comment is a message whose parent is another message rather
+than a channel/conversation). See [comments-and-voting.md](comments-and-voting.md)
+for the polymorphic scope this rests on, and for `?sort=top&period=...`, a
+deliberately *different*, offset-paginated contract used for score-ranked results —
+not a fourth cursor mode on this endpoint.
+
 One page is `TextMessageService::PAGE_SIZE` (50) messages, **always oldest-first**,
 walking away from a cursor in exactly one direction:
 

@@ -6,6 +6,7 @@ use App\Support\Capabilities\FeatureRegistry;
 use App\Support\Capabilities\StatusFeature;
 use App\Support\Capabilities\TextFeature;
 use App\Support\Capabilities\VoiceFeature;
+use App\Support\Capabilities\VoteFeature;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -23,5 +24,6 @@ class FeatureServiceProvider extends ServiceProvider
         FeatureRegistry::register(new TextFeature());
         FeatureRegistry::register(new VoiceFeature());
         FeatureRegistry::register(new StatusFeature());
+        FeatureRegistry::register(new VoteFeature());
     }
 }

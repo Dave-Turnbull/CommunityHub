@@ -30,6 +30,12 @@ function present(notification: AppNotification): { href: string; title: string; 
                 title: `Invited to ${notification.data.room_name}`,
                 subtitle: `${notification.data.invited_by} invited you to join.`,
             }
+        case 'comment_reply':
+            return {
+                href: `/messages/${notification.data.message_id}`,
+                title: `${notification.data.replier_name} replied`,
+                subtitle: notification.data.preview,
+            }
     }
 }
 

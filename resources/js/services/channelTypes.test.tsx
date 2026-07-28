@@ -66,7 +66,7 @@ describe('orderedTypesIn', () => {
 })
 
 describe('KNOWN_CHANNEL_TYPES', () => {
-    it('lists the three user-creatable built-in types sorted by order, excluding the conversation hybrid', () => {
-        expect(KNOWN_CHANNEL_TYPES.map((d) => d.key)).toEqual(['announcement', 'text', 'voice'])
+    it('lists the five user-creatable built-in types sorted by order, excluding the conversation hybrid', () => {
+        expect(KNOWN_CHANNEL_TYPES.map((d) => d.key)).toEqual(['announcement', 'text', 'voice', 'forum', 'message_and_comment'])
     })
 })

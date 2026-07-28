@@ -100,6 +100,7 @@ interface MessageStore {
     update:       (scope: string, message: Message) => void
     remove:       (scope: string, messageId: string) => void
     setReactions: (scope: string, messageId: string, reactions: ReactionSummary[]) => void
+    setVoteScore: (scope: string, messageId: string, score: number) => void
 }
 
 const pageWindow = (page: PaginatedMessages): MessageWindow => ({
@@ -236,6 +237,21 @@ export const useMessages = create<MessageStore>((set) => ({
                 ...s.messages,
                 [scope]: (s.messages[scope] ?? []).map((m) =>
                     m.id === messageId ? { ...m, reactions } : m
+                ),
+            },
+        })),
+
+    // A live MessageVoted broadcast only carries the aggregate score (see
+    // MessageVoted::broadcastWith) — never the viewer's own `mine`, which is
+    // per-viewer and only known from that viewer's own cast()/remove() HTTP
+    // response. This patches score only, leaving `mine` as whatever this
+    // client last set optimistically.
+    setVoteScore: (scope, messageId, score) =>
+        set((s) => ({
+            messages: {
+                ...s.messages,
+                [scope]: (s.messages[scope] ?? []).map((m) =>
+                    m.id === messageId ? { ...m, votes: { score, mine: m.votes?.mine ?? null } } : m
                 ),
             },
         })),

@@ -55,6 +55,10 @@ encode the actual dependency graph between subsystems.
   message itself only soft-deletes.
 - [status.md](status.md) — the status/custom-status/color schema, `StatusFeature`,
   `UserStatusService`, the live-broadcast contract, and the `UserStatusPopover` UI.
+- [comments-and-voting.md](comments-and-voting.md) — the polymorphic message scope
+  (comments as messages whose parent is another message), the `comments_enabled`
+  parameter + standalone `Permission::Comment`/`Vote`, the `vote` Feature, tombstone
+  vs. cascade deletion, score+timeframe sorting, and the `forum` `ChannelType`.
 - [theming.md](theming.md) — the CSS-variable-backed theme token system
   (backgrounds, panel borders, text, accent/status/feedback colors, radius,
   border width, typography), the

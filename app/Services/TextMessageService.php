@@ -30,9 +30,13 @@ class TextMessageService
 {
     private const PAGE_SIZE = 50;
 
-    private function __construct(private readonly Channel|Conversation $entity) {}
+    private function __construct(private readonly Channel|Conversation|Message $entity) {}
 
-    public static function for(Channel|Conversation $entity): self
+    /**
+     * A Message entity is a comment thread's parent — either a top-level
+     * post or another comment. See docs/comments-and-voting.md.
+     */
+    public static function for(Channel|Conversation|Message $entity): self
     {
         return new self($entity);
     }
@@ -51,7 +55,13 @@ class TextMessageService
     public function list(User $user, ?string $before = null, ?string $after = null, ?string $around = null): array
     {
         $this->assertMember($user);
-        abort_unless($this->entity->hasCapability('text.read'), 422, 'This channel has no text chat.');
+
+        if ($this->entity instanceof Message) {
+            abort_unless($this->entity->commentsEnabled(), 422, 'Comments are not enabled here.');
+        } else {
+            abort_unless($this->entity->hasCapability('text.read'), 422, 'This channel has no text chat.');
+        }
+
         abort_if(
             count(array_filter([$before, $after, $around], fn ($c) => filled($c))) > 1,
             422,
@@ -139,11 +149,13 @@ class TextMessageService
     /** @param \Illuminate\Support\Collection<int, Message> $messages */
     private function describeWindow(Collection $messages): array
     {
+        $scope = fn () => $this->entity instanceof Message ? $this->entity->children() : $this->entity->messages();
+
         $hasOlder = $messages->isNotEmpty()
-            && $this->entity->messages()->where('created_at', '<', $messages->first()->created_at)->exists();
+            && $scope()->where('created_at', '<', $messages->first()->created_at)->exists();
 
         $hasNewer = $messages->isNotEmpty()
-            && $this->entity->messages()->where('created_at', '>', $messages->last()->created_at)->exists();
+            && $scope()->where('created_at', '>', $messages->last()->created_at)->exists();
 
         return [
             'data'         => $messages,
@@ -156,37 +168,63 @@ class TextMessageService
 
     private function hydratedQuery(): HasMany
     {
-        return $this->entity->messages()->with([
+        $query = $this->entity instanceof Message ? $this->entity->children() : $this->entity->messages();
+
+        return $query->with([
             'author:id,username,display_name,avatar_url,status',
             'attachments',
             'replyTo.author:id,display_name,avatar_url',
             'replyTo.attachments',
-        ]);
+        ])->withCount('children as comment_count');
     }
 
     public function send(User $user, array $validated): Message
     {
         $this->assertMember($user);
-        abort_unless($this->entity->hasCapability('text.read'), 422, 'This channel has no text chat.');
+
+        if ($this->entity instanceof Message) {
+            abort_unless($this->entity->commentsEnabled(), 422, 'Comments are not enabled here.');
+
+            $maxDepth = $this->entity->maxCommentDepth();
+            abort_if($maxDepth !== null && $this->entity->depth + 1 > $maxDepth, 422, 'Comments cannot be nested any deeper here.');
+        } else {
+            abort_unless($this->entity->hasCapability('text.read'), 422, 'This channel has no text chat.');
+        }
+
         $this->authorizeSend($user, $validated);
 
         $attributes = [
             'author_id'   => $user->id,
             'content'     => $validated['content'] ?? null,
+            'title'       => $validated['title'] ?? null,
             'reply_to_id' => $validated['reply_to_id'] ?? null,
         ];
 
-        $message = Message::create($this->entity instanceof Channel
-            ? ['channel_id' => $this->entity->id, ...$attributes]
-            : ['conversation_id' => $this->entity->id, ...$attributes]);
+        $message = Message::create(match (true) {
+            $this->entity instanceof Channel      => ['channel_id' => $this->entity->id, ...$attributes],
+            $this->entity instanceof Conversation  => ['conversation_id' => $this->entity->id, ...$attributes],
+            default                                => [
+                'parent_message_id' => $this->entity->id,
+                'root_message_id'   => $this->entity->parent_message_id ? $this->entity->root_message_id : $this->entity->id,
+                'depth'             => $this->entity->depth + 1,
+                ...$attributes,
+            ],
+        });
 
         if (! empty($validated['attachment_ids'])) {
             Attachment::whereIn('id', $validated['attachment_ids'])->update(['message_id' => $message->id]);
         }
 
-        $this->entity->update(['last_message_id' => $message->id]);
-
         $message = self::hydrate($message, $user->id);
+
+        if ($this->entity instanceof Message) {
+            broadcast(new MessageSent($message, 'message', $this->entity->id))->toOthers();
+            $this->notifyParentAuthor($this->entity, $message, $user);
+
+            return $message;
+        }
+
+        $this->entity->update(['last_message_id' => $message->id]);
 
         $scopeType = $this->entity instanceof Channel ? 'channel' : 'conversation';
         broadcast(new MessageSent($message, $scopeType, $this->entity->id))->toOthers();
@@ -224,7 +262,48 @@ class TextMessageService
 
         [$type, $id] = self::scope($message);
         $messageId = $message->id;
+        $hasChildren = $message->children()->exists();
 
+        static::deleteAttachments($message);
+
+        // A message with a live comment thread either tombstones (soft-
+        // delete + a `[deleted]` marker the UI keeps children attached
+        // under) or, if the root channel's `cascade_delete_comments`
+        // setting is true, cascades the delete through every descendant —
+        // see docs/comments-and-voting.md. A childless message keeps the
+        // plain soft-delete behavior unchanged.
+        if ($hasChildren && static::cascadeDeleteComments($message)) {
+            static::cascadeDelete($message);
+        } elseif ($hasChildren) {
+            $message->update(['is_tombstoned' => true]);
+            $message->delete();
+        } else {
+            $message->delete();
+        }
+
+        broadcast(new MessageDeleted($messageId, $type, $id))->toOthers();
+    }
+
+    private static function cascadeDeleteComments(Message $message): bool
+    {
+        $entity = $message->scopeEntity();
+
+        return $entity instanceof Channel && (bool) (($entity->settings ?? [])['cascade_delete_comments'] ?? false);
+    }
+
+    private static function cascadeDelete(Message $message): void
+    {
+        foreach ($message->children()->get() as $child) {
+            static::deleteAttachments($child);
+            static::cascadeDelete($child);
+            $child->delete();
+        }
+
+        $message->delete();
+    }
+
+    private static function deleteAttachments(Message $message): void
+    {
         // The message itself only soft-deletes (kept for reply-context/audit
         // purposes — see Message's SoftDeletes), but there's no reason to hang
         // onto the actual file once its message is gone, so attachments are a
@@ -235,10 +314,6 @@ class TextMessageService
             Storage::disk('local')->delete($attachment->path);
             $attachment->delete();
         }
-
-        $message->delete();
-
-        broadcast(new MessageDeleted($messageId, $type, $id))->toOthers();
     }
 
     /**
@@ -252,6 +327,12 @@ class TextMessageService
      */
     private function assertMember(User $user): void
     {
+        if ($this->entity instanceof Message) {
+            abort_unless($this->entity->isVisibleTo($user), 403);
+
+            return;
+        }
+
         if ($this->entity instanceof Channel) {
             abort_unless($this->entity->room->hasMember($user->id), 403);
             abort_unless($this->entity->isVisibleTo($user), 403);
@@ -269,6 +350,19 @@ class TextMessageService
      */
     private function authorizeSend(User $user, array $validated): void
     {
+        if ($this->entity instanceof Message) {
+            $scopeEntity = $this->entity->scopeEntity();
+            $room = $scopeEntity instanceof Channel ? $scopeEntity->room : null;
+
+            // Standalone permission, independent of whatever gates sending
+            // an ordinary message in that same channel — a role can be
+            // granted Comment without SendDirectMessages/plain posting
+            // rights, or vice versa. See docs/comments-and-voting.md.
+            abort_unless(PermissionChecker::can($user, Permission::Comment, $room), 403, 'You are not allowed to comment.');
+
+            return;
+        }
+
         if ($this->entity instanceof Conversation) {
             abort_unless(PermissionChecker::can($user, Permission::SendDirectMessages), 403, 'You are not allowed to send direct messages.');
         }
@@ -289,6 +383,28 @@ class TextMessageService
                 abort_unless($this->entity->hasCapability($capability), 403, 'This channel cannot receive that attachment type.');
             }
         }
+    }
+
+    /**
+     * Notifies only the immediate parent's author — not every ancestor, not
+     * every thread participant — the same "reply to your content" scope a
+     * social-style comment-reply notification is expected to have. See
+     * docs/comments-and-voting.md.
+     */
+    private function notifyParentAuthor(Message $parent, Message $comment, User $replier): void
+    {
+        if ($parent->author_id === $replier->id) {
+            return;
+        }
+
+        Notification::notify($parent->author_id, 'comment_reply', [
+            'message_id'        => $comment->id,
+            'parent_message_id' => $parent->id,
+            'root_message_id'   => $parent->parent_message_id ? $parent->root_message_id : $parent->id,
+            'replier_id'        => $replier->id,
+            'replier_name'      => $replier->display_name,
+            'preview'           => Str::limit((string) $comment->content, 80),
+        ]);
     }
 
     private function notifyOtherParticipants(Conversation $conversation, Message $message, User $sender): void
@@ -344,6 +460,7 @@ class TextMessageService
             'replyTo.author:id,display_name,avatar_url',
             'replyTo.attachments',
         ]);
+        $message->loadCount('children as comment_count');
         $message->setAttribute('reactions', $message->reactionSummary($userId));
 
         return $message;
@@ -352,8 +469,64 @@ class TextMessageService
     /** @return array{0: string, 1: string} [scopeType, scopeId] */
     private static function scope(Message $message): array
     {
-        return $message->channel_id
-            ? ['channel', $message->channel_id]
-            : ['conversation', $message->conversation_id];
+        return $message->logicalScope();
+    }
+
+    /**
+     * Score-ranked, timeframe-filtered, offset-paginated — deliberately NOT
+     * the before/after/around cursor contract list() uses: score is mutable
+     * (a row's rank shifts as votes arrive), so it can't be a stable cursor
+     * without producing duplicate/missing rows across pages. Used for both
+     * a forum's top-level post list (entity = Channel) and top-sorted
+     * comments within a thread (entity = Message) — same "score-ranked,
+     * timeframe-filtered" shape over whichever scope column applies. See
+     * docs/comments-and-voting.md.
+     *
+     * @return array{data: \Illuminate\Support\Collection<int, Message>, next_offset: int, has_more: bool}
+     */
+    public function listTop(User $user, string $period, ?string $start, ?string $end, int $offset = 0, int $limit = 25): array
+    {
+        $this->assertMember($user);
+
+        if ($this->entity instanceof Message) {
+            abort_unless($this->entity->commentsEnabled(), 422, 'Comments are not enabled here.');
+        } else {
+            abort_unless($this->entity->hasCapability('text.read'), 422, 'This channel has no text chat.');
+        }
+
+        $periodStart = $this->periodStart($period, $start);
+
+        $query = $this->hydratedQuery()
+            ->withSum('votes as vote_score', 'value')
+            ->when($periodStart !== null, fn ($q) => $q->where('created_at', '>=', $periodStart))
+            ->when($period === 'custom' && filled($end), fn ($q) => $q->where('created_at', '<=', $end));
+
+        $total = (clone $query)->count();
+
+        $messages = $query
+            ->orderByDesc('vote_score')
+            ->orderByDesc('created_at')
+            ->skip($offset)
+            ->take($limit)
+            ->get()
+            ->each(fn ($m) => $m->setAttribute('reactions', $m->reactionSummary($user->id)));
+
+        return [
+            'data'         => $messages,
+            'next_offset'  => $offset + $limit,
+            'has_more'     => $offset + $limit < $total,
+        ];
+    }
+
+    private function periodStart(string $period, ?string $customStart): ?string
+    {
+        return match ($period) {
+            'hour'   => now()->subHour(),
+            'day'    => now()->subDay(),
+            'week'   => now()->subWeek(),
+            'month'  => now()->subMonth(),
+            'custom' => $customStart,
+            default  => null, // 'all'
+        };
     }
 }

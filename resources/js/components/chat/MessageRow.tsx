@@ -3,10 +3,11 @@ import { clsx } from 'clsx'
 import { Avatar } from '@/components/ui/Avatar'
 import { DropdownMenu } from '@/components/ui/DropdownMenu'
 import { EmojiPicker } from '@/components/emoji/EmojiPicker'
+import { CommentThread } from '@/components/chat/CommentThread'
 import { MessageAttachments } from '@/components/chat/MessageAttachments'
 import { ReplyPreviewContent } from '@/components/chat/ReplyPreviewContent'
 import { removeMessage, saveEdit, toggleReaction } from '@/services/messageActions'
-import type { Message, User } from '@/types'
+import type { Message, PaginatedMessages, User } from '@/types'
 
 interface Props {
     message: Message
@@ -19,6 +20,13 @@ interface Props {
     onJumpToMessage?: (messageId: string) => void
     /** Briefly flashed after a jump lands on this row — see MessageList's scrollTo. */
     highlighted?: boolean
+    /**
+     * The `message_and_comment` channel type's inline "💬 comment" popout —
+     * see docs/comments-and-voting.md. Omitted/false for every other type.
+     */
+    commentsEnabled?: boolean
+    maxCommentDepth?: number | null
+    broadcastScope?: { id: string; type: 'channel' | 'conversation' }
 }
 
 const time = (iso: string) =>
@@ -29,9 +37,34 @@ const fullTime = (iso: string) =>
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     })
 
-export function MessageRow({ message, scopeId, grouped, currentUser, onReply, onJumpToMessage, highlighted }: Props) {
+export function MessageRow({
+    message, scopeId, grouped, currentUser, onReply, onJumpToMessage, highlighted,
+    commentsEnabled, maxCommentDepth = null, broadcastScope,
+}: Props) {
     const [editing, setEditing] = useState(false)
     const [draft, setDraft] = useState(message.content ?? '')
+    const [commentsOpen, setCommentsOpen] = useState(false)
+    const [commentsInitial, setCommentsInitial] = useState<PaginatedMessages | null>(null)
+    const [commentsLoading, setCommentsLoading] = useState(false)
+
+    const toggleComments = async () => {
+        if (commentsOpen) {
+            setCommentsOpen(false)
+            return
+        }
+
+        if (!commentsInitial) {
+            setCommentsLoading(true)
+            try {
+                const { fetchComments } = await import('@/services/api')
+                setCommentsInitial(await fetchComments(message.id))
+            } finally {
+                setCommentsLoading(false)
+            }
+        }
+
+        setCommentsOpen(true)
+    }
 
     const isMine = message.author_id === currentUser.id
 
@@ -146,6 +179,37 @@ export function MessageRow({ message, scopeId, grouped, currentUser, onReply, on
                                     <span>{r.count}</span>
                                 </button>
                             ))}
+                        </div>
+                    )}
+
+                    {commentsEnabled && (
+                        <div className="mt-1.5">
+                            <button
+                                type="button"
+                                onClick={toggleComments}
+                                disabled={commentsLoading}
+                                className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary"
+                            >
+                                💬 {commentsLoading
+                                    ? 'Loading…'
+                                    : message.comment_count
+                                        ? `${message.comment_count} comment${message.comment_count === 1 ? '' : 's'}`
+                                        : 'Comment'}
+                            </button>
+
+                            {commentsOpen && commentsInitial && broadcastScope && (
+                                <div className="mt-2 max-w-lg bg-fifth rounded-lg p-3 border-panel border-panel-border">
+                                    <CommentThread
+                                        parentId={message.id}
+                                        parentDepth={0}
+                                        initial={commentsInitial}
+                                        broadcastScope={broadcastScope}
+                                        currentUserId={currentUser.id}
+                                        canComment
+                                        maxDepth={maxCommentDepth}
+                                    />
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

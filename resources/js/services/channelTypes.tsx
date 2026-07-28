@@ -3,6 +3,7 @@ import { VoiceChannelPanel } from '@/components/voice/VoiceChannelPanel'
 import { VoiceChannelSidebarItem } from '@/components/sidebar/VoiceChannelSidebarItem'
 import { HybridConversationContent } from '@/components/chat/HybridConversationContent'
 import { TextChannelContent } from '@/components/chat/TextChannelContent'
+import { ForumChannelContent } from '@/components/chat/ForumChannelContent'
 import type { Channel, ChannelType, PaginatedMessages, User } from '@/types'
 
 /**
@@ -83,6 +84,42 @@ function TextChannelTypeContent({
     )
 }
 
+// Same as TextChannelTypeContent, plus the inline per-message comment
+// popout — driven by this channel's own settings (comments_enabled/
+// max_comment_depth), not hardcoded, so a future settings UI change takes
+// effect without a frontend change. See docs/comments-and-voting.md.
+function MessageAndCommentChannelTypeContent({
+    channel, currentUser, initialMessages, initialHighlightMessageId,
+}: {
+    channel: Channel
+    currentUser: User
+    initialMessages: PaginatedMessages | null
+    initialHighlightMessageId?: string | null
+}) {
+    const settings = channel.settings ?? {}
+
+    return (
+        <TextChannelContent
+            scopeId={channel.id}
+            scopeType="channel"
+            currentUser={currentUser}
+            initialMessages={initialMessages ?? EMPTY_PAGE}
+            initialHighlightMessageId={initialHighlightMessageId}
+            canPost={channel.can_post ?? true}
+            placeholder={`Message #${channel.name}`}
+            commentsEnabled={(settings.comments_enabled as boolean | undefined) ?? true}
+            maxCommentDepth={(settings.max_comment_depth as number | null | undefined) ?? 1}
+            emptyState={
+                <div className="text-center">
+                    <p className="text-3xl mb-2">💬</p>
+                    <p className="text-text-primary font-semibold">Welcome to #{channel.name}</p>
+                    <p className="text-sm text-text-muted">Send a message, then comment on it.</p>
+                </div>
+            }
+        />
+    )
+}
+
 const REGISTRY: Record<string, ChannelTypeDescriptor> = {
     announcement: {
         key: 'announcement',
@@ -118,11 +155,33 @@ const REGISTRY: Record<string, ChannelTypeDescriptor> = {
         Content: VoiceChannelPanel,
         SidebarItem: VoiceChannelSidebarItem,
     },
+    forum: {
+        key: 'forum',
+        label: 'Forums',
+        icon: '📋',
+        order: 3,
+        category: 'forum',
+        description: 'Threaded posts with comments and voting.',
+        capabilities: ['text.all', 'vote.all'],
+        isTextCapable: false, // does not use useChat/useChannelFocus directly — see ForumChannelContent
+        Content: ForumChannelContent,
+    },
+    message_and_comment: {
+        key: 'message_and_comment',
+        label: 'Message & Comment',
+        icon: '💬',
+        order: 4,
+        category: 'standard',
+        description: 'A normal chat where every message can also collect comments.',
+        capabilities: ['text.all'],
+        isTextCapable: true,
+        Content: MessageAndCommentChannelTypeContent,
+    },
     conversation: {
         key: 'conversation',
         label: 'Conversations',
         icon: '💬',
-        order: 3,
+        order: 5,
         category: 'standard',
         description: 'A direct or group conversation.',
         capabilities: ['text.all', 'voice.all'],
@@ -139,10 +198,11 @@ export const KNOWN_CHANNEL_TYPES: ChannelTypeDescriptor[] = Object.values(REGIST
 /** Display label per category — shared by CreateChannelPanel's grouping and RoleCard's category checklist. An unrecognized future category falls back to the raw string. */
 export const CHANNEL_CATEGORY_LABELS: Record<string, string> = {
     standard: 'Standard',
+    forum: 'Forums',
     mod: 'Moderation',
 }
 
-const CHANNEL_CATEGORY_ORDER = ['standard', 'mod']
+const CHANNEL_CATEGORY_ORDER = ['standard', 'forum', 'mod']
 
 /** Every distinct category among the user-creatable known types, in CHANNEL_CATEGORY_ORDER then alphabetically — mirrors ChannelTypeRegistry::knownCategories() on the backend. */
 export const KNOWN_CHANNEL_CATEGORIES: string[] = Array.from(

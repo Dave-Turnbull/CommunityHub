@@ -18,6 +18,10 @@ class MessagePolicy
 {
     public function view(User $user, Message $message): bool
     {
+        if ($message->parent_message_id) {
+            return $message->isVisibleTo($user);
+        }
+
         if ($message->channel_id) {
             $channel = $message->channel;
 

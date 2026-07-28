@@ -23,6 +23,10 @@ interface Props {
      */
     scrollTo?: { id: string; token: number } | null
     emptyState?: React.ReactNode
+    /** Forwarded to MessageRow — see TextChannelContent's docblock on these three. */
+    commentsEnabled?: boolean
+    maxCommentDepth?: number | null
+    broadcastScope?: { id: string; type: 'channel' | 'conversation' }
 }
 
 const FLASH_DURATION_MS = 2000
@@ -78,7 +82,7 @@ function firstVisibleRow(container: HTMLElement): HTMLElement | null {
 
 export function MessageList({
     messages, scopeId, currentUser, hasOlder, hasNewer, onLoadOlder, onLoadNewer, jumpToken = 0,
-    onReply, onJumpToMessage, scrollTo, emptyState,
+    onReply, onJumpToMessage, scrollTo, emptyState, commentsEnabled = false, maxCommentDepth = null, broadcastScope,
 }: Props) {
     const { ref, onScroll, stickToBottom } = useAutoScroll(messages.length, !hasNewer)
     const topSentinel = useRef<HTMLDivElement>(null)
@@ -201,6 +205,9 @@ export function MessageList({
                             onReply={onReply}
                             onJumpToMessage={onJumpToMessage}
                             highlighted={m.id === flashId}
+                            commentsEnabled={commentsEnabled}
+                            maxCommentDepth={maxCommentDepth}
+                            broadcastScope={broadcastScope}
                         />
                     </div>
                 )
