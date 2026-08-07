@@ -70,7 +70,7 @@ class UploadTest extends TestCase
         config(['uploads.max_size_kb' => 10]);
 
         $user = User::factory()->create();
-        $file = UploadedFile::fake()->create('big.bin', 50, 'application/octet-stream');
+        $file = UploadedFile::fake()->create('big.txt', 50, 'text/plain');
 
         $response = $this->actingAs($user)->postJson('/api/upload', ['file' => $file]);
 
@@ -84,10 +84,50 @@ class UploadTest extends TestCase
         config(['uploads.max_size_kb' => 10]);
 
         $user = User::factory()->create();
-        $file = UploadedFile::fake()->create('small.bin', 5, 'application/octet-stream');
+        $file = UploadedFile::fake()->create('small.txt', 5, 'text/plain');
 
         $response = $this->actingAs($user)->postJson('/api/upload', ['file' => $file]);
 
         $response->assertCreated();
+    }
+
+    public function test_a_disallowed_file_type_is_rejected(): void
+    {
+        Storage::fake('local');
+
+        $user = User::factory()->create();
+        $file = UploadedFile::fake()->create('payload.svg', 5, 'image/svg+xml');
+
+        $response = $this->actingAs($user)->postJson('/api/upload', ['file' => $file]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseCount('attachments', 0);
+    }
+
+    public function test_an_allowed_file_type_succeeds(): void
+    {
+        Storage::fake('local');
+
+        $user = User::factory()->create();
+        $file = UploadedFile::fake()->create('notes.txt', 5, 'text/plain');
+
+        $response = $this->actingAs($user)->postJson('/api/upload', ['file' => $file]);
+
+        $response->assertCreated();
+    }
+
+    public function test_a_served_attachment_carries_a_nosniff_header(): void
+    {
+        Storage::fake('local');
+
+        $user = User::factory()->create();
+        $file = UploadedFile::fake()->image('photo.jpg');
+
+        $upload = $this->actingAs($user)->postJson('/api/upload', ['file' => $file]);
+        $attachmentId = $upload->json('id');
+
+        $response = $this->actingAs($user)->get("/attachments/{$attachmentId}");
+
+        $response->assertHeader('X-Content-Type-Options', 'nosniff');
     }
 }

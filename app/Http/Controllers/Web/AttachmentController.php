@@ -26,6 +26,14 @@ class AttachmentController extends Controller
         // record of) — genuinely gone, not a bug, so a plain 404.
         abort_if(is_null($attachment->path), 404);
 
-        return Storage::disk('local')->response($attachment->path, $attachment->filename);
+        // Defense in depth on top of UploadController's mime allow-list — a
+        // browser must not MIME-sniff an inline-served attachment into
+        // executing as HTML/script even if a mislabeled file ever slips
+        // through. StreamedResponse has no fluent ->header() helper like a
+        // normal Response, so set it directly on the headers bag.
+        $response = Storage::disk('local')->response($attachment->path, $attachment->filename);
+        $response->headers->set('X-Content-Type-Options', 'nosniff');
+
+        return $response;
     }
 }

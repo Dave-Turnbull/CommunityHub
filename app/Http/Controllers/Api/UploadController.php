@@ -18,7 +18,12 @@ class UploadController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'max:' . config('uploads.max_size_kb')],
+            'file' => [
+                'required',
+                'file',
+                'max:' . config('uploads.max_size_kb'),
+                'mimes:' . implode(',', config('uploads.allowed_mimes')),
+            ],
         ]);
 
         $file = $request->file('file');
