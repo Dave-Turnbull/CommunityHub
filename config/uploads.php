@@ -10,4 +10,16 @@
 // new limit will 413 before Laravel's own validation ever runs).
 return [
     'max_size_kb' => (int) env('UPLOAD_MAX_SIZE_KB', 102400), // 100 MB
+
+    // Extensions Laravel's `mimes:` rule accepts (checked against the real
+    // fileinfo-detected content type, not just the filename). Deliberately
+    // excludes svg/html/htm — AttachmentController serves files with
+    // Content-Disposition: inline, so an SVG or HTML attachment would render
+    // as a same-origin page, not just download, making it a stored-XSS
+    // vector rather than an upload-hygiene nitpick. Don't add either back
+    // without also changing how attachments are served.
+    'allowed_mimes' => explode(',', env(
+        'UPLOAD_ALLOWED_MIMES',
+        'jpeg,png,gif,webp,mp4,webm,mov,mp3,wav,ogg,pdf,txt,zip'
+    )),
 ];

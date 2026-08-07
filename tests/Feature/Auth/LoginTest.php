@@ -5,6 +5,7 @@ namespace Tests\Feature\Auth;
 use App\Events\UserStatusChanged;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -12,6 +13,17 @@ use Tests\TestCase;
 class LoginTest extends TestCase
 {
     use RefreshDatabase;
+
+    // POST /login is throttled (see routes/web.php) — the throttle middleware
+    // counts attempts in the cache store, which isn't reset by
+    // RefreshDatabase, so an earlier test's attempts would otherwise leak
+    // into this one and trip a stray 429 (see the analogous ChannelFocus
+    // convention in CLAUDE.md's Testing section).
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Cache::flush();
+    }
 
     public function test_a_user_can_login_with_email(): void
     {
@@ -129,5 +141,16 @@ class LoginTest extends TestCase
         $response = $this->actingAs($user)->get('/login');
 
         $response->assertRedirect('/');
+    }
+
+    public function test_repeated_login_attempts_are_throttled(): void
+    {
+        $credentials = ['login' => 'nobody@example.com', 'password' => 'wrong'];
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->post('/login', $credentials)->assertSessionHasErrors('login');
+        }
+
+        $this->post('/login', $credentials)->assertStatus(429);
     }
 }

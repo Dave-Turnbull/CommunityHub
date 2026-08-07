@@ -6,12 +6,22 @@ use App\Models\User;
 use App\Support\Permission;
 use App\Support\PermissionChecker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class RegistrationTest extends TestCase
 {
     use RefreshDatabase;
+
+    // POST /register is throttled (see routes/web.php) — see LoginTest's
+    // setUp for why this needs a Cache::flush() the same way ChannelFocus
+    // tests do.
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Cache::flush();
+    }
 
     public function test_a_visitor_can_register_and_is_logged_in(): void
     {
@@ -88,5 +98,22 @@ class RegistrationTest extends TestCase
 
         $response->assertSessionHasErrors('password');
         $this->assertGuest();
+    }
+
+    public function test_repeated_registration_attempts_are_throttled(): void
+    {
+        $payload = [
+            'username'              => 'newuser',
+            'display_name'          => 'New User',
+            'email'                 => 'new@example.com',
+            'password'              => 'password123',
+            'password_confirmation' => 'wrong-confirmation',
+        ];
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->post('/register', $payload)->assertSessionHasErrors('password');
+        }
+
+        $this->post('/register', $payload)->assertStatus(429);
     }
 }
