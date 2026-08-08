@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Web\Concerns\AcceptsPendingRoomInvite;
 use App\Models\InstanceSetting;
 use App\Models\Role;
 use App\Models\RoleAssignment;
-use App\Models\RoomInvite;
 use App\Models\User;
 use App\Services\ServerInviteService;
 use App\Services\UserStatusService;
@@ -19,6 +19,8 @@ use Inertia\Response;
 
 class AuthController extends Controller
 {
+    use AcceptsPendingRoomInvite;
+
     public function __construct(
         private readonly UserStatusService $status,
         private readonly ServerInviteService $invites,
@@ -40,7 +42,16 @@ class AuthController extends Controller
         // the presence of one unambiguously means the input is an email.
         $field = str_contains($validated['login'], '@') ? 'email' : 'username';
 
-        if (! Auth::attempt([$field => $validated['login'], 'password' => $validated['password']], $request->boolean('remember'))) {
+        // An OAuth-only provisioned account (see AuthentikLoginService) has
+        // password === null — Auth::attempt() would otherwise be asked to
+        // verify a plaintext password against a null hash. Same generic
+        // error either way, so this never leaks whether the account exists
+        // or how it authenticates.
+        $user = User::where($field, $validated['login'])->first();
+
+        if (! $user || $user->password === null
+            || ! Auth::attempt([$field => $validated['login'], 'password' => $validated['password']], $request->boolean('remember'))
+        ) {
             return back()->withErrors([
                 'login' => 'These credentials do not match our records.',
             ])->onlyInput('login');
@@ -136,24 +147,5 @@ class AuthController extends Controller
         $request->session()->regenerateToken();
 
         return redirect('/login');
-    }
-
-    /** Joins the room behind a pending invite (see InviteController) right after auth completes. */
-    private function acceptPendingInvite(Request $request): ?RedirectResponse
-    {
-        $token = $request->session()->pull('pending_invite_token');
-        if (! $token) {
-            return null;
-        }
-
-        $invite = RoomInvite::where('token', $token)->first();
-        if (! $invite || $invite->isExpired() || $invite->isAccepted()) {
-            return null;
-        }
-
-        $room  = $invite->accept($request->user());
-        $first = $room->channels()->where('type', 'text')->first();
-
-        return redirect($first ? "/channels/{$first->id}" : '/');
     }
 }

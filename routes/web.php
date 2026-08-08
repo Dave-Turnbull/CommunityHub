@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Web\AttachmentController;
 use App\Http\Controllers\Web\AuthController;
+use App\Http\Controllers\Web\AuthentikController;
 use App\Http\Controllers\Web\ChannelController;
 use App\Http\Controllers\Web\ConversationController;
 use App\Http\Controllers\Web\EmailVerificationController;
@@ -18,6 +19,19 @@ Route::middleware('guest')->group(function () {
     Route::post('/login',    [AuthController::class, 'login'])->middleware('throttle:5,1');
     Route::get('/register',  [AuthController::class, 'showRegister'])->name('register');
     Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:3,1');
+
+    // Authentik/OAuth — always registered, gated per-request inside
+    // AuthentikController (config('services.authentik.enabled')) rather
+    // than here, so toggling it needs no route-cache/boot concern.
+    Route::get('/auth/authentik/redirect', [AuthentikController::class, 'redirect'])->name('authentik.redirect');
+    Route::get('/auth/authentik/callback', [AuthentikController::class, 'callback'])
+        ->middleware('throttle:10,1')->name('authentik.callback');
+
+    // The "an OAuth identity matched an existing password account" manual
+    // link step — see AuthentikLoginService's docblock for why this exists
+    // instead of auto-linking on email match.
+    Route::get('/auth/link-account',  [AuthentikController::class, 'showLinkAccount']);
+    Route::post('/auth/link-account', [AuthentikController::class, 'linkAccount'])->middleware('throttle:10,1');
 });
 
 // ─── Invite acceptance (guest or authenticated) ────────────────────────────

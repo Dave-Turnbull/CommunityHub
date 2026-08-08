@@ -544,6 +544,9 @@ export interface SharedProps {
     conversations: Conversation[]
     recentCustomStatuses: RecentCustomStatus[]
     registrationPaths: RegistrationPaths
+    // Whether to show a "Log in with Authentik" button — see
+    // AuthentikController, docs/auth-and-sso.md.
+    authentikEnabled: boolean
     flash: { success?: string; error?: string }
 }
 
