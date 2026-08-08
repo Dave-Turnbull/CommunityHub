@@ -167,7 +167,12 @@ services:
     depends_on: [app]
     networks: [communityhub, caddy]
     labels:
-      caddy: chat.${DOMAIN:?set DOMAIN}
+      # http:// — TLS is terminated by the Cloudflare Tunnel in front of
+      # Caddy, not by Caddy itself. A bare hostname here would make Caddy
+      # auto-provision its own cert *and* redirect plain HTTP to HTTPS —
+      # since the tunnel forwards to Caddy over plain HTTP, that redirect
+      # loops forever (browser sees https, tunnel always sends http).
+      caddy: http://chat.${DOMAIN:?set DOMAIN}
       caddy.reverse_proxy: "{{upstreams 80}}"
 
   postgres:
@@ -222,7 +227,8 @@ services:
         condition: service_healthy
     networks: [communityhub, caddy]
     labels:
-      caddy: ws.${DOMAIN:?set DOMAIN}
+      # Same reasoning as nginx's label above — the tunnel handles TLS.
+      caddy: http://ws.${DOMAIN:?set DOMAIN}
       caddy.reverse_proxy: "{{upstreams 8080}}"
 
   worker:
