@@ -153,4 +153,17 @@ class LoginTest extends TestCase
 
         $this->post('/login', $credentials)->assertStatus(429);
     }
+
+    public function test_an_oauth_only_account_with_no_password_cannot_log_in_via_the_password_form(): void
+    {
+        User::factory()->create(['email' => 'oauth-only@example.com', 'password' => null]);
+
+        $response = $this->post('/login', [
+            'login'    => 'oauth-only@example.com',
+            'password' => 'anything',
+        ]);
+
+        $response->assertSessionHasErrors('login');
+        $this->assertGuest();
+    }
 }

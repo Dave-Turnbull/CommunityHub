@@ -129,7 +129,15 @@ app/
                                EmailVerificationController is notice/verify/resend —
                                always registered regardless of
                                config('verification.enabled'), see
-                               EnsureEmailIsVerifiedIfRequired
+                               EnsureEmailIsVerifiedIfRequired; AuthentikController is
+                               redirect/callback/showLinkAccount/linkAccount — the
+                               optional OAuth login method, gated per-request by
+                               config('services.authentik.enabled'), see
+                               docs/auth-and-sso.md
+    Web/Concerns/              AcceptsPendingRoomInvite — the pending-room-invite
+                               completion step shared by AuthController and
+                               AuthentikController (both can be the last step of a
+                               login/register flow), see docs/auth-and-sso.md
     Api/                      JSON controllers (axios targets), thin translators over
                                app/Services/ — see docs/service-layer.md.
                                ChannelFocusController is the focus/blur heartbeat
@@ -186,7 +194,12 @@ app/
                                ShouldQueue — sent via the `worker` container, Mailpit
                                catches them in dev
   Models/                     all UUID-keyed (HasUuids); Notification is the exception to
-                               the "table name matches model" convention — see trap #22.
+                               the "table name matches model" convention — see trap #22
+                               (UserOAuthIdentity is the same class of exception —
+                               Laravel's pluralizer mangles "OAuth" into "o_auth", see
+                               docs/auth-and-sso.md — but for a different reason: an
+                               explicit $table on a normally-well-pluralized name, not a
+                               reserved-shape collision).
                                User always implements MustVerifyEmail — inert on its own,
                                only enforced when EnsureEmailIsVerifiedIfRequired's runtime
                                config check is on, see config/verification.php.
@@ -210,7 +223,10 @@ app/
                                InstanceSetting::current()), ServerInvite (grants account
                                creation, distinct from RoomInvite which grants room
                                membership) — see docs/conversations-and-invites.md's
-                               "Server invites"
+                               "Server invites"; UserOAuthIdentity (a user's linked
+                               OAuth identities — join table, not columns on User, so
+                               password + OAuth login can coexist) — see docs/
+                               auth-and-sso.md
   Policies/                   authorization seams beyond simple membership checks —
                                see docs/roles-and-permissions.md and docs/
                                conversations-and-invites.md. RoomMemberPolicy backs
@@ -239,6 +255,10 @@ app/
                                VoiceFeature/StatusFeature — the latter has no
                                ChannelType consumer yet, see docs/status.md;
                                VoteFeature — see docs/comments-and-voting.md)
+    AppServiceProvider.php    wires Socialite's 'authentik' driver
+                               (Event::listen(SocialiteWasCalled::class, ...)) — see
+                               docs/auth-and-sso.md; registration is unconditional,
+                               reachability is gated per-request elsewhere
   Services/                   {Operation}Service classes — see docs/service-layer.md.
                                Not the same thing as Support/Capabilities' Feature — a
                                Feature declares what a capability *is*, a Service is
@@ -248,7 +268,9 @@ app/
                                roles-and-permissions.md); VoteService — see docs/
                                comments-and-voting.md; ServerInviteService — creation +
                                token validation for account-creation invites, see docs/
-                               conversations-and-invites.md's "Server invites"
+                               conversations-and-invites.md's "Server invites";
+                               AuthentikLoginService — OAuth identity resolution
+                               (linked/linkable/provision), see docs/auth-and-sso.md
   Support/                    ChannelFocus (see docs/notifications.md); Permission/
                                PermissionChecker/PermissionCeiling (the last is the
                                grant-time "can only grant what you hold" primitive, room
@@ -495,7 +517,10 @@ routes/
                                carries EnsureEmailIsVerifiedIfRequired, and the
                                /email/verify|resend routes sit in their own
                                auth-only (not verified-gated) group so they're
-                               reachable regardless of the flag
+                               reachable regardless of the flag. /auth/authentik/
+                               redirect|callback and /auth/link-account are always
+                               registered too — see docs/auth-and-sso.md for why
+                               that gate lives in the controller, not here
   api.php                     /api/* under auth (session), axios targets, including
                                /settings/roles (global role list/store/reorder, self-
                                fetched by Settings' Roles tab), /rooms/{room}/
@@ -764,7 +789,9 @@ short version, by group — read the full entry before touching adjacent code:
   (not just `app`/`worker`/`reverb`) or every uploaded file 404s — which looks
   exactly like a broken `<img>`/`<video>` frontend bug, not an infra one.
 - **Model/table naming** — `CustomEmoji`'s pluralizer collision,
-  `user_notifications` vs. Laravel's reserved `notifications` shape.
+  `user_notifications` vs. Laravel's reserved `notifications` shape,
+  `UserOAuthIdentity` → `user_oauth_identities` (the pluralizer mangles "OAuth" into
+  "o_auth" otherwise).
 - **Auth & sessions** — stateful Sanctum requirements, the `Referer` header a
   manual `curl` session needs.
 - **Frontend/CSS** — `@apply group`, `min-h-0` on flex sidebars, the
@@ -1101,6 +1128,10 @@ default `true` — `config/registration.php`; first-boot defaults only, seeding
 them afterward from Settings without touching these env vars again),
 `EMAIL_VERIFICATION_ENABLED` (default `false` — `config/verification.php`; a live
 runtime toggle, not a boot-time one — see `EnsureEmailIsVerifiedIfRequired`),
+`AUTHENTIK_ENABLED`/`AUTHENTIK_CLIENT_ID`/`AUTHENTIK_CLIENT_SECRET`/`AUTHENTIK_BASE_URL`
+(no working default — Authentik login 404s until all of these are set, see
+`docs/auth-and-sso.md`) + `AUTHENTIK_REDIRECT_URI` (optional override, defaults to
+`{APP_URL}/auth/authentik/callback`),
 `MAIL_MAILER=mailpit` (dev default; other options: `smtp`, `ses`, `log`, `array`
 — see README's `## Email`) + `MAIL_HOST`/`MAIL_PORT`/`MAIL_USERNAME`/
 `MAIL_PASSWORD`/`MAIL_ENCRYPTION` (used by `mailpit`/`smtp`) +

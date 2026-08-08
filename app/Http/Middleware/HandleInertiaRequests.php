@@ -44,6 +44,10 @@ class HandleInertiaRequests extends Middleware
                 ];
             },
 
+            // Whether the "Log in with Authentik" button should render at
+            // all — see AuthentikController, docs/auth-and-sso.md.
+            'authentikEnabled' => (bool) config('services.authentik.enabled'),
+
             'auth' => [
                 'user' => $user?->only([
                     'id', 'username', 'display_name', 'avatar_url',

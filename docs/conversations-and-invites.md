@@ -3,7 +3,8 @@
 [← All docs](README.md) · See also:
 [messages-and-pagination.md](messages-and-pagination.md) ·
 [roles-and-permissions.md](roles-and-permissions.md) ·
-[notifications.md](notifications.md)
+[notifications.md](notifications.md) ·
+[auth-and-sso.md](auth-and-sso.md)
 
 ## Message scoping
 

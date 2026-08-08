@@ -1,7 +1,7 @@
 import { Head, Link, useForm } from '@inertiajs/react'
 import type { SharedProps } from '@/types'
 
-export default function Login({ appName, registrationPaths }: SharedProps) {
+export default function Login({ appName, registrationPaths, authentikEnabled }: SharedProps) {
     const { data, setData, post, processing, errors } = useForm({
         login: '',
         password: '',
@@ -72,6 +72,25 @@ export default function Login({ appName, registrationPaths }: SharedProps) {
                             >
                                 {processing ? 'Logging in…' : 'Log In'}
                             </button>
+
+                            {authentikEnabled && (
+                                <>
+                                    <div className="flex items-center gap-3 text-xs text-text-muted">
+                                        <div className="flex-1 h-px bg-sixth" />
+                                        or
+                                        <div className="flex-1 h-px bg-sixth" />
+                                    </div>
+
+                                    {/* Full-page redirect, not an Inertia/axios call — the browser
+                                        needs to actually navigate to Authentik. */}
+                                    <a
+                                        href="/auth/authentik/redirect"
+                                        className="block w-full text-center px-4 py-2 rounded border border-sixth text-text-primary hover:bg-third text-sm font-medium transition-colors duration-100"
+                                    >
+                                        Log in with Authentik
+                                    </a>
+                                </>
+                            )}
                         </div>
 
                         {registrationPaths.manual && (

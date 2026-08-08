@@ -23,7 +23,10 @@ vi.mock('@inertiajs/react', () => ({
     },
 }))
 
-const props = (overrides: Partial<SharedProps['registrationPaths']> = {}): SharedProps => ({
+const props = (
+    overrides: Partial<SharedProps['registrationPaths']> = {},
+    authentikEnabled = false
+): SharedProps => ({
     appName: 'CommunityHub',
     maxUploadSizeBytes: 100 * 1024 * 1024,
     auth: { user: undefined as never },
@@ -32,6 +35,7 @@ const props = (overrides: Partial<SharedProps['registrationPaths']> = {}): Share
     recentCustomStatuses: [],
     flash: {},
     registrationPaths: { manual: true, emailInvite: true, oauth: true, ...overrides },
+    authentikEnabled,
 })
 
 describe('Auth/Login', () => {
@@ -45,5 +49,19 @@ describe('Auth/Login', () => {
         render(<Login {...props({ manual: false })} />)
 
         expect(screen.queryByText('Register')).not.toBeInTheDocument()
+    })
+
+    it('hides the Authentik button when disabled', () => {
+        render(<Login {...props({}, false)} />)
+
+        expect(screen.queryByText('Log in with Authentik')).not.toBeInTheDocument()
+    })
+
+    it('shows a full-page-redirect Authentik button when enabled', () => {
+        render(<Login {...props({}, true)} />)
+
+        const link = screen.getByText('Log in with Authentik')
+        expect(link).toBeInTheDocument()
+        expect(link).toHaveAttribute('href', '/auth/authentik/redirect')
     })
 })

@@ -31,6 +31,7 @@ const props: SharedProps = {
     conversations: [],
     recentCustomStatuses: [],
     registrationPaths: { manual: true, emailInvite: true, oauth: true },
+    authentikEnabled: false,
     flash: {},
 }
 

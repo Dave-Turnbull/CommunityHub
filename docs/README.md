@@ -47,7 +47,11 @@ encode the actual dependency graph between subsystems.
   affordance, the contiguous-run message cache and its driver seam, and the
   optimistic edit/reaction/delete path.
 - [conversations-and-invites.md](conversations-and-invites.md) — message scoping,
-  conversation creation/deduplication, group participants, and room invite mechanisms.
+  conversation creation/deduplication, group participants, room invites, and the
+  three independently-toggleable server signup paths.
+- [auth-and-sso.md](auth-and-sso.md) — password login, the optional Authentik/OAuth
+  login method (account linking vs. provisioning, the "auto sign-on" behavior), and
+  why linking never trusts an IdP email claim alone.
 - [attachments.md](attachments.md) — upload storage (the private `local` disk, not
   `public`), why `Attachment::url` is a computed route rather than a direct storage
   link, `AttachmentPolicy`/`MessagePolicy` (an attachment is exactly as visible as its
