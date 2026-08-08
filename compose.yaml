@@ -40,6 +40,17 @@
 #   AUTHENTIK_ENABLED + its AUTHENTIK_* siblings, MAIL_*, AWS_*
 #   (only if FILESYSTEM_DISK=r2).
 
+# Passed as Docker build args (not `environment:`) to every service below
+# that builds docker/app/Dockerfile — Vite needs these at `npm run build`
+# time, not container runtime. Must match the VITE_* values in
+# x-laravel-env exactly, or the built JS bundle and the running app disagree
+# about where Reverb lives.
+x-vite-build-args: &vite-build-args
+  VITE_REVERB_APP_KEY: "${REVERB_APP_KEY:?set REVERB_APP_KEY}"
+  VITE_REVERB_HOST: ws.${DOMAIN:?set DOMAIN}
+  VITE_REVERB_PORT: "443"
+  VITE_REVERB_SCHEME: https
+
 x-laravel-env: &laravel-env
   APP_NAME: ${APP_NAME:-CommunityHub}
   APP_ENV: production
@@ -140,6 +151,7 @@ services:
       context: .
       dockerfile: docker/app/Dockerfile
       target: app_runtime
+      args: *vite-build-args
     restart: unless-stopped
     environment: *laravel-env
     volumes:
@@ -159,6 +171,7 @@ services:
       context: .
       dockerfile: docker/app/Dockerfile
       target: nginx_runtime
+      args: *vite-build-args
     restart: unless-stopped
     volumes:
       # Read-only, uploaded-file bytes only — see docker-compose.yml's
@@ -213,6 +226,7 @@ services:
       context: .
       dockerfile: docker/app/Dockerfile
       target: app_runtime
+      args: *vite-build-args
     restart: unless-stopped
     command: php artisan reverb:start --host=0.0.0.0 --port=8080
     environment: *laravel-env
@@ -236,6 +250,7 @@ services:
       context: .
       dockerfile: docker/app/Dockerfile
       target: app_runtime
+      args: *vite-build-args
     restart: unless-stopped
     command: php artisan queue:work --sleep=3 --tries=3 --timeout=90
     environment: *laravel-env

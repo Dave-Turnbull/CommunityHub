@@ -26,6 +26,20 @@ RUN COMPOSER_ALLOW_SUPERUSER=1 composer dump-autoload \
 # container instead, so this stage never runs for a dev `docker compose up`.
 FROM node:22-alpine AS node_build
 
+# Vite bakes VITE_* vars into the built JS as literal strings at `npm run
+# build` time (import.meta.env.VITE_X) — compose.yaml's `environment:` block
+# only reaches the running container, never the build step that produces
+# this bundle, so these must come in as build args instead. See compose.yaml,
+# which passes them identically on every service building this Dockerfile.
+ARG VITE_REVERB_APP_KEY
+ARG VITE_REVERB_HOST
+ARG VITE_REVERB_PORT
+ARG VITE_REVERB_SCHEME
+ENV VITE_REVERB_APP_KEY=$VITE_REVERB_APP_KEY \
+    VITE_REVERB_HOST=$VITE_REVERB_HOST \
+    VITE_REVERB_PORT=$VITE_REVERB_PORT \
+    VITE_REVERB_SCHEME=$VITE_REVERB_SCHEME
+
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
