@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Conversation;
+use App\Models\InstanceSetting;
 use App\Models\RecentCustomStatus;
 use App\Models\Room;
 use Illuminate\Http\Request;
@@ -27,6 +28,21 @@ class HandleInertiaRequests extends Middleware
             // through so MessageInput's client-side check matches whatever the
             // server actually enforces, without hardcoding a duplicate number.
             'maxUploadSizeBytes' => config('uploads.max_size_kb') * 1024,
+
+            // Which signup paths are currently open — see
+            // App\Models\InstanceSetting. Shared globally (not just on
+            // Settings) since the guest-facing Login page's "Register" link
+            // needs it too. AuthController re-checks these server-side on
+            // every GET/POST /register regardless of what this prop shows.
+            'registrationPaths' => function () {
+                $settings = InstanceSetting::current();
+
+                return [
+                    'manual'      => $settings->signup_manual_enabled,
+                    'emailInvite' => $settings->signup_email_invite_enabled,
+                    'oauth'       => $settings->signup_oauth_enabled,
+                ];
+            },
 
             'auth' => [
                 'user' => $user?->only([

@@ -47,7 +47,7 @@ export interface Room {
     channels?: Channel[]
     custom_emojis?: CustomEmoji[]
     // Present on ChannelPageProps.room (Web\ChannelController::show) — backs
-    // ChannelVisibilityPanel's role checklist. Not loaded on every Room
+    // ChannelPermissionsPanel's role checklist. Not loaded on every Room
     // payload (e.g. the shared sidebar rooms prop).
     roles?: Role[]
 }
@@ -77,37 +77,85 @@ export type PermissionKey =
     | 'manage_channel_visibility'
     | 'send_direct_messages'
     | 'post_announcements'
+    | 'comment'
+    | 'vote'
+    | 'send_messages'
+    | 'react'
+    | 'create_room'
+    | 'invite_server'
+    | 'invite_members'
 
 // Purely a UI grouping/labeling concern — doesn't change what any permission
 // actually does, and any role can still be granted a permission from any
-// category (see docs/roles-and-permissions.md's "Permission categories").
-// Groups RoleCard's checklist into three headed sections; a permission's
-// category is independent of which built-in role (Owner/Moderator/Member)
-// happens to be seeded with it by default.
-export type PermissionCategory = 'admin' | 'moderator' | 'user'
+// group (see docs/roles-and-permissions.md's "Permission categories").
+// Groups PermissionToggleList's checklist into headed sections; a
+// permission's group is independent of which built-in role (Owner/
+// Moderator/Member) happens to be seeded with it by default.
+export type PermissionGroup = 'administration' | 'server' | 'membership' | 'channels' | 'content'
 
-export const PERMISSION_CATEGORY_LABELS: Record<PermissionCategory, string> = {
-    admin: 'Admin',
-    moderator: 'Moderator',
-    user: 'User',
+export const PERMISSION_GROUP_LABELS: Record<PermissionGroup, string> = {
+    administration: 'Administration',
+    server: 'Server',
+    membership: 'Membership',
+    channels: 'Channels',
+    content: 'Content',
 }
 
-export const PERMISSION_CATEGORY_ORDER: PermissionCategory[] = ['admin', 'moderator', 'user']
+export const PERMISSION_GROUP_ORDER: PermissionGroup[] = ['administration', 'server', 'membership', 'channels', 'content']
 
-export const PERMISSION_CATEGORIES: Record<PermissionKey, PermissionCategory> = {
-    administrator: 'admin',
-    manage_room: 'admin',
-    manage_roles: 'admin',
-    manage_mod_channels: 'admin',
-    see_all_channels: 'admin',
-    manage_channels: 'moderator',
-    manage_channel_visibility: 'moderator',
-    manage_members: 'moderator',
-    ban_members: 'moderator',
-    manage_messages: 'moderator',
-    manage_emojis: 'moderator',
-    post_announcements: 'moderator',
-    send_direct_messages: 'user',
+export const PERMISSION_GROUPS: Record<PermissionKey, PermissionGroup> = {
+    administrator: 'administration',
+    manage_roles: 'administration',
+    manage_room: 'administration',
+    manage_emojis: 'administration',
+    create_room: 'server',
+    invite_server: 'server',
+    send_direct_messages: 'server',
+    invite_members: 'membership',
+    manage_members: 'membership',
+    ban_members: 'membership',
+    manage_channels: 'channels',
+    manage_mod_channels: 'channels',
+    see_all_channels: 'channels',
+    manage_channel_visibility: 'channels',
+    manage_messages: 'content',
+    send_messages: 'content',
+    post_announcements: 'content',
+    comment: 'content',
+    react: 'content',
+    vote: 'content',
+}
+
+// Which tier(s) a permission applies at — 'server' permissions are checked
+// with room = null (App\Support\Permission's serverTierCases()) and are a
+// no-op on a room-scoped role; 'room' permissions are checked against a
+// specific room (roomTierCases()). `administrator`/`manage_roles` apply at
+// both. Drives PermissionToggleList's section split: a global role's editor
+// shows a "Server permissions" section (tier includes 'server') and a "Room
+// permissions" section (tier includes 'room') separately, so it's never
+// ambiguous which kind of grant a checkbox represents; a room role's editor
+// only ever shows the room-tier set.
+export const PERMISSION_TIERS: Record<PermissionKey, ('server' | 'room')[]> = {
+    administrator: ['server', 'room'],
+    manage_roles: ['server', 'room'],
+    manage_room: ['room'],
+    manage_emojis: ['room'],
+    create_room: ['server'],
+    invite_server: ['server'],
+    send_direct_messages: ['server'],
+    invite_members: ['room'],
+    manage_members: ['room'],
+    ban_members: ['room'],
+    manage_channels: ['room'],
+    manage_mod_channels: ['room'],
+    see_all_channels: ['room'],
+    manage_channel_visibility: ['room'],
+    manage_messages: ['room'],
+    send_messages: ['room'],
+    post_announcements: ['room'],
+    comment: ['room'],
+    react: ['room'],
+    vote: ['room'],
 }
 
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {
@@ -116,6 +164,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
     manage_roles: 'Manage Roles',
     manage_channels: 'Manage User Channels',
     manage_mod_channels: 'Manage Mod Channels',
+    invite_members: 'Invite Members',
     manage_members: 'Manage Members',
     ban_members: 'Ban Members',
     manage_messages: 'Manage Messages',
@@ -123,10 +172,50 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
     see_all_channels: 'See All Channels',
     manage_channel_visibility: 'Manage Channel Visibility',
     post_announcements: 'Post Announcements',
+    comment: 'Comment',
+    vote: 'Vote',
+    send_messages: 'Send Messages',
+    react: 'React',
     // Global-scope-only (checked with room = null, see App\Support\Permission)
-    // — granting this to a room-scoped role is a no-op, so RoleCard hides it
-    // entirely there and only shows it for global roles (Settings' Roles tab).
+    // — granting these to a room-scoped role is a no-op, so RoleCard hides
+    // them entirely there and only shows them for global roles (Settings'
+    // Roles tab).
     send_direct_messages: 'Send Direct Messages',
+    create_room: 'Create Rooms',
+    // Declared but inert on the backend (no closed-registration mechanism
+    // exists yet) — still shown here since a role's stored permission set
+    // can reference it, same as manage_room/manage_messages/manage_emojis.
+    invite_server: 'Invite to Server',
+}
+
+// One or two sentences per permission: what it allows, and — when the name
+// could plausibly be read more broadly than it actually is — what it does
+// NOT cover, pointing at the sibling permission that does. Shown under each
+// toggle in PermissionToggleList. Keep these accurate to the backend
+// enforcement site (see App\Support\Permission's docblocks) rather than
+// aspirational — a description promising something the backend doesn't
+// enforce is worse than no description.
+export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
+    administrator: 'Grants every other permission, everywhere this role applies. Reserved for the Owner role and cannot be granted anywhere else.',
+    manage_room: "Edit this room's name, icon, and other room-level settings.",
+    manage_roles: "Create, edit, delete, and assign roles ranked below this one's own. Cannot be used to edit a role of equal or higher rank.",
+    manage_channels: "Create, edit, reorder, and delete standard channels. Doesn't include moderation-category channels like announcements — see Manage Mod Channels.",
+    manage_mod_channels: 'Create and manage moderation-category channels (e.g. announcements), plus everything Manage User Channels allows.',
+    invite_members: "Invite new people to this room. Doesn't include removing members — see Manage Members.",
+    manage_members: "Remove (kick) members from this room. Doesn't include banning — see Ban Members — or inviting — see Invite Members.",
+    ban_members: 'Kick a member and block them from rejoining this room.',
+    manage_messages: "Not enforced anywhere yet — reserved for a future moderator ability to manage other members' messages.",
+    manage_emojis: 'Not enforced anywhere yet — reserved for a future custom emoji management feature.',
+    see_all_channels: 'See every channel in this room, including ones normally hidden by a visibility restriction.',
+    manage_channel_visibility: "Restrict which roles can see a specific channel. Doesn't grant any other channel management ability on its own.",
+    post_announcements: "Post into announcement-type channels. Doesn't grant the ability to create or manage those channels — see Manage Mod Channels.",
+    comment: "Reply in threaded comments below a message. Doesn't cover posting an ordinary channel message — see Send Messages.",
+    vote: 'Cast or remove an upvote/downvote on a post.',
+    send_messages: "Send ordinary messages in a text channel. Doesn't cover replying in threaded comments (see Comment) or posting in announcement channels (see Post Announcements).",
+    react: 'Add or remove an emoji reaction on a message.',
+    send_direct_messages: 'Start and send direct messages to other users. An instance-wide permission — granting it to a room role has no effect.',
+    create_room: 'Create new rooms. An instance-wide permission — granting it to a room role has no effect.',
+    invite_server: 'Not enforced anywhere yet — reserved for a future closed-registration feature where new accounts require an invite. An instance-wide permission.',
 }
 
 export interface RolePermission {
@@ -158,6 +247,48 @@ export interface Role {
     // RolePolicy::manage. Only present on RoomRolesPanel/GlobalRolesSettings'
     // self-fetched roles, not every Role payload.
     can_manage?: boolean
+    // Every permission/channel-creation-category the *viewer* may currently
+    // add to this role — see PermissionCeiling::grantablePermissions().
+    // Used to gray out a toggle the viewer couldn't save anyway instead of
+    // letting them flip it and hit a 422. Removing an already-granted
+    // permission is always allowed regardless of this list.
+    grantable_permissions?: PermissionKey[]
+    grantable_channel_categories?: string[]
+    // Room-permission-ceiling fields — only ever present on a global role
+    // (room_id: null). See docs/roles-and-permissions.md's "Room permission
+    // ceilings". can_manage_ceiling is Gate::allows('manageCeiling', ...),
+    // hierarchy-aware like can_manage but a distinct ability.
+    can_manage_ceiling?: boolean
+    has_room_permission_ceiling?: boolean
+    room_permission_ceiling?: PermissionKey[]
+    room_channel_category_ceiling?: string[]
+    // The *viewer's own* ceiling capacity (not this role's) — see
+    // PermissionCeiling::actorCeilingCapacity(). Same value on every global
+    // role in a fetched list; used to gray out a ceiling checkbox the
+    // viewer couldn't save.
+    grantable_ceiling_permissions?: PermissionKey[] | 'unrestricted'
+}
+
+// The curated, fixed set of permissions a channel may override per-role —
+// mirrors App\Support\Permission::channelOverridableCases() exactly. Not
+// every one of these applies to every channel *type* — see
+// services/channelTypes.tsx's `overridablePermissionsFor()`, which narrows
+// this down further based on what the channel's type actually supports
+// (e.g. 'vote' only for a forum, 'comment' only where comments are a real
+// feature of that type's Content component).
+export const CHANNEL_OVERRIDABLE_PERMISSIONS: PermissionKey[] = [
+    'send_messages', 'post_announcements', 'comment', 'react', 'vote', 'manage_channel_visibility',
+]
+
+// A channel-scoped override of one role's room-tier permission — row
+// presence is the override itself, there's no third "inherit" value stored;
+// absence of a row for a (channel, role, permission) triple means inherit.
+// See PermissionChecker::canInChannel().
+export interface ChannelPermissionOverride {
+    id: string
+    role_id: string
+    permission: PermissionKey
+    allowed: boolean
 }
 
 export interface Channel {
@@ -174,6 +305,9 @@ export interface Channel {
     // ManageChannelVisibility). Only present when the backend eager-loads it
     // (Web\ChannelController::show), not on every Channel payload.
     visibility_roles?: Role[]
+    // Curated per-role permission overrides — see CHANNEL_OVERRIDABLE_PERMISSIONS
+    // above. Only present when the backend eager-loads it, same as visibility_roles.
+    permission_overrides?: ChannelPermissionOverride[]
     // Whether the viewer may send into this channel — true for every type
     // except 'announcement' (see ChannelPolicy::post/Permission::
     // PostAnnouncements). Only computed on Web\ChannelController::show's
@@ -393,6 +527,15 @@ export interface NotificationPreference {
 }
 
 // ── Inertia shared props ─────────────────────────────────────────────────
+// Which signup paths are currently open — see App\Models\InstanceSetting,
+// HandleInertiaRequests::share(). Gates whether Login.tsx shows a "Register"
+// link and whether Register.tsx offers the plain (non-invite) form.
+export interface RegistrationPaths {
+    manual: boolean
+    emailInvite: boolean
+    oauth: boolean
+}
+
 export interface SharedProps {
     appName: string
     maxUploadSizeBytes: number
@@ -400,6 +543,7 @@ export interface SharedProps {
     rooms: Room[]
     conversations: Conversation[]
     recentCustomStatuses: RecentCustomStatus[]
+    registrationPaths: RegistrationPaths
     flash: { success?: string; error?: string }
 }
 
