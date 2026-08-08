@@ -299,8 +299,15 @@ database/
                                backlog and also runs standalone (--class=...) against
                                an already-seeded DB — see docs/messages-and-pagination.md
 docker/
-  app/Dockerfile              two-stage (composer build → fpm runtime; composer binary
-                               also copied into the runtime image, see traps)
+  app/Dockerfile              multi-stage, multi-target (composer binary also copied into
+                               app_runtime, see traps): composer_build → node_build (frontend,
+                               `npm run build`) → nginx_runtime (nginx + built assets, no PHP)
+                               → app_runtime (php-fpm; unnamed-default-equivalent, last in the
+                               file, so dev's docker-compose.yml — no `target:` set — still
+                               builds it unchanged). Only compose.yaml (production) builds
+                               node_build/nginx_runtime; dev serves assets from the `vite`
+                               dev-server container instead — see "Deploying behind a reverse
+                               proxy"
   app/entrypoint.sh           mkdir storage, key:gen, wait-for-db, migrate, storage:link
   nginx/default.conf
 resources/
@@ -1079,20 +1086,57 @@ mechanism this app doesn't have yet) and deserves its own explicit go-ahead.
 
 ## Deploying behind a reverse proxy
 
-`docker-compose.yml`'s `app`/`postgres`/`redis`/`reverb`/`mailpit`/`vite` ports are
-bound to `127.0.0.1` on the host, not `0.0.0.0` — none of them should ever be reachable
-directly from outside the host. Put a reverse proxy in front of the host and route it
-to `127.0.0.1:8000` (HTTP/Inertia/API) and `127.0.0.1:8080` (Reverb — needs WebSocket
-`Upgrade`/`Connection` headers passed through, since Reverb isn't behind the app's
-`nginx` container). `coturn`'s ports are the one exception left bound to `0.0.0.0` —
-WebRTC media relay is UDP/TCP, not something an HTTP reverse proxy can front, so it
-must stay directly reachable by real clients. `bootstrap/app.php` trusts `*` for
-`trustProxies()` specifically because of this — that's only safe as long as the port
-bindings above stay loopback-only. If you ever need to expose one of those ports
-publicly again, narrow `trustProxies()` to the actual proxy IP/CIDR first. Also set,
-per-environment, not in this file: `APP_URL` (real public URL), `SANCTUM_STATEFUL_DOMAINS`
-(real domain), `SESSION_SECURE_COOKIE=true`, `VITE_REVERB_HOST`/`VITE_REVERB_SCHEME`/
-`TURN_PUBLIC_HOST` (the public domain instead of `localhost`).
+Two separate compose files, not one file for both jobs:
+
+- **`docker-compose.yml`** — local dev. Bind-mounts the repo (`.:/var/www/html`)
+  into `app`/`nginx`/`reverb`/`worker`, runs a `vite` dev-server container for
+  HMR, and has no build step of its own. `app`/`postgres`/`redis`/`reverb`/
+  `mailpit`/`vite` ports are bound to `127.0.0.1`, not `0.0.0.0`.
+- **`compose.yaml`** — production, meant for Komodo's "auto deploy from git" (or
+  any git-based compose deploy) behind a `caddy-docker-proxy` instance already
+  running on the host. It builds two named targets out of the *same*
+  `docker/app/Dockerfile` — `app_runtime` (php-fpm; used by `app`/`reverb`/
+  `worker`) and `nginx_runtime` (nginx + the real `npm run build` output baked
+  in at image-build time, via a `node_build` stage) — rather than bind-mounting
+  source, since a fresh git checkout has none of `vendor/`, `node_modules/`,
+  `public/build`, or `.env` (all gitignored). There is no `vite`/`mailpit`
+  service in this file. Every Laravel setting is threaded in through
+  `environment:` (the `x-laravel-env` YAML anchor) so Komodo's env-var UI is
+  the one place to configure secrets — `APP_KEY`/`DB_PASSWORD`/
+  `REVERB_APP_KEY`/`REVERB_APP_SECRET`/`TURN_SECRET` have no default and fail
+  the deploy loudly if unset (so is `DOMAIN` itself — the apex domain, with
+  no default). `nginx` and `reverb` carry `caddy`/`caddy.reverse_proxy`
+  labels and join an external `caddy` docker network (must already exist,
+  with the Caddy container attached) — Reverb gets its own subdomain
+  (`ws.$DOMAIN`) rather than sharing nginx's, because the browser connects
+  to it directly (see
+  `resources/js/services/echo.ts`); `VITE_REVERB_PORT=443` (through Caddy)
+  while the internal `REVERB_PORT` stays `8080` — same REVERB_HOST-vs-
+  VITE_REVERB_HOST split as the general guidance below, just automated via env
+  vars instead of hand-set per environment. Authentik's `AUTHENTIK_*` vars are
+  wired the same way, off by default (`AUTHENTIK_ENABLED=false`). See the
+  comment block at the top of `compose.yaml` for the full rationale.
+
+The general rule either file's production-facing services must follow:
+`app`/`postgres`/`redis`/`reverb`/`mailpit`/`vite` ports stay bound to
+`127.0.0.1` on the host, not `0.0.0.0` — none of them should ever be reachable
+directly from outside the host (a reverse proxy — Caddy via `compose.yaml`'s
+labels, or a hand-run one in front of `docker-compose.yml` — routes to
+`127.0.0.1:8000`/HTTP and `127.0.0.1:8080`/Reverb, the latter needing
+WebSocket `Upgrade`/`Connection` headers passed through since Reverb isn't
+behind the app's `nginx` container; Caddy's `reverse_proxy` does this
+automatically). `coturn`'s ports are the one exception left bound to
+`0.0.0.0` in both files — WebRTC media relay is UDP/TCP, not something an
+HTTP reverse proxy can front, so it must stay directly reachable by real
+clients. `bootstrap/app.php` trusts `*` for `trustProxies()` specifically
+because of this — that's only safe as long as the port bindings above stay
+loopback-only. If you ever need to expose one of those ports publicly again,
+narrow `trustProxies()` to the actual proxy IP/CIDR first. Also set, per
+environment (`compose.yaml` does this via env vars; a hand-rolled proxy in
+front of `docker-compose.yml` needs it set some other way): `APP_URL` (real
+public URL), `SANCTUM_STATEFUL_DOMAINS` (real domain), `SESSION_SECURE_COOKIE=true`,
+`VITE_REVERB_HOST`/`VITE_REVERB_SCHEME`/`TURN_PUBLIC_HOST` (the public domain
+instead of `localhost`).
 
 ## Env vars that matter
 

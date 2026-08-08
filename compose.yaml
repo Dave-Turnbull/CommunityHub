@@ -1,0 +1,282 @@
+# Production stack for Komodo's "auto deploy from git" — companion to
+# docker-compose.yml (local dev), not a replacement for it. Differences from
+# dev, and why:
+#   - app/reverb/worker build the `app_runtime` Dockerfile target and nginx
+#     builds `nginx_runtime` (see docker/app/Dockerfile) instead of bind-
+#     mounting the repo — Komodo's git checkout has no vendor/, node_modules/,
+#     public/build, or .env (all gitignored), so the containers must be
+#     self-contained images, not overlaid by host source.
+#   - No `vite` dev-server container. `nginx_runtime` bundles the real
+#     `npm run build` output baked in at image-build time.
+#   - No `mailpit` — point MAIL_* at a real mailer (defaults to Laravel's
+#     `log` driver so the stack still boots with zero mail config; wire up
+#     SMTP/SES via env vars when ready).
+#   - Every Laravel-facing setting is threaded in via `environment:` (the
+#     x-laravel-env anchor below) rather than a bind-mounted .env file, so
+#     Komodo's environment-variable UI is the single place to configure
+#     secrets. Laravel/phpdotenv treats already-set process env vars as
+#     authoritative over anything in the image's fallback .env, so this
+#     fully overrides it.
+#   - `nginx`/`reverb` carry `caddy`/`caddy.reverse_proxy` labels for the
+#     caddy-docker-proxy instance already running on this host (labels are a
+#     no-op if that's not what's fronting the box) and join the external
+#     `caddy` network so it can reach them. `{{upstreams N}}` is
+#     caddy-docker-proxy's own template syntax — it resolves to that
+#     container's IP:N on the shared network at runtime, so it doesn't care
+#     about container names. Caddy handles the WebSocket upgrade for Reverb
+#     automatically; no extra directive needed.
+#   - Reverb needs a *second*, separate public host (`ws.$DOMAIN`) because
+#     the browser connects to it directly, not through nginx (see
+#     resources/js/services/echo.ts, and the REVERB_HOST vs. VITE_REVERB_HOST
+#     trap in CLAUDE.md). VITE_REVERB_PORT is 443 (through Caddy), while the
+#     internal REVERB_PORT stays 8080 (app/worker publish to Reverb directly
+#     over the `communityhub` network) — these are deliberately different
+#     values, not a typo.
+#
+# Required env vars (no safe default — deploy fails loudly without them):
+#   APP_KEY, DB_PASSWORD, REVERB_APP_KEY, REVERB_APP_SECRET, TURN_SECRET, DOMAIN
+#   (the apex — chat.$DOMAIN / ws.$DOMAIN are derived from it)
+# Commonly overridden:
+#   AUTHENTIK_ENABLED + its AUTHENTIK_* siblings, MAIL_*, AWS_*
+#   (only if FILESYSTEM_DISK=r2).
+
+x-laravel-env: &laravel-env
+  APP_NAME: ${APP_NAME:-CommunityHub}
+  APP_ENV: production
+  APP_KEY: "${APP_KEY:?set APP_KEY — generate one with `php artisan key:generate --show`}"
+  APP_DEBUG: "false"
+  APP_URL: https://chat.${DOMAIN:?set DOMAIN}
+
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_DATABASE: ${DB_DATABASE:-communityhub}
+  DB_USERNAME: ${DB_USERNAME:-communityhub}
+  DB_PASSWORD: "${DB_PASSWORD:?set DB_PASSWORD}"
+
+  REDIS_CLIENT: phpredis
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+
+  QUEUE_CONNECTION: redis
+  SESSION_DRIVER: redis
+  SESSION_LIFETIME: ${SESSION_LIFETIME:-10080}
+  SESSION_SECURE_COOKIE: "true"
+  CACHE_STORE: redis
+
+  SANCTUM_STATEFUL_DOMAINS: chat.${DOMAIN:?set DOMAIN}
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+
+  BROADCAST_CONNECTION: reverb
+  REVERB_APP_ID: ${REVERB_APP_ID:-communityhub}
+  REVERB_APP_KEY: "${REVERB_APP_KEY:?set REVERB_APP_KEY}"
+  REVERB_APP_SECRET: "${REVERB_APP_SECRET:?set REVERB_APP_SECRET}"
+  # Server-side — the docker-compose service name, not the public host.
+  REVERB_HOST: reverb
+  REVERB_PORT: 8080
+  REVERB_SCHEME: http
+  REVERB_SCALING_ENABLED: "true"
+
+  # Browser-facing — through Caddy, on its own subdomain. See the notes above.
+  VITE_REVERB_APP_KEY: "${REVERB_APP_KEY:?set REVERB_APP_KEY}"
+  VITE_REVERB_HOST: ws.${DOMAIN:?set DOMAIN}
+  VITE_REVERB_PORT: "443"
+  VITE_REVERB_SCHEME: https
+
+  TURN_SECRET: "${TURN_SECRET:?set TURN_SECRET}"
+  TURN_REALM: ${TURN_REALM:-communityhub}
+  TURN_PORT: ${TURN_PORT:-3478}
+  TURN_PUBLIC_HOST: ${DOMAIN:?set DOMAIN}
+
+  # Defaults to Laravel's `log` driver so the stack boots without any mail
+  # config; switch MAIL_MAILER to smtp/ses and set the rest once real mail
+  # delivery is wired up.
+  MAIL_MAILER: ${MAIL_MAILER:-log}
+  MAIL_HOST: ${MAIL_HOST:-}
+  MAIL_PORT: ${MAIL_PORT:-587}
+  MAIL_USERNAME: ${MAIL_USERNAME:-}
+  MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+  MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-tls}
+  MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-noreply@${DOMAIN}}
+  MAIL_FROM_NAME: ${APP_NAME:-CommunityHub}
+  MAIL_SES_KEY: ${MAIL_SES_KEY:-}
+  MAIL_SES_SECRET: ${MAIL_SES_SECRET:-}
+  MAIL_SES_REGION: ${MAIL_SES_REGION:-us-east-1}
+
+  # Only governs code paths other than attachments (always the private
+  # `local` disk regardless of this value — see CLAUDE.md). Set to `r2` +
+  # the AWS_* vars below to use Cloudflare R2 instead of local disk.
+  FILESYSTEM_DISK: ${FILESYSTEM_DISK:-public}
+  UPLOAD_MAX_SIZE_KB: ${UPLOAD_MAX_SIZE_KB:-102400}
+  UPLOAD_ALLOWED_MIMES: ${UPLOAD_ALLOWED_MIMES:-jpeg,png,gif,webp,mp4,webm,mov,mp3,wav,ogg,pdf,txt,zip}
+
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-auto}
+  AWS_BUCKET: ${AWS_BUCKET:-}
+  AWS_ENDPOINT: ${AWS_ENDPOINT:-}
+  AWS_USE_PATH_STYLE_ENDPOINT: "true"
+
+  SIGNUP_MANUAL_ENABLED: ${SIGNUP_MANUAL_ENABLED:-true}
+  SIGNUP_EMAIL_INVITE_ENABLED: ${SIGNUP_EMAIL_INVITE_ENABLED:-true}
+  SIGNUP_OAUTH_ENABLED: ${SIGNUP_OAUTH_ENABLED:-true}
+  EMAIL_VERIFICATION_ENABLED: ${EMAIL_VERIFICATION_ENABLED:-false}
+
+  # Authentik is already on this server — set AUTHENTIK_ENABLED=true plus the
+  # three vars below (no working default; login 404s until all are set, see
+  # docs/auth-and-sso.md). AUTHENTIK_REDIRECT_URI is optional — it falls back
+  # to {APP_URL}/auth/authentik/callback, which is already correct for this
+  # domain.
+  AUTHENTIK_ENABLED: ${AUTHENTIK_ENABLED:-false}
+  AUTHENTIK_CLIENT_ID: ${AUTHENTIK_CLIENT_ID:-}
+  AUTHENTIK_CLIENT_SECRET: ${AUTHENTIK_CLIENT_SECRET:-}
+  AUTHENTIK_BASE_URL: ${AUTHENTIK_BASE_URL:-}
+  AUTHENTIK_REDIRECT_URI: ${AUTHENTIK_REDIRECT_URI:-}
+
+services:
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+      target: app_runtime
+    restart: unless-stopped
+    environment: *laravel-env
+    volumes:
+      - storage_framework:/var/www/html/storage/framework
+      - storage_logs:/var/www/html/storage/logs
+      - app_storage:/var/www/html/storage/app
+      - bootstrap_cache:/var/www/html/bootstrap/cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [communityhub]
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+      target: nginx_runtime
+    restart: unless-stopped
+    volumes:
+      # Read-only, uploaded-file bytes only — see docker-compose.yml's
+      # identical comment on why this mount is required at all.
+      - app_storage:/var/www/html/storage/app:ro
+    depends_on: [app]
+    networks: [communityhub, caddy]
+    labels:
+      caddy: chat.${DOMAIN:?set DOMAIN}
+      caddy.reverse_proxy: "{{upstreams 80}}"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-communityhub}
+      POSTGRES_USER: ${DB_USERNAME:-communityhub}
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?set DB_PASSWORD}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-communityhub}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks: [communityhub]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks: [communityhub]
+
+  reverb:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+      target: app_runtime
+    restart: unless-stopped
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    environment: *laravel-env
+    volumes:
+      - storage_framework:/var/www/html/storage/framework
+      - storage_logs:/var/www/html/storage/logs
+      - bootstrap_cache:/var/www/html/bootstrap/cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [communityhub, caddy]
+    labels:
+      caddy: ws.${DOMAIN:?set DOMAIN}
+      caddy.reverse_proxy: "{{upstreams 8080}}"
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+      target: app_runtime
+    restart: unless-stopped
+    command: php artisan queue:work --sleep=3 --tries=3 --timeout=90
+    environment: *laravel-env
+    volumes:
+      - storage_framework:/var/www/html/storage/framework
+      - storage_logs:/var/www/html/storage/logs
+      - bootstrap_cache:/var/www/html/bootstrap/cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [communityhub]
+
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    command: >
+      -n --log-file=stdout --fingerprint
+      --listening-port=${TURN_PORT:-3478}
+      --realm=${TURN_REALM:-communityhub}
+      --use-auth-secret
+      --static-auth-secret=${TURN_SECRET:?set TURN_SECRET}
+      --min-port=49160 --max-port=49200
+      --no-cli
+    ports:
+      # WebRTC media relay is UDP/TCP, not HTTP — must stay directly
+      # reachable by clients, so this is the one service NOT behind Caddy.
+      - "${TURN_PORT:-3478}:3478/udp"
+      - "${TURN_PORT:-3478}:3478/tcp"
+      - "49160-49200:49160-49200/udp"
+    networks: [communityhub]
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_framework:
+  storage_logs:
+  app_storage:
+  bootstrap_cache:
+
+networks:
+  communityhub:
+    driver: bridge
+  # Caddy's own network — external because Caddy itself isn't part of this
+  # stack. Must already exist (`docker network create caddy`) and have the
+  # Caddy container attached to it.
+  caddy:
+    external: true
+    name: ${CADDY_NETWORK:-caddy}

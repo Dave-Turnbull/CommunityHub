@@ -19,8 +19,44 @@ RUN COMPOSER_ALLOW_SUPERUSER=1 composer dump-autoload \
     --optimize --no-dev --no-scripts --ignore-platform-reqs
 
 
-# ── Runtime image ─────────────────────────────────────────────────────────────
-FROM php:8.4-fpm-alpine
+# ── Build stage: frontend assets ──────────────────────────────────────────────
+# Only consumed by compose.yaml's production build (nginx_runtime/app_runtime
+# targets, below) — dev's docker-compose.yml builds this Dockerfile's default
+# (last) stage, app_runtime, and serves assets from the `vite` dev-server
+# container instead, so this stage never runs for a dev `docker compose up`.
+FROM node:22-alpine AS node_build
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+
+# ── nginx runtime image (production only) ──────────────────────────────────────
+# Bundles the built frontend + public/ into nginx's own image rather than
+# relying on a bind mount or a shared volume seeded from app_runtime's image —
+# both are racy/stale across redeploys. See compose.yaml.
+FROM nginx:1.25-alpine AS nginx_runtime
+
+COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY --from=composer_build /app/public /var/www/html/public
+COPY --from=node_build /app/public/build /var/www/html/public/build
+
+# Mirrors `php artisan storage:link` (run by app_runtime's entrypoint.sh, in
+# app_runtime's own filesystem) so nginx can also resolve /storage/* — the
+# app_storage named volume mounts onto storage/app at runtime, only the
+# symlink itself needs to pre-exist in this image.
+RUN ln -s ../storage/app/public /var/www/html/public/storage
+
+EXPOSE 80
+
+
+# ── app_runtime image (php-fpm) ─────────────────────────────────────────────────
+# Kept last/unnamed-equivalent-default so dev's docker-compose.yml (no
+# `target:` set) still builds this stage without changes.
+FROM php:8.4-fpm-alpine AS app_runtime
 
 # autoconf/g++/make needed by pecl to compile the Redis extension
 RUN apk add --no-cache \
@@ -48,6 +84,11 @@ COPY --from=composer_build /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 COPY --from=composer_build /app /var/www/html
+
+# Laravel's Vite integration reads public/build/manifest.json server-side
+# (to emit the right <script>/<link> tags) even though php-fpm never serves
+# the built JS/CSS files themselves — nginx_runtime does that half.
+COPY --from=node_build /app/public/build /var/www/html/public/build
 
 RUN mkdir -p storage/framework/cache/data storage/framework/sessions \
              storage/framework/views storage/logs bootstrap/cache \
