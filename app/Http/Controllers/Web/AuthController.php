@@ -115,6 +115,10 @@ class AuthController extends Controller
 
         $invite?->accept();
 
+        if (config('verification.enabled')) {
+            $user->sendEmailVerificationNotification();
+        }
+
         Auth::login($user);
         $request->session()->regenerate();
 
