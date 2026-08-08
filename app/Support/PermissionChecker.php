@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Channel;
+use App\Models\ChannelPermissionOverride;
 use App\Models\Role;
 use App\Models\Room;
 use App\Models\User;
@@ -34,6 +36,34 @@ final class PermissionChecker
     {
         return static::rolesFor($user, $room)
             ->contains(fn (Role $role) => $role->hasPermission(Permission::Administrator) || $role->hasCategoryGrant($category));
+    }
+
+    /**
+     * $permission's room-tier resolution for $channel specifically, with a
+     * curated subset (Permission::channelOverridableCases()) additionally
+     * checkable per-role via ChannelPermissionOverride — see
+     * docs/roles-and-permissions.md's "Room permission ceilings". A row's
+     * `allowed` replaces *only that one role's* contribution to the
+     * OR-union below, not a global deny — a user holding a second,
+     * non-overridden role that grants the permission still passes. Same
+     * "no explicit deny" philosophy can() already has, one layer deeper.
+     */
+    public static function canInChannel(User $user, Permission $permission, Channel $channel): bool
+    {
+        if (static::can($user, Permission::Administrator, $channel->room)) {
+            return true;
+        }
+
+        $overrides = ChannelPermissionOverride::where('channel_id', $channel->id)
+            ->where('permission', $permission->value)
+            ->get()
+            ->keyBy('role_id');
+
+        return static::rolesFor($user, $channel->room)->contains(function (Role $role) use ($overrides, $permission) {
+            $override = $overrides->get($role->id);
+
+            return $override ? $override->allowed : $role->hasPermission($permission);
+        });
     }
 
     /**

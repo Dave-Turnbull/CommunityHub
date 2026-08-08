@@ -39,6 +39,12 @@ class Channel extends Model
         return $this->belongsToMany(Role::class, 'channel_role_visibility');
     }
 
+    /** Curated per-role permission overrides — see PermissionChecker::canInChannel(). */
+    public function permissionOverrides(): HasMany
+    {
+        return $this->hasMany(ChannelPermissionOverride::class);
+    }
+
     /**
      * Whether $user can see this channel at all — separate from whether they
      * can send in it. An empty visibilityRoles set means "never explicitly

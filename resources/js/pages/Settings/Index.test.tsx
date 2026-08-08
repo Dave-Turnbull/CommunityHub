@@ -54,6 +54,7 @@ const props = (
     conversations: [],
     recentCustomStatuses: [],
     registrationPaths: { manual: true, emailInvite: true, oauth: true },
+    authentikEnabled: false,
     flash: {},
     user,
     can_manage_global_roles: false,

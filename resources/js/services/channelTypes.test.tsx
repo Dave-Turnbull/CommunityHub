@@ -4,6 +4,7 @@ import {
     isTextCapableChannelType,
     KNOWN_CHANNEL_TYPES,
     orderedTypesIn,
+    overridablePermissionsFor,
 } from '@/services/channelTypes'
 
 describe('channelTypeDescriptor', () => {
@@ -68,5 +69,54 @@ describe('orderedTypesIn', () => {
 describe('KNOWN_CHANNEL_TYPES', () => {
     it('lists the five user-creatable built-in types sorted by order, excluding the conversation hybrid', () => {
         expect(KNOWN_CHANNEL_TYPES.map((d) => d.key)).toEqual(['announcement', 'text', 'voice', 'forum', 'message_and_comment'])
+    })
+})
+
+describe('overridablePermissionsFor', () => {
+    it('offers post_announcements and react but not send_messages/vote/comment on an announcement channel', () => {
+        const permissions = overridablePermissionsFor('announcement')
+
+        expect(permissions).toContain('post_announcements')
+        expect(permissions).toContain('react')
+        expect(permissions).toContain('manage_channel_visibility')
+        expect(permissions).not.toContain('send_messages')
+        expect(permissions).not.toContain('vote')
+        expect(permissions).not.toContain('comment')
+    })
+
+    it('offers send_messages and react but not comment/vote/post_announcements on a plain text channel', () => {
+        const permissions = overridablePermissionsFor('text')
+
+        expect(permissions).toContain('send_messages')
+        expect(permissions).toContain('react')
+        expect(permissions).not.toContain('comment')
+        expect(permissions).not.toContain('vote')
+        expect(permissions).not.toContain('post_announcements')
+    })
+
+    it('offers only manage_channel_visibility on a voice channel — no messages exist there', () => {
+        expect(overridablePermissionsFor('voice')).toEqual(['manage_channel_visibility'])
+    })
+
+    it('offers send_messages, comment, and vote on a forum, not post_announcements', () => {
+        const permissions = overridablePermissionsFor('forum')
+
+        expect(permissions).toContain('send_messages')
+        expect(permissions).toContain('comment')
+        expect(permissions).toContain('vote')
+        expect(permissions).not.toContain('post_announcements')
+    })
+
+    it('offers comment but not vote on a message-and-comment channel', () => {
+        const permissions = overridablePermissionsFor('message_and_comment')
+
+        expect(permissions).toContain('comment')
+        expect(permissions).not.toContain('vote')
+    })
+
+    it('always includes manage_channel_visibility regardless of type', () => {
+        for (const type of ['announcement', 'text', 'voice', 'forum', 'message_and_comment'] as const) {
+            expect(overridablePermissionsFor(type)).toContain('manage_channel_visibility')
+        }
     })
 })

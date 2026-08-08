@@ -15,7 +15,14 @@ class RoleManagementTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** A room member holding a custom role with ManageRoles, ranked at $position (default: comfortably above a freshly-factory-created role's default 0). */
+    /**
+     * A room member holding a custom role with ManageRoles, ranked at
+     * $position (default: comfortably above a freshly-factory-created
+     * role's default 0). Also holds ManageChannels/ManageModChannels/
+     * ManageMessages — a role can only grant a permission it currently
+     * holds itself (see PermissionCeiling), so tests that grant those
+     * specific permissions to another role need the actor to hold them too.
+     */
     private function memberWithManageRoles(Room $room, int $position = 50): User
     {
         $user = User::factory()->create();
@@ -23,6 +30,9 @@ class RoleManagementTest extends TestCase
 
         $role = Role::factory()->for($room)->create(['position' => $position]);
         $role->grant(Permission::ManageRoles);
+        $role->grant(Permission::ManageChannels);
+        $role->grant(Permission::ManageModChannels);
+        $role->grant(Permission::ManageMessages);
         RoleAssignment::factory()->for($role)->for($user)->create();
 
         return $user;
@@ -114,6 +124,40 @@ class RoleManagementTest extends TestCase
             ['manage_channels', 'manage_messages'],
             $role->fresh()->rolePermissions->pluck('permission')->map(fn ($p) => $p->value)->all()
         );
+    }
+
+    public function test_an_actor_cannot_grant_a_permission_they_do_not_hold_themselves(): void
+    {
+        // memberWithManageRoles holds ManageRoles/ManageChannels/
+        // ManageModChannels/ManageMessages, but not BanMembers — an actor
+        // can only grant a permission they currently hold themselves (see
+        // PermissionCeiling), closing a real gap: previously anyone with
+        // ManageRoles who outranked a role could grant it any permission.
+        $room = Room::factory()->create();
+        $user = $this->memberWithManageRoles($room);
+        $role = Role::factory()->for($room)->create(['position' => 10]);
+
+        $response = $this->actingAs($user)->patchJson("/api/roles/{$role->id}", [
+            'permissions' => ['manage_channels', 'ban_members'],
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertEmpty($role->fresh()->rolePermissions);
+    }
+
+    public function test_removing_a_permission_the_actor_does_not_hold_is_still_allowed(): void
+    {
+        $room = Room::factory()->create();
+        $user = $this->memberWithManageRoles($room);
+        $role = Role::factory()->for($room)->create(['position' => 10]);
+        $role->grant(Permission::BanMembers);
+
+        $response = $this->actingAs($user)->patchJson("/api/roles/{$role->id}", [
+            'permissions' => [],
+        ]);
+
+        $response->assertOk();
+        $this->assertEmpty($role->fresh()->rolePermissions);
     }
 
     public function test_a_roles_channel_categories_can_be_granted_and_replaced(): void

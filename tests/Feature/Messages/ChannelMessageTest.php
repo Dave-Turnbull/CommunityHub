@@ -6,7 +6,6 @@ use App\Events\MessageSent;
 use App\Models\Channel;
 use App\Models\Message;
 use App\Models\Room;
-use App\Models\RoomMember;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -19,9 +18,28 @@ class ChannelMessageTest extends TestCase
     private function member(Room $room): User
     {
         $user = User::factory()->create();
-        RoomMember::factory()->for($room)->for($user)->create();
+        // addMember(), not a bare RoomMember row — assigns the room's
+        // default (Member) role too, which now carries the SendMessages
+        // permission ordinary posting requires.
+        $room->addMember($user);
 
         return $user;
+    }
+
+    public function test_sending_an_ordinary_channel_message_is_rejected_without_send_messages(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $user = $this->member($room);
+
+        $memberRole = $room->roles()->where('is_default', true)->firstOrFail();
+        $memberRole->rolePermissions()->where('permission', 'send_messages')->delete();
+
+        $response = $this->actingAs($user)
+            ->postJson("/api/channels/{$channel->id}/messages", ['content' => 'Hello!']);
+
+        $response->assertForbidden();
+        $this->assertDatabaseCount('messages', 0);
     }
 
     public function test_a_member_can_send_a_channel_message(): void

@@ -23,6 +23,9 @@ class RoomFactory extends Factory
         // Structure only (Owner + Member roles), not membership — mirrors
         // this factory's existing behavior of not creating a RoomMember for
         // owner_id either; see RoomShowTest for a test that creates its own.
-        return $this->afterCreating(fn (Room $room) => Role::seedDefaultsForRoom($room));
+        return $this->afterCreating(function (Room $room) {
+            $room->snapshotPermissionCeiling($room->owner);
+            Role::seedDefaultsForRoom($room);
+        });
     }
 }

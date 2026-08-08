@@ -33,6 +33,11 @@ class PermissionEnumStabilityTest extends TestCase
             'post_announcements',
             'comment',
             'vote',
+            'send_messages',
+            'react',
+            'create_room',
+            'invite_server',
+            'invite_members',
         ];
 
         $actual = array_map(fn (Permission $p) => $p->value, Permission::cases());

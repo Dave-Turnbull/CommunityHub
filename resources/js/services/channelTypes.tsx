@@ -4,7 +4,8 @@ import { VoiceChannelSidebarItem } from '@/components/sidebar/VoiceChannelSideba
 import { HybridConversationContent } from '@/components/chat/HybridConversationContent'
 import { TextChannelContent } from '@/components/chat/TextChannelContent'
 import { ForumChannelContent } from '@/components/chat/ForumChannelContent'
-import type { Channel, ChannelType, PaginatedMessages, User } from '@/types'
+import { CHANNEL_OVERRIDABLE_PERMISSIONS } from '@/types'
+import type { Channel, ChannelType, PaginatedMessages, PermissionKey, User } from '@/types'
 
 /**
  * Mirrors App\Support\ChannelTypes\ChannelType on the backend — the single
@@ -42,11 +43,39 @@ export interface ChannelTypeDescriptor {
     description: string
     capabilities: string[]
     isTextCapable: boolean
+    /**
+     * Which of the curated channel-overridable permissions
+     * (CHANNEL_OVERRIDABLE_PERMISSIONS) genuinely mean something for this
+     * type — hand-set per type, same spirit as `isTextCapable`, rather than
+     * derived from `capabilities`' group strings (no JS-side FeatureRegistry
+     * exists to expand 'text.all' into atomic keys). Drives
+     * `overridablePermissionsFor()` below, which is what
+     * ChannelPermissionsPanel actually renders — never show a permission
+     * toggle for something this channel type can't do (e.g. Vote on a plain
+     * text channel, or Comment on a type whose Content component never
+     * renders a comment thread at all).
+     */
+    supports: ChannelCapabilityTag[]
     /** Replaces the channel/conversation's entire main-pane content — omit to show an empty state (see CLAUDE.md: no type gets a default). */
     Content?: ComponentType<any>
     /** Replaces ChannelSidebar's default row — omit for a plain link. Channel-scoped types only. */
     SidebarItem?: ComponentType<{ channel: Channel; active: boolean; currentUser: User }>
 }
+
+/**
+ * The small, closed vocabulary `supports` is built from — not 1:1 with
+ * backend capability keys (e.g. 'comments' isn't a real Feature capability
+ * at all, see ForumChannelType's docblock: it's driven by whether a type's
+ * Content component actually renders a comment thread, which 'text'/
+ * 'announcement' never do regardless of settings.comments_enabled).
+ *
+ * 'text' and 'ordinary_send' are deliberately separate, not one tag: an
+ * announcement channel has messages/reactions ('text') but never posts via
+ * SendMessages ('ordinary_send') — TextMessageService::authorizeSend routes
+ * it through PostAnnouncements exclusively, so offering a SendMessages
+ * override there would be a dead toggle.
+ */
+type ChannelCapabilityTag = 'text' | 'ordinary_send' | 'vote' | 'comments' | 'announcement'
 
 const EMPTY_PAGE: PaginatedMessages = {
     data: [],
@@ -130,6 +159,12 @@ const REGISTRY: Record<string, ChannelTypeDescriptor> = {
         description: 'Post updates that only moderators can send.',
         capabilities: ['text.all'],
         isTextCapable: true,
+        // Sends via PostAnnouncements, not SendMessages — TextMessageService::
+        // authorizeSend routes an 'announcement' channel there specifically and
+        // never reaches SendMessages, so offering it here would be a dead
+        // override. No 'comments'/'vote' — this type's Content component
+        // (TextChannelTypeContent) never renders either.
+        supports: ['text', 'announcement'],
         Content: TextChannelTypeContent,
     },
     text: {
@@ -141,6 +176,10 @@ const REGISTRY: Record<string, ChannelTypeDescriptor> = {
         description: 'Send messages, images, and files.',
         capabilities: ['text.all'],
         isTextCapable: true,
+        // No 'comments' — TextChannelTypeContent never passes commentsEnabled
+        // to TextChannelContent, unlike MessageAndCommentChannelTypeContent, so
+        // comments are never reachable here regardless of channel settings.
+        supports: ['text', 'ordinary_send'],
         Content: TextChannelTypeContent,
     },
     voice: {
@@ -152,6 +191,10 @@ const REGISTRY: Record<string, ChannelTypeDescriptor> = {
         description: 'Talk with voice in real time.',
         capabilities: ['voice.all'],
         isTextCapable: false,
+        // No messages exist in a voice channel — none of the curated
+        // content-permissions apply; only the always-available
+        // manage_channel_visibility (see overridablePermissionsFor()) does.
+        supports: [],
         Content: VoiceChannelPanel,
         SidebarItem: VoiceChannelSidebarItem,
     },
@@ -164,6 +207,10 @@ const REGISTRY: Record<string, ChannelTypeDescriptor> = {
         description: 'Threaded posts with comments and voting.',
         capabilities: ['text.all', 'vote.all'],
         isTextCapable: false, // does not use useChat/useChannelFocus directly — see ForumChannelContent
+        // send_messages gates creating a new top-level post; comment gates
+        // replying in a post's detail view (CommentThread) — both real,
+        // distinct actions for this type.
+        supports: ['text', 'ordinary_send', 'vote', 'comments'],
         Content: ForumChannelContent,
     },
     message_and_comment: {
@@ -175,6 +222,7 @@ const REGISTRY: Record<string, ChannelTypeDescriptor> = {
         description: 'A normal chat where every message can also collect comments.',
         capabilities: ['text.all'],
         isTextCapable: true,
+        supports: ['text', 'ordinary_send', 'comments'],
         Content: MessageAndCommentChannelTypeContent,
     },
     conversation: {
@@ -186,6 +234,11 @@ const REGISTRY: Record<string, ChannelTypeDescriptor> = {
         description: 'A direct or group conversation.',
         capabilities: ['text.all', 'voice.all'],
         isTextCapable: true,
+        // Never rendered by ChannelPermissionsPanel — a Conversation isn't a
+        // Channel, and DMs don't go through room-role permission overrides at
+        // all (see Permission::SendDirectMessages instead). Present for type
+        // completeness only.
+        supports: ['text'],
         Content: HybridConversationContent,
     },
 }
@@ -228,12 +281,39 @@ export function channelTypeDescriptor(type: ChannelType): ChannelTypeDescriptor 
             description: '',
             capabilities: [],
             isTextCapable: false,
+            supports: [],
         }
     )
 }
 
 export function isTextCapableChannelType(type: ChannelType): boolean {
     return channelTypeDescriptor(type).isTextCapable
+}
+
+// Which `supports` tag (if any) each curated channel-overridable permission
+// needs to be offered at all — `null` means always offered, regardless of
+// type (manage_channel_visibility applies to every channel, including a
+// voice channel with no messages). Adding a new channel-overridable
+// permission is one line here (plus the usual PermissionKey/PERMISSION_LABELS/
+// PERMISSION_DESCRIPTIONS/CHANNEL_OVERRIDABLE_PERMISSIONS additions every new
+// permission needs) — existing channel types never need touching unless the
+// new permission needs a genuinely new `supports` tag.
+const OVERRIDABLE_PERMISSION_REQUIREMENTS: Partial<Record<PermissionKey, ChannelCapabilityTag | null>> = {
+    manage_channel_visibility: null,
+    send_messages: 'ordinary_send',
+    react: 'text',
+    comment: 'comments',
+    vote: 'vote',
+    post_announcements: 'announcement',
+}
+
+/** The subset of CHANNEL_OVERRIDABLE_PERMISSIONS that actually mean something for $type — see ChannelTypeDescriptor.supports. */
+export function overridablePermissionsFor(type: ChannelType): PermissionKey[] {
+    const supports = channelTypeDescriptor(type).supports
+    return CHANNEL_OVERRIDABLE_PERMISSIONS.filter((permission) => {
+        const requirement = OVERRIDABLE_PERMISSION_REQUIREMENTS[permission]
+        return requirement === null || requirement === undefined || supports.includes(requirement)
+    })
 }
 
 /** Known types first (in their preferred order), then any others present — see ChannelSidebar. */

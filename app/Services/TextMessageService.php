@@ -355,13 +355,19 @@ class TextMessageService
     {
         if ($this->entity instanceof Message) {
             $scopeEntity = $this->entity->scopeEntity();
-            $room = $scopeEntity instanceof Channel ? $scopeEntity->room : null;
 
             // Standalone permission, independent of whatever gates sending
             // an ordinary message in that same channel — a role can be
             // granted Comment without SendDirectMessages/plain posting
             // rights, or vice versa. See docs/comments-and-voting.md.
-            abort_unless(PermissionChecker::can($user, Permission::Comment, $room), 403, 'You are not allowed to comment.');
+            // channel-scoped: goes through the per-channel override table
+            // (Permission::channelOverridableCases() includes Comment) —
+            // conversation-scoped/no scope: plain room = null resolution,
+            // there's no channel to override against.
+            $allowed = $scopeEntity instanceof Channel
+                ? PermissionChecker::canInChannel($user, Permission::Comment, $scopeEntity)
+                : PermissionChecker::can($user, Permission::Comment, null);
+            abort_unless($allowed, 403, 'You are not allowed to comment.');
 
             return;
         }
@@ -371,7 +377,14 @@ class TextMessageService
         }
 
         if ($this->entity instanceof Channel && $this->entity->type === 'announcement') {
-            abort_unless(PermissionChecker::can($user, Permission::PostAnnouncements, $this->entity->room), 403, 'Only owners and moderators can post announcements.');
+            abort_unless(PermissionChecker::canInChannel($user, Permission::PostAnnouncements, $this->entity), 403, 'Only owners and moderators can post announcements.');
+        } elseif ($this->entity instanceof Channel) {
+            // Ordinary (non-announcement) channel posting — previously had no
+            // Permission::* check at all, only membership + the capability
+            // check below. Standalone from Comment/PostAnnouncements, so a
+            // channel can disable ordinary sending while leaving comments or
+            // announcements enabled, or vice versa.
+            abort_unless(PermissionChecker::canInChannel($user, Permission::SendMessages, $this->entity), 403, 'You are not allowed to send messages in this channel.');
         }
 
         if (! blank($validated['content'] ?? null)) {

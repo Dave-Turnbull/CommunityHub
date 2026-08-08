@@ -608,6 +608,27 @@ old references/commit messages still resolve.
     near it — the falsy check that used to mean "defensive, should never happen" can
     silently become "this is the normal path for half of all cases now."
 
+52. **A DB column default doesn't exist on a freshly-`create()`d Eloquent model until
+    it's refreshed — a falsy check on that attribute right after creation reads the
+    wrong branch.** `Room::create([...])` doesn't populate `permission_ceiling_unrestricted`
+    (a `boolean, default true` migration column never passed in the `create()` array) —
+    the in-memory model's attribute is `null`, not `true`, until `fresh()`/`refresh()`
+    or a re-`Room::find()`. `Room::effectivePermissionCeiling()`'s `$this->
+    permission_ceiling_unrestricted ? 'unrestricted' : ...` treated that `null` as
+    falsy, silently taking the *restricted-with-an-empty-ceiling* branch for every
+    room — `Role::seedDefaultsForRoom()` then granted Owner/Moderator/Member *nothing*,
+    since it intersects each default grant against an empty ceiling array. Tests that
+    re-queried the room fresh from the DB (`Room::where(...)->firstOrFail()`) didn't
+    catch this — only tests asserting against the *same in-memory `$room` instance* used
+    during the request (e.g. `PermissionChecker::can($user, ..., $room)` right after
+    `RoomController::store` ran) exposed it. Fixed by adding `protected $attributes =
+    ['permission_ceiling_unrestricted' => true];` to the `Room` model, mirroring the
+    migration's DB default in-memory — the standard fix for this class of bug. Any new
+    code that reads a DB-defaulted column on a model instance in the *same request* that
+    created it (not a re-fetched copy) needs either this `$attributes` mirror or an
+    explicit non-null check (`!== false`, not truthiness) — don't assume a migration
+    default is reflected on the object `create()` hands back.
+
 ## Notifications — see [notifications.md](notifications.md)
 
 50. **(#24) A `NotificationPreference` category with no producer is silently inert.**

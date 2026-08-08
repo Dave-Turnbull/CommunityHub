@@ -53,8 +53,10 @@ class VoteService
         abort_unless($this->message->hasCapability('vote.cast'), 422, 'Voting is not enabled here.');
 
         $scopeEntity = $this->message->scopeEntity();
-        $room = $scopeEntity instanceof Channel ? $scopeEntity->room : null;
-        abort_unless(PermissionChecker::can($user, Permission::Vote, $room), 403, 'You are not allowed to vote.');
+        $allowed = $scopeEntity instanceof Channel
+            ? PermissionChecker::canInChannel($user, Permission::Vote, $scopeEntity)
+            : PermissionChecker::can($user, Permission::Vote, null);
+        abort_unless($allowed, 403, 'You are not allowed to vote.');
     }
 
     private function broadcastSummary(User $user): array

@@ -15,14 +15,15 @@ class Role extends Model
 {
     use HasFactory, HasUuids;
 
-    protected $fillable = ['room_id', 'name', 'position', 'is_default', 'is_system'];
+    protected $fillable = ['room_id', 'name', 'position', 'is_default', 'is_system', 'has_room_permission_ceiling'];
 
     protected function casts(): array
     {
         return [
-            'position'   => 'integer',
-            'is_default' => 'boolean',
-            'is_system'  => 'boolean',
+            'position'                    => 'integer',
+            'is_default'                  => 'boolean',
+            'is_system'                   => 'boolean',
+            'has_room_permission_ceiling' => 'boolean',
         ];
     }
 
@@ -30,6 +31,10 @@ class Role extends Model
     public function rolePermissions(): HasMany     { return $this->hasMany(RolePermission::class); }
     public function assignments(): HasMany         { return $this->hasMany(RoleAssignment::class); }
     public function channelCategories(): HasMany   { return $this->hasMany(RoleChannelCategory::class); }
+
+    /** Only meaningful when has_room_permission_ceiling is true — see PermissionCeiling. */
+    public function roomPermissionCeilings(): HasMany      { return $this->hasMany(RoleRoomPermissionCeiling::class); }
+    public function roomChannelCategoryCeilings(): HasMany { return $this->hasMany(RoleRoomChannelCategoryCeiling::class); }
 
     public function users(): BelongsToMany
     {
@@ -121,12 +126,31 @@ class Role extends Model
     }
 
     /**
+     * The global-scope sibling of highestRoleFor() — the highest-ranked
+     * global (room_id IS NULL) role $user holds, or null if they hold none.
+     * Used by RolePolicy::manage's global branch, which — unlike the room
+     * branch — used to skip hierarchy entirely; giving global roles a real
+     * rank comparison closes that gap. rank() already works unmodified for
+     * global roles (it only inspects is_system/is_default/position, never
+     * room_id).
+     */
+    public static function highestGlobalRoleFor(User $user): ?self
+    {
+        return static::query()
+            ->whereNull('room_id')
+            ->whereHas('assignments', fn ($q) => $q->where('user_id', $user->id))
+            ->get()
+            ->sortByDesc(fn (self $role) => $role->rank())
+            ->first();
+    }
+
+    /**
      * Seeds the three roles every new room starts with: an "Owner" role
      * (Administrator — implies every permission) and a "Member" default role
      * (baseline, no elevated permissions yet) auto-assigned to every new
      * member, plus a "Moderator" role pre-granted the day-to-day moderation
-     * permission set (ManageChannels/ManageChannelVisibility/ManageMembers/
-     * BanMembers/PostAnnouncements — see docs/roles-and-permissions.md's
+     * permission set (ManageChannels/ManageChannelVisibility/InviteMembers/
+     * ManageMembers/BanMembers/PostAnnouncements — see docs/roles-and-permissions.md's
      * permission category scheme). Owner and Member are is_system: true — undeletable/
      * unrenamable via the API, see RolePolicy. Moderator is deliberately
      * NOT is_system and NOT auto-assigned to anyone: it's a real, ordinary
@@ -138,17 +162,42 @@ class Role extends Model
      * matching this app's existing "no model-event magic" style (channels
      * are seeded explicitly too).
      *
+     * MUST be called after Room::snapshotPermissionCeiling() — a restricted
+     * room's ceiling (see $room->effectivePermissionCeiling()) bounds every
+     * seeded default grant here, including Owner's: a restricted Owner does
+     * NOT get the Administrator wildcard (that would defeat the whole point
+     * of a ceiling), it's granted exactly the ceiling's permission set
+     * instead. Moderator/Member's normal default sets are each intersected
+     * with the ceiling the same way. This is what makes the induction
+     * argument in PermissionCeiling's docblock actually hold — grantablePermissions()
+     * never needs its own ceiling-awareness because a restricted room's
+     * roles never held more than the ceiling to begin with.
+     *
      * @return array{owner: Role, member: Role, moderator: Role}
      */
     public static function seedDefaultsForRoom(Room $room): array
     {
+        $ceiling = $room->effectivePermissionCeiling();
+
+        $grantIfPermitted = function (Role $role, Permission $permission) use ($ceiling) {
+            if ($ceiling === 'unrestricted' || in_array($permission->value, $ceiling, true)) {
+                $role->grant($permission);
+            }
+        };
+
         $owner = $room->roles()->create([
             'name'       => 'Owner',
             'position'   => 100,
             'is_default' => false,
             'is_system'  => true,
         ]);
-        $owner->grant(Permission::Administrator);
+        if ($ceiling === 'unrestricted') {
+            $owner->grant(Permission::Administrator);
+        } else {
+            foreach ($ceiling as $permission) {
+                $owner->grant(Permission::from($permission));
+            }
+        }
 
         $moderator = $room->roles()->create([
             'name'       => 'Moderator',
@@ -156,11 +205,16 @@ class Role extends Model
             'is_default' => false,
             'is_system'  => false,
         ]);
-        $moderator->grant(Permission::ManageChannels);
-        $moderator->grant(Permission::ManageChannelVisibility);
-        $moderator->grant(Permission::ManageMembers);
-        $moderator->grant(Permission::BanMembers);
-        $moderator->grant(Permission::PostAnnouncements);
+        foreach ([
+            Permission::ManageChannels,
+            Permission::ManageChannelVisibility,
+            Permission::InviteMembers,
+            Permission::ManageMembers,
+            Permission::BanMembers,
+            Permission::PostAnnouncements,
+        ] as $permission) {
+            $grantIfPermitted($moderator, $permission);
+        }
 
         $member = $room->roles()->create([
             'name'       => 'Member',
@@ -168,8 +222,9 @@ class Role extends Model
             'is_default' => true,
             'is_system'  => true,
         ]);
-        $member->grant(Permission::Comment);
-        $member->grant(Permission::Vote);
+        foreach ([Permission::Comment, Permission::Vote, Permission::SendMessages, Permission::React] as $permission) {
+            $grantIfPermitted($member, $permission);
+        }
 
         return ['owner' => $owner, 'member' => $member, 'moderator' => $moderator];
     }
@@ -179,10 +234,16 @@ class Role extends Model
      * registration — the global mirror of seedDefaultsForRoom()'s room
      * Member. Idempotent (firstOrCreate on room_id null + is_default true),
      * safe to call from a migration and from every user-creation call site.
-     * Grants SendDirectMessages by default; there is no global Owner
-     * equivalent seeded here — the very first global Administrator role is
-     * created by the `app:bootstrap-admin` console command instead, since
-     * "who may create the first one" can't be answered by this method alone.
+     * Grants SendDirectMessages and CreateRoom by default; there is no
+     * global Owner equivalent seeded here — the very first global
+     * Administrator role is created by the `app:bootstrap-admin` console
+     * command instead, since "who may create the first one" can't be
+     * answered by this method alone. Also seeds "Server Moderator" — an
+     * ordinary, deletable custom global role (not is_system), present by
+     * default but with no permissions pre-granted, mirroring
+     * seedDefaultsForRoom()'s room Moderator's "deletable but pre-seeded"
+     * shape without assuming what a server moderator concretely does yet;
+     * left for a server admin to configure via the existing Roles UI.
      */
     public static function seedGlobalDefaults(): self
     {
@@ -192,6 +253,16 @@ class Role extends Model
         );
 
         $member->grant(Permission::SendDirectMessages);
+        $member->grant(Permission::CreateRoom);
+        // React is room-scoped but global-scope-relevant too (same shape as
+        // SendDirectMessages) — a DM-scoped message has no room to check
+        // against, so reacting in a conversation needs the global grant.
+        $member->grant(Permission::React);
+
+        static::firstOrCreate(
+            ['room_id' => null, 'name' => 'Server Moderator'],
+            ['position' => 50, 'is_default' => false, 'is_system' => false],
+        );
 
         return $member;
     }

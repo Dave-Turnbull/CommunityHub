@@ -57,6 +57,7 @@ class DatabaseSeeder extends Seeder
             'invite_code' => 'demo1234',
         ]);
 
+        $room->snapshotPermissionCeiling($dave);
         Role::seedDefaultsForRoom($room);
         $room->addMember($dave, asOwner: true);
         $room->addMember($bove);

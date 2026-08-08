@@ -41,7 +41,7 @@ class RoomRoleSeedingTest extends TestCase
         $moderator = $room->roles()->where('name', 'Moderator')->firstOrFail();
 
         $this->assertEqualsCanonicalizing(
-            ['manage_channels', 'manage_channel_visibility', 'manage_members', 'ban_members', 'post_announcements'],
+            ['manage_channels', 'manage_channel_visibility', 'invite_members', 'manage_members', 'ban_members', 'post_announcements'],
             $moderator->rolePermissions->pluck('permission')->map(fn ($p) => $p->value)->all()
         );
         $this->assertCount(0, $moderator->assignments);

@@ -19,7 +19,12 @@ class GlobalRoleTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $role = Role::factory()->global()->create(['name' => 'Administrator']);
+        // is_system: true (not is_default) is what pins this role's rank to
+        // the hierarchy's top (see Role::rank()) — mirrors exactly how
+        // `app:bootstrap-admin` creates the real global Administrator role.
+        // Holding the Administrator permission alone isn't enough now that
+        // global roles have a real rank comparison (RolePolicy::manage).
+        $role = Role::factory()->global()->create(['name' => 'Administrator', 'position' => 100, 'is_system' => true]);
         $role->grant(Permission::Administrator);
         RoleAssignment::factory()->for($role)->for($user)->create();
 
@@ -85,6 +90,23 @@ class GlobalRoleTest extends TestCase
         $response = $this->actingAs($user)->getJson('/api/settings/roles');
 
         $response->assertForbidden();
+    }
+
+    public function test_global_roles_are_decorated_with_grantable_and_ceiling_fields(): void
+    {
+        $admin = $this->globalAdmin();
+        $support = Role::factory()->global()->create(['name' => 'Support']);
+        $support->grant(Permission::CreateRoom);
+
+        $response = $this->actingAs($admin)->getJson('/api/settings/roles');
+
+        $response->assertOk();
+        $support = collect($response->json('roles'))->firstWhere('name', 'Support');
+        $this->assertTrue($support['can_manage']);
+        $this->assertTrue($support['can_manage_ceiling']);
+        $this->assertContains('create_room', $support['grantable_permissions']);
+        $this->assertSame([], $support['room_permission_ceiling']);
+        $this->assertFalse($support['has_room_permission_ceiling']);
     }
 
     public function test_a_global_administrator_can_fetch_global_roles_and_users(): void
@@ -253,5 +275,88 @@ class GlobalRoleTest extends TestCase
         $response->assertOk();
         $this->assertDatabaseMissing('roles', ['id' => $custom->id]);
         $this->assertDatabaseHas('role_assignments', ['role_id' => $globalMember->id, 'user_id' => $target->id]);
+    }
+
+    // ── Global roles now have real hierarchy (RolePolicy::manage's global
+    // branch used to grant management on ManageRoles alone, with no rank
+    // comparison — a custom global role with ManageRoles could edit/delete
+    // a peer or higher-ranked global role, including in principle promoting
+    // itself). Role::rank() already worked for global roles unmodified; this
+    // closes the gap by comparing via Role::highestGlobalRoleFor(). ────────
+
+    private function customGlobalRoleHolder(int $position): User
+    {
+        $user = User::factory()->create();
+
+        $role = Role::factory()->global()->create(['position' => $position]);
+        $role->grant(Permission::ManageRoles);
+        RoleAssignment::factory()->for($role)->for($user)->create();
+
+        return $user;
+    }
+
+    public function test_a_custom_global_role_can_manage_a_lower_ranked_global_role(): void
+    {
+        $user = $this->customGlobalRoleHolder(50);
+        $lower = Role::factory()->global()->create(['position' => 10]);
+
+        $response = $this->actingAs($user)->patchJson("/api/roles/{$lower->id}", ['name' => 'Renamed']);
+
+        $response->assertOk();
+        $this->assertSame('Renamed', $lower->fresh()->name);
+    }
+
+    public function test_a_custom_global_role_cannot_manage_a_higher_ranked_global_role(): void
+    {
+        $user = $this->customGlobalRoleHolder(10);
+        $higher = Role::factory()->global()->create(['position' => 50]);
+
+        $response = $this->actingAs($user)->patchJson("/api/roles/{$higher->id}", ['name' => 'Renamed']);
+
+        $response->assertForbidden();
+        $this->assertNotSame('Renamed', $higher->fresh()->name);
+    }
+
+    public function test_a_custom_global_role_cannot_manage_a_role_of_equal_rank_including_its_own(): void
+    {
+        $user = $this->customGlobalRoleHolder(50);
+        $peer = Role::factory()->global()->create(['position' => 50]);
+
+        $response = $this->actingAs($user)->patchJson("/api/roles/{$peer->id}", ['name' => 'Renamed']);
+        $response->assertForbidden();
+
+        $ownRole = Role::whereNull('room_id')->where('position', 50)
+            ->whereHas('assignments', fn ($q) => $q->where('user_id', $user->id))
+            ->firstOrFail();
+        $this->actingAs($user)->patchJson("/api/roles/{$ownRole->id}", ['name' => 'Self'])->assertForbidden();
+    }
+
+    public function test_reordering_global_roles_requires_the_actor_to_outrank_or_equal_every_role_in_the_payload(): void
+    {
+        $user = $this->customGlobalRoleHolder(10);
+        Role::factory()->global()->create(['position' => 50]);
+
+        // reorder requires the full set of custom global roles in the
+        // payload (which now includes the seeded "Server Moderator" role —
+        // see Role::seedGlobalDefaults, created as a side effect of
+        // User::factory() via UserFactory::configure()) or it 422s before
+        // ever reaching the hierarchy check this test is about.
+        $allCustomIds = Role::whereNull('room_id')->where('is_system', false)->pluck('id')->all();
+
+        $response = $this->actingAs($user)->patchJson('/api/settings/roles/reorder', [
+            'role_ids' => $allCustomIds,
+        ]);
+
+        $response->assertForbidden();
+    }
+
+    public function test_the_global_administrator_can_manage_any_custom_global_role_regardless_of_rank(): void
+    {
+        $admin = $this->globalAdmin();
+        $high = Role::factory()->global()->create(['position' => 1000]);
+
+        $response = $this->actingAs($admin)->patchJson("/api/roles/{$high->id}", ['name' => 'Renamed']);
+
+        $response->assertOk();
     }
 }

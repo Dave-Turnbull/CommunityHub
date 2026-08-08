@@ -94,19 +94,21 @@ class ChannelPolicy
     }
 
     /**
-     * Whether $user may send a message into $channel — true for every type
-     * except 'announcement', which additionally requires PostAnnouncements.
-     * Backs Web\ChannelController::show's channel.can_post (what
-     * MessageInput's visibility is driven by); TextMessageService::
-     * authorizeSend is the actual enforcement boundary, this is only for the
-     * frontend affordance (see CLAUDE.md's "New permission-gated action").
+     * Whether $user may send a message into $channel — an 'announcement'
+     * channel requires PostAnnouncements, every other type requires
+     * SendMessages (mirroring TextMessageService::authorizeSend's default
+     * branch exactly, so this never reports true for a send the backend
+     * would then 403). Backs Web\ChannelController::show's channel.can_post
+     * (what MessageInput's visibility is driven by); authorizeSend is the
+     * actual enforcement boundary, this is only for the frontend affordance
+     * (see CLAUDE.md's "New permission-gated action").
      */
     public function post(User $user, Channel $channel): bool
     {
-        if ($channel->type !== 'announcement') {
-            return true;
+        if ($channel->type === 'announcement') {
+            return PermissionChecker::can($user, Permission::PostAnnouncements, $channel->room);
         }
 
-        return PermissionChecker::can($user, Permission::PostAnnouncements, $channel->room);
+        return PermissionChecker::can($user, Permission::SendMessages, $channel->room);
     }
 }

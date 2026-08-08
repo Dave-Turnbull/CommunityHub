@@ -7,7 +7,6 @@ use App\Models\Channel;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\Room;
-use App\Models\RoomMember;
 use App\Models\User;
 use App\Support\ChannelTypes\ChannelType;
 use App\Support\ChannelTypes\ChannelTypeRegistry;
@@ -27,7 +26,10 @@ class CapabilityEnforcementTest extends TestCase
     private function member(Room $room): User
     {
         $user = User::factory()->create();
-        RoomMember::factory()->for($room)->for($user)->create();
+        // addMember(), not a bare RoomMember row — assigns the room's
+        // default (Member) role too, which now carries the SendMessages
+        // permission ordinary posting requires.
+        $room->addMember($user);
 
         return $user;
     }

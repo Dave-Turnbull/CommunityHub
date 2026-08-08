@@ -54,7 +54,7 @@ class RoomInviteControllerTest extends TestCase
         Mail::assertNothingOutgoing();
     }
 
-    public function test_a_non_member_holding_global_manage_members_can_invite(): void
+    public function test_a_non_member_holding_global_invite_members_can_invite(): void
     {
         Mail::fake();
 
@@ -62,7 +62,7 @@ class RoomInviteControllerTest extends TestCase
         $staff = User::factory()->create();
 
         $globalRole = Role::factory()->global()->create();
-        $globalRole->grant(Permission::ManageMembers);
+        $globalRole->grant(Permission::InviteMembers);
         RoleAssignment::factory()->for($globalRole)->for($staff)->create();
 
         $response = $this->actingAs($staff)

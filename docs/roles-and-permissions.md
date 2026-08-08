@@ -20,22 +20,53 @@
   `ChannelRoleVisibility`/`role_permissions`: written via `firstOrCreate`/`delete()` on
   the model directly, never `BelongsToMany::attach()`/`sync()` (those bypass the
   `creating` event `HasUuids` relies on to generate the row's id).
+- `roles.has_room_permission_ceiling` (bool, default `false`) — only meaningful for a
+  global role. `RoleRoomPermissionCeiling` (`role_room_permission_ceilings`) and
+  `RoleRoomChannelCategoryCeiling` (`role_room_channel_category_ceilings`) mirror
+  `role_permissions`/`role_channel_categories`' shape exactly, storing that global
+  role's room-permission ceiling — see "Room permission ceilings" below.
+- `rooms.permission_ceiling_unrestricted` (bool, default `true`) — `RoomPermissionCeiling`
+  (`room_permission_ceilings`) and `RoomChannelCategoryCeiling`
+  (`room_channel_category_ceilings`) are a room's own snapshotted ceiling, populated once
+  at creation.
+- `ChannelPermissionOverride` (`channel_permission_overrides`,
+  `(channel_id, role_id, permission, allowed)`) — a curated per-channel override of a
+  role's room-tier permission; row absence means "inherit," not a nullable column, same
+  mechanism `channel_role_visibility` uses for "empty set = visible to all." Read side is
+  `PermissionChecker::canInChannel()`, write side is `Api\ChannelController::
+  updatePermissionOverrides()` — see "Channel permissions" below.
+
+All of the above are written via `firstOrCreate`/`delete()` on their own model, never
+`BelongsToMany::attach()`/`sync()`, same reasoning as `RoleChannelCategory` above.
 
 `App\Support\Permission` is the closed enum of grantable keys: `Administrator`,
 `ManageRoom`, `ManageRoles`, `ManageChannels`, `ManageModChannels`, `ManageMembers`,
 `BanMembers`, `ManageMessages`, `ManageEmojis`, `SeeAllChannels`,
-`ManageChannelVisibility`, `SendDirectMessages`, `PostAnnouncements`. **Adding a case
+`ManageChannelVisibility`, `SendDirectMessages`, `PostAnnouncements`, `Comment`, `Vote`,
+`SendMessages`, `React`, `CreateRoom`, `InviteServer`, `InviteMembers`. **Adding a case
 does not make it do anything** — enforcement sites today: `Administrator` (implies
 every permission, checked first), `ManageChannels`/`ManageModChannels`/`ManageRoles`
 (`ChannelPolicy`/`RolePolicy` — see "Channel creation is category-gated" below),
-`ManageMembers`/`BanMembers` (`RoomMemberPolicy` — kick/ban, see "Kick and ban" below),
-`SeeAllChannels`/`ManageChannelVisibility` (`Channel::isVisibleTo`/`ChannelPolicy::
-manageVisibility` — see "Channel visibility" below), `SendDirectMessages`
-(`Api\ConversationController::store`/`TextMessageService::authorizeSend` — see
-"Direct message restriction" below), `PostAnnouncements`
+`InviteMembers`/`ManageMembers`/`BanMembers` (`RoomPolicy::invite`/`RoomMemberPolicy` —
+invite/kick/ban, see "Kick and ban" below), `SeeAllChannels`/`ManageChannelVisibility`
+(`Channel::isVisibleTo`/`ChannelPolicy::manageVisibility` — see "Channel visibility"
+below), `SendDirectMessages` (`Api\ConversationController::store`/`TextMessageService::
+authorizeSend` — see "Direct message restriction" below), `PostAnnouncements`
 (`TextMessageService::authorizeSend`/`ChannelPolicy::post` — see "Announcement posting
-restriction" below). `ManageRoom`/`ManageMessages`/`ManageEmojis`
-are declared for schema stability but are currently inert.
+restriction" below), `Comment` (`TextMessageService::authorizeSend`'s comment branch —
+see `docs/comments-and-voting.md`), `Vote` (`VoteService`), `SendMessages`
+(`TextMessageService::authorizeSend`'s ordinary-channel branch — closed a real gap,
+ordinary posting previously had no `Permission::*` check at all, only membership +
+capability), `React` (`ReactionController` — closed the same class of gap), `CreateRoom`
+(`RoomPolicy::create`/`Web\RoomController` — room creation previously had no gate at
+all). `ManageRoom`/`ManageMessages`/`ManageEmojis`/`InviteServer` are declared for
+schema stability but are currently inert — `InviteServer` specifically has nothing to
+enforce until closed registration exists (see `CLAUDE.md`'s `## Planned work`);
+registration is fully open today.
+
+`InviteMembers` was split out of `ManageMembers` (which now means "kick" only) so a
+[room permission ceiling](#room-permission-ceilings) can grant invite rights without
+granting kick rights — the two were previously inseparable, sharing one enum case.
 
 Renaming or removing a case only silently orphans existing `role_permissions` rows —
 there is no boot-time registry validating the stored string against this enum, unlike
@@ -47,30 +78,70 @@ data migration backfilling `role_permissions.permission` alongside updating that
 
 Backend enforcement doesn't group permissions at all — `PermissionChecker::can()` treats
 every `Permission` case identically, and any role can be granted a permission from any
-category below. The grouping exists purely so the Roles UI (`RoleCard.tsx`) doesn't
-present twelve unrelated checkboxes in one flat grid — `resources/js/types/index.ts`'s
-`PERMISSION_CATEGORIES`/`PERMISSION_CATEGORY_LABELS`/`PERMISSION_CATEGORY_ORDER` (frontend
-only, no backend equivalent — nothing server-side needs to know about it) sort every
-`PermissionKey` into one of three headed sections:
+group below. Two independent, frontend-only groupings sort the same 20 (`InviteServer`
+included, still inert) `PermissionKey`s, both defined in `resources/js/types/index.ts`
+with no backend equivalent — nothing server-side needs to know about either:
 
-- **Admin** — `Administrator`, `ManageRoom`, `ManageRoles`, `ManageModChannels`,
-  `SeeAllChannels`. Instance-of-power/visibility-bypass concerns.
-- **Moderator** — `ManageChannels`, `ManageChannelVisibility`, `ManageMembers`,
-  `BanMembers`, `ManageMessages`, `ManageEmojis`, `PostAnnouncements`. Day-to-day room
-  moderation — this is the exact permission set the seeded Moderator role (see "Default
-  roles" below) starts with, though the mapping is a label, not an enforced link: nothing
-  stops a room owner from granting a Moderator-category permission to a role that also
-  holds Admin-category ones, or vice versa.
-- **User** — `SendDirectMessages`. Baseline capabilities an ordinary member might hold.
+**`PERMISSION_TIERS`** (`Record<PermissionKey, ('server'|'room')[]>`) — which scope(s) a
+permission is meaningful at, mirroring `Permission::serverTierCases()`/`roomTierCases()`
+on the backend. `Administrator`/`ManageRoles` are tagged both (checked with `$room = null`
+*or* a specific room, depending which scope the role itself is). This is what
+`PermissionToggleList` (see "Channel permissions" below) is scoped by, and what drives
+`RoleCard.tsx`'s section split for a global role: a **"Server permissions"** section
+(`SERVER_TIER_PERMISSIONS`) and a **"Room permissions"** section
+(`ROOM_ONLY_FOR_GLOBAL` — room-tier permissions minus the ones already shown in the
+Server section, so `Administrator`/`ManageRoles` aren't rendered twice). A room-scoped
+role only ever shows the room-tier section — `SendDirectMessages`/`CreateRoom`/
+`InviteServer` are checked with `$room = null`, so granting one to a room-scoped role
+would compile, save, and do precisely nothing; they simply never appear in a room role's
+single section. This is the concrete fix behind "why is there a Send Direct Messages
+permission that does nothing on this room role" — the permission itself is fine, it was
+just being offered somewhere it could never take effect.
 
-`SendDirectMessages` is also special-cased out of the checklist entirely for a
-room-scoped role (`role.room_id !== null`): it's checked with `$room = null` (see its
-docblock on `Permission` below) — `PermissionChecker::rolesFor($user, null)` only
-considers *global* roles, so granting it to a room-scoped role compiles, saves, and does
-precisely nothing. `RoleCard` only renders it for a global role (Settings' Roles tab).
-This is the concrete fix behind "why is there a Send Direct Messages permission that
-does nothing on this room role" — the permission itself is fine, it was just being
-offered somewhere it could never take effect.
+**`PERMISSION_GROUPS`** (`PermissionGroup = 'administration' | 'server' | 'membership' |
+'channels' | 'content'`, via `PERMISSION_GROUP_LABELS`/`PERMISSION_GROUP_ORDER`) — the
+headed subsections `PermissionToggleList` renders *within* whichever tier section it's
+showing:
+
+- **Administration** — `Administrator`, `ManageRoles`, `ManageRoom`, `ManageEmojis`.
+- **Server** — `CreateRoom`, `InviteServer`, `SendDirectMessages`.
+- **Membership** — `InviteMembers`, `ManageMembers`, `BanMembers`.
+- **Channels** — `ManageChannels`, `ManageModChannels`, `SeeAllChannels`,
+  `ManageChannelVisibility`.
+- **Content** — `ManageMessages`, `SendMessages`, `PostAnnouncements`, `Comment`, `React`,
+  `Vote`. Ordinary posting/reacting/commenting/voting/announcing — deliberately separate
+  from **Membership**/**Channels** (day-to-day moderation), a fix for an earlier version
+  of this grouping that lumped `Comment`/`Vote` in with moderation permissions, which
+  read as "why are these baseline member abilities filed under Moderator."
+
+Both groupings are labels, not enforced links — the mapping doesn't change what's
+grantable, and nothing stops a role from holding a permission from any group alongside
+one from any other. `PermissionToggleList` (`resources/js/components/roles/
+PermissionToggleList.tsx`) is the one shared component every one of these checklists
+renders through — RoleCard's own permissions, RoomCeilingSection's ceiling, and
+ChannelPermissionsPanel's curated overrides all look and behave identically because they
+share this one component. Adding a new `Permission` case end-to-end means: a backend
+case + tier/group tagging (`serverTierCases()`/`roomTierCases()`/
+`channelOverridableCases()` as applicable) and its frontend mirror
+(`PermissionKey`/`PERMISSION_LABELS`/`PERMISSION_DESCRIPTIONS`/`PERMISSION_GROUPS`/
+`PERMISSION_TIERS`) — no per-surface UI code to touch, every consumer of
+`PermissionToggleList` picks it up automatically.
+
+**Graying out what the viewer can't grant.** `Api\RoleController::decorateRole(Role
+$role, User $viewer)` is the one place every `Role` JSON payload gets annotated —
+`can_manage` (existing), plus `grantable_permissions`/`grantable_channel_categories`
+(`PermissionCeiling::grantablePermissions()`/`grantableCategories()` for `$viewer`
+against `$role`), plus, for a global role only, `can_manage_ceiling` and
+`grantable_ceiling_permissions` (`PermissionCeiling::actorCeilingCapacity()` for
+`$viewer` — the same value on every global role in a list, since it describes the
+*viewer*, not the target role). Called from `index`/`indexGlobal`/`store`/`storeGlobal`,
+so every surface that renders a `RoleCard`/`RoomCeilingSection` has this data from the
+initial fetch, no extra round-trip. `PermissionToggleList`'s `grantable` prop consumes
+it: a permission not in the list is disabled *for checking* (with a tooltip) but never
+for *unchecking* — removing something already granted is always allowed, matching the
+backend's own asymmetry (`grantablePermissions()` only gates additions). This is what
+turns "you can't grant a permission you don't hold" from a 422 you discover on save into
+something visible before you click a toggle at all.
 
 ## Permission resolution
 
@@ -83,14 +154,20 @@ instance-wide staff, not "staff of no particular room."
 
 ## Default roles
 
-Every new room is seeded with three roles by `Role::seedDefaultsForRoom(Room $room)`:
+Every new room is seeded with three roles by `Role::seedDefaultsForRoom(Room $room)`
+(**must be called after `Room::snapshotPermissionCeiling()`** — see "Room permission
+ceilings" below for why):
 
-- **Owner** — `is_system: true`, `Administrator`, assigned to the room's creator,
-  entirely read-only (no name/position/permission edit, undeletable).
+- **Owner** — `is_system: true`, assigned to the room's creator, entirely read-only (no
+  name/position/permission edit, undeletable). Granted `Administrator` (the wildcard)
+  when the room is unrestricted — the default, and what every room got before ceilings
+  existed. A **restricted** room's Owner does **not** get the wildcard — that would defeat
+  the ceiling entirely — it's granted exactly the room's ceiling permission set instead.
 - **Moderator** — an ordinary custom role (`is_system: false`, `is_default: false`) that
   just starts pre-configured instead of blank: `ManageChannels`, `ManageChannelVisibility`,
-  `ManageMembers`, `BanMembers`, `PostAnnouncements` (the "moderator" category from
-  "Permission categories" below). Nobody is auto-assigned to it — a room owner assigns members explicitly, same
+  `InviteMembers`, `ManageMembers`, `BanMembers`, `PostAnnouncements` (the "moderator"
+  category from "Permission categories" below), each individually intersected with the
+  room's ceiling if restricted. Nobody is auto-assigned to it — a room owner assigns members explicitly, same
   as any custom role — and because it's a normal `is_system: false` row, it can be
   renamed, reordered, re-permissioned, or deleted via the same API any other custom role
   uses (`RolePolicy`/`Api\RoleController` don't special-case it at all). A room owner who
@@ -98,7 +175,9 @@ Every new room is seeded with three roles by `Role::seedDefaultsForRoom(Room $ro
 - **Member** — `is_system: true`, `is_default: true`, auto-assigned to every other
   joiner. Name/position are fixed, but unlike Owner its permissions are editable per room
   (e.g. granting it `manage_messages`). `administrator` is the one permission it can
-  never hold.
+  never hold. Starts with `Comment`, `Vote`, `SendMessages`, `React` — the baseline
+  posting/reacting/commenting/voting abilities every ordinary member has — again each
+  intersected with the room's ceiling if restricted.
 
 Because Moderator is seeded at a fixed `position` (50) alongside Owner's cosmetic 100,
 any custom role created *after* room creation starts at `max(existing custom positions) +
@@ -165,7 +244,7 @@ consistent with `PermissionChecker`'s no-explicit-deny union semantics. Category
 are scoped to *creation* only, same as `ManageModChannels`'s original scope — they don't
 extend to `manage()` (edit/delete/reorder of an already-existing channel).
 
-The Roles UI (`RoleCard.tsx`) renders one checkbox per
+The Roles UI (`RoleCard.tsx`) renders one `Toggle` per
 `services/channelTypes.tsx`'s `KNOWN_CHANNEL_CATEGORIES` (today: `standard`, `mod` —
 grows automatically as new categories are registered, no UI code change needed) below
 the permission checklist. Each is independently clickable — checking/unchecking one
@@ -173,16 +252,17 @@ edits `channel_categories` in the `PATCH /api/roles/{role}` payload directly, sa
 full-replace-on-save shape as `permissions`. Checking "Manage User Channels" or "Manage
 Mod Channels" bulk-applies its bucket's categories as a *convenience default*
 (`Manage User Channels` → every non-`mod` category; `Manage Mod Channels` → `mod`) —
-unchecking the permission afterward bulk-removes the same set, but a category checked
-independently afterward stays checked regardless of the permission checkboxes' state.
-This mirrors the backend precisely: a category checkbox ticked (by either path) and
+unchecking the permission afterward bulk-removes the same set, but a category toggled
+independently afterward stays on regardless of the permission toggles' state.
+This mirrors the backend precisely: a category toggle turned on (by either path) and
 saved is a real `RoleChannelCategory` row, evaluated on its own by `ChannelPolicy::
 create()`, not merely a visual reflection of the two permissions.
 
 `RoomPolicy::invite` checks `Room::hasMember` OR `PermissionChecker::can($user,
-Permission::ManageMembers, $room)` — membership remains sufficient (any member can
-invite, unchanged from before), with `ManageMembers` added as an override so
+Permission::InviteMembers, $room)` — membership remains sufficient (any member can
+invite, unchanged from before), with `InviteMembers` added as an override so
 instance-wide/room staff who hold it can invite even into a room they haven't joined.
+Split from `ManageMembers` (which now means "kick" only) — see "Schema" above.
 
 `Api\RoleController::index` (`GET /api/rooms/{room}/roles`) backs the room
 role-management UI — `RoomRolesPanel.tsx`, one of the inline panels
@@ -209,7 +289,9 @@ a role at its own rank, including itself.
 
 `Role::highestRoleFor(User $user, Room $room): ?Role` finds the highest-ranked
 room-scoped role a user holds there — only room-scoped roles are considered; a global
-role's rank in this per-room hierarchy is undefined.
+role's rank in this per-room hierarchy is undefined. Its global-scope sibling,
+`Role::highestGlobalRoleFor(User $user): ?Role`, is the same query over `room_id IS
+NULL` roles — see "Global (instance-wide) roles" below for why this now exists.
 
 `RolePolicy::manage` requires both the base `ManageRoles` permission and that the
 actor's `highestRoleFor()` outranks the target role. Granting `ManageRoles` to Member
@@ -332,18 +414,38 @@ exclusively the Owner tier" comment). A global role can hold any *other* permiss
 the Roles tab; `Administrator` specifically is console-only.
 
 **Default role.** `Role::seedGlobalDefaults()` idempotently creates the single global
-`is_default: true` "Member" role (granting `SendDirectMessages` by default) — the
-global mirror of `seedDefaultsForRoom()`'s room Member. Called from a one-time data
-migration (`2024_01_01_000027_seed_global_member_role.php`), `AuthController::register`
-(every new user), `DatabaseSeeder`, and `UserFactory::configure()`'s `afterCreating`
-hook (every factory-created user in tests) — the same "every user needs at least one
-role" guarantee room membership has, now enforced at the instance level too.
-`RoleAssignment::firstOrCreate` at each call site keeps this idempotent.
+`is_default: true` "Member" role, granting `SendDirectMessages`, `CreateRoom`, and
+`React` by default (`React` because a conversation-scoped reaction has no room to check
+`React` against — see "Room creation" and "Direct message restriction" below) — the
+global mirror of `seedDefaultsForRoom()`'s room Member. It also idempotently seeds
+**"Server Moderator"** — an ordinary custom global role (`is_system: false`, `position:
+50`, no permissions pre-granted), deletable but present by default, giving server-wide
+roles the same three-tier shape (top/moderator/member) room roles already have. There's
+no existing precedent yet for what a server moderator concretely does, unlike room
+Moderator's channel-management grants which map onto things that already exist — it's
+left blank for a server admin to configure via the Roles tab. Called from a one-time
+data migration (`2024_01_01_000027_seed_global_member_role.php`),
+`AuthController::register` (every new user), `DatabaseSeeder`, and
+`UserFactory::configure()`'s `afterCreating` hook (every factory-created user in tests)
+— the same "every user needs at least one role" guarantee room membership has, now
+enforced at the instance level too. `RoleAssignment::firstOrCreate`/`firstOrCreate` at
+each call site keeps this idempotent.
 
 **Management.** `ManageRoles` is reused for global role management, not a separate
-ability — `RolePolicy::manage`'s existing `!$role->room` branch already grants this on
-`ManageRoles` alone, with no hierarchy comparison (global roles have no per-room rank).
-`RolePolicy::create(User, ?Room $room = null)` accepts a null room for the same reason.
+ability — `RolePolicy::create(User, ?Room $room = null)` accepts a null room for the
+same reason. Global roles now have **real hierarchy**, same shape as room roles:
+`Role::rank()` already worked unmodified for global roles (it only inspects
+`is_system`/`is_default`/`position`, never `room_id` — Administrator `is_system: true`
+→ `INF`, the default Member → `-INF`, Server Moderator/any other custom global role →
+its `position`), so closing the gap only needed a global-scope sibling to
+`highestRoleFor()`: `Role::highestGlobalRoleFor(User $user): ?Role`. `RolePolicy::
+manage`'s global branch used to grant management on `ManageRoles` alone with **no** rank
+comparison — a custom global role holding `ManageRoles` could edit/delete a peer or
+higher-ranked global role, including in principle promoting itself. It now runs the same
+outranks-the-target check the room branch always has, sourced from
+`highestGlobalRoleFor()` instead of `highestRoleFor()`. `Api\RoleController::reorderGlobal`
+gained the matching `outranksOrEquals()` gate `reorder` (room) already had, for the same
+reason: the actor's own role is necessarily in the full reorder payload.
 `Api\RoleController::indexGlobal` (`GET /api/settings/roles`) returns every global role
 + every instance user, self-fetched by the Roles tab
 (`components/settings/GlobalRolesSettings.tsx`) in Settings — only rendered at all when
@@ -353,7 +455,102 @@ staff. `storeGlobal`/`reorderGlobal` are the room-less equivalents of `store`/`r
 (`update`/`destroy`/`addMember`/`removeMember` are already room-less, keyed by role id,
 and work unchanged for global roles).
 
-## Channel visibility
+## Room permission ceilings
+
+A server admin can cap what a given server role's rooms are ever allowed to grant, down
+to individual permissions and channel-creation categories — binding even that room's
+Owner. This closes a real gap: previously, any actor with `ManageRoles` who outranked a
+target role could grant that role *any* permission (except `Administrator`), regardless
+of what the actor held themselves.
+
+**The core mechanism is one recursive rule, reused at every layer:** an actor can only
+grant a permission they currently hold themselves. `App\Support\PermissionCeiling`
+(`grantablePermissions(User $actor, Role $forRole): Collection`) is the single primitive
+`Api\RoleController::update` checks before persisting an *addition* to `permissions[]`/
+`channel_categories[]` (removals are always allowed) — it needs no ceiling-awareness of
+its own, because by induction a room's Owner can never hold more than the room's
+snapshot ceiling to begin with (see "Snapshot timing" below), so `PermissionChecker::
+can()` against the room already reflects it at every level beneath Owner too.
+**Revocation does not cascade** — tightening a ceiling or a role's permissions doesn't
+retroactively strip what's already been granted further down, matching the existing
+precedent that hierarchy checks are validated at edit time only, never continuously
+re-checked against history.
+
+**Setting a server role's ceiling** is authorization-wise just another way of changing
+that role's abilities — gated by the same `ManageRoles` + strict-outranks pair as any
+other global-role edit (`RolePolicy::manage`/`manageCeiling`), not a separate permission.
+The additional check is `PermissionCeiling::actorCeilingCapacity(User $actor):
+array|string` — every permission the *actor's own* global-role ceiling capacity allows
+them to write into another global role's ceiling, or the sentinel `'unrestricted'` if
+any global role they hold imposes no ceiling of its own (Administrator included — it's
+never restricted). This is deliberately **not** "does the actor hold this in some room"
+— a room ceiling caps rooms, it isn't evidence of what a server-wide actor personally
+holds — it's whether the actor's *own* ceiling rows include it, sourced from
+`RoleRoomPermissionCeiling`/`RoleRoomChannelCategoryCeiling`, not `PermissionChecker::
+can()`. This is the server-tier instantiation of the exact same recursive rule
+`grantablePermissions()` enforces at room tier: "role 3 can't let role 4 make rooms that
+ban members if role 3's own ceiling excludes it," independent of the base `ManageRoles`
+gate.
+
+**Snapshot timing.** `Room::snapshotPermissionCeiling(User $creator): void` runs once, at
+room creation, and is never recomputed live — a server admin tightening a role's ceiling
+later does not retroactively re-cap existing rooms. "Reapply current server defaults to
+an existing room" is a deliberately deferred idea, not built — see `CLAUDE.md`'s
+`## Planned work`. It gathers the creator's global roles: if *any* is unrestricted
+(including holding `Administrator`, or simply the default Member role — true for every
+user today, which is what makes this a zero-behavior-change rollout for every room
+created before or immediately after this shipped), the room stays unrestricted
+(`rooms.permission_ceiling_unrestricted: true`, the default). Only if *every* global role
+the creator holds is restricted does the room become restricted, snapshotting the union
+of those roles' ceiling rows into `room_permission_ceilings`/`room_channel_category_ceilings`.
+Must run **before** `Role::seedDefaultsForRoom()` — see "Default roles" above — since
+Owner's/Moderator's/Member's seeded grants read the room's freshly-snapshotted
+`effectivePermissionCeiling()`/`effectiveChannelCategoryCeiling()` to decide what they
+actually start with.
+
+Called at all 3 room-creation sites (`Web\RoomController::store`, `RoomFactory`,
+`DatabaseSeeder`), matching `seedDefaultsForRoom`'s existing convention.
+
+**Authoring UI.** `PATCH /api/settings/roles/{role}/room-ceiling`
+(`Api\RoleRoomCeilingController::update`) is the one endpoint — full-replaces a global
+role's ceiling permissions/categories in one request, same delete-then-recreate shape as
+`Api\RoleController::update`. `resources/js/components/roles/RoomCeilingSection.tsx`
+backs it: only rendered under a global role's card (Settings → Roles) when
+`role.can_manage_ceiling` is true, a toggle for "this role imposes a ceiling" plus (when
+on) a `PermissionToggleList` scoped to room-tier permissions only — a ceiling has
+nothing to say about server-tier permissions like `CreateRoom`.
+
+**Channel-tier overrides** (`channel_permission_overrides`, see "Schema" above) — the
+curated set (`Permission::channelOverridableCases()`): `SendMessages`,
+`PostAnnouncements`, `Comment`, `React`, `Vote`, `ManageChannelVisibility` — deliberately
+small; room-management-style permissions (`ManageRoom`, `ManageRoles`, `BanMembers`,
+etc.) never appear at channel scope. `ManageChannelVisibility`'s inclusion is a
+deliberate exception to "content only": a role that holds it room-wide could be blocked
+(or, conversely, force-granted) from managing visibility on one specific channel — this
+is distinct from, and sits alongside, the *existing* `channel_role_visibility` table
+(which controls who can **see** a channel, not who can **change** its visibility
+settings). See "Channel permissions" below for the read/write/UI wiring.
+
+## Room creation
+
+`CreateRoom` gates `Web\RoomController::create`/`store` via `RoomPolicy::create` — room
+creation previously had no gate at all, so it's granted to the global Member role by
+default (`Role::seedGlobalDefaults()`), keeping this a zero-behavior-change rollout for
+ordinary users. The frontend's `can_create_room`-style gating (hiding/disabling
+`RoomRail`'s "create room" affordance for a user who lacks it) is not wired up yet —
+today an ungated user simply hits the server-side 403; the affordance stays visible
+regardless. `Web\RoomController::create` (the GET page load) is gated the same way as
+`store`, not just the submit.
+
+## Channel permissions
+
+Covers two related-but-distinct things, edited together in one panel and saved as one
+request: **visibility** (who sees this channel at all — `channel_role_visibility`) and
+**permission overrides** (who can do what *in* it — `channel_permission_overrides`, the
+curated set from "Room permission ceilings" above). Both are gated by
+`ManageChannelVisibility`.
+
+### Visibility
 
 Opt-in per-channel restriction — a channel with no `channel_role_visibility` rows is
 visible to every room member (empty set means open, not closed, so existing channels
@@ -403,11 +600,48 @@ are unaffected until someone deliberately restricts one).
   `PermissionChecker::can($user, Permission::ManageChannelVisibility, null)`) is exempt
   from this guard entirely — they hold no room-scoped rank to compare against, mirroring
   `Role::effectiveModerationRank`'s global-supersedes-room-hierarchy pattern below. The
-  frontend (`ChannelVisibilityPanel`) doesn't replicate this rank comparison — it lets
+  frontend (`ChannelPermissionsPanel`) doesn't replicate this rank comparison — it lets
   any role be toggled and surfaces the backend's 422 message on save, keeping the
   hierarchy logic in one place.
+
+### Permission overrides
+
+`PermissionChecker::canInChannel(User $user, Permission $permission, Channel $channel):
+bool` is the read side — `Permission::can()` for a specific channel, with the curated
+subset additionally checkable per-role via `ChannelPermissionOverride`. A row's `allowed`
+replaces only *that one role's* contribution to the OR-union, not a global deny — a user
+holding a second, non-overridden role that grants the permission still passes. Migrated
+onto this from plain `can()`: `TextMessageService::authorizeSend`'s `Comment`/
+`SendMessages`/`PostAnnouncements` checks, `ReactionController`'s `React` check,
+`VoteService`'s `Vote` check (each only where a `Channel` is actually in scope — a
+conversation-scoped message/reaction/vote has no channel to override against and keeps
+calling plain `can()`).
+
+`Api\ChannelController::updatePermissionOverrides` (the write side, folded into the same
+`update()` mixed-request handling `updateVisibility` uses) full-replaces a channel's
+override rows. Two guards: every `role_id` must belong to the channel's own room, and any
+row with `allowed: true` additionally requires the actor currently hold that permission
+room-wide themselves — the same "can't grant what you don't hold" rule
+`PermissionCeiling` enforces for ordinary role grants, extended down to this layer.
+Force-*denying* (`allowed: false`) has no such requirement.
+
+**Capability-aware filtering, frontend-only.** Not every overridable permission means
+something for every channel *type* — `Vote` on a plain text channel, or `Comment` on a
+type whose `Content` component never renders a comment thread, would be a dead toggle.
+`services/channelTypes.tsx`'s `overridablePermissionsFor(type)` narrows
+`CHANNEL_OVERRIDABLE_PERMISSIONS` down using each `ChannelTypeDescriptor`'s hand-set
+`supports` tags (`'text'`, `'ordinary_send'`, `'vote'`, `'comments'`, `'announcement'` —
+`'text'` and `'ordinary_send'` are deliberately separate, since an announcement channel
+has messages/reactions but never posts via `SendMessages`, only `PostAnnouncements`).
+`manage_channel_visibility` needs no tag — it's always offered, even on a voice channel
+with no messages at all. This is purely a frontend affordance (the backend has no
+per-type validation of which override permissions "make sense" — it only checks the
+curated set is valid and the grant-guard above); adding a new channel-overridable
+permission means one line in `OVERRIDABLE_PERMISSION_REQUIREMENTS`, not touching every
+existing type.
+
 - **UI**: `Channels/Show` renders the 🔒 button in the channel header and, when
-  `visibilityOpen`, `ChannelVisibilityPanel` directly below it — absolutely positioned
+  `visibilityOpen`, `ChannelPermissionsPanel` directly below it — absolutely positioned
   (`top-full` off a `relative` header wrapper) so it reads visually as sitting right
   below the title, above the channel content, without actually pushing that content
   down: opening/closing it must never move the message list's scroll position. Not a
@@ -416,9 +650,36 @@ are unaffected until someone deliberately restricts one).
   panels") — this is a header-attached toggle, not a full main-pane view, and it stays
   independent of which `mainView` is showing. `Channels/Show` owns the open/closed state
   and a `mousedown` listener scoped to the header's container ref for click-outside-to-
-  close, since there's no Radix dismissal behavior to lean on here; `ChannelVisibilityPanel`
+  close, since there's no Radix dismissal behavior to lean on here; `ChannelPermissionsPanel`
   itself only owns the form and closes via its `onClose` prop — clicking the lock icon
   again, clicking outside the header, clicking Cancel, or a successful save all call it.
+  Visibility renders as a `Toggle` per role (same component RoleCard uses); overrides
+  render as a `TriStateOverride` segmented control (Inherit/Allow/Deny) per role ×
+  applicable permission — a real third state a binary `Toggle` can't represent, since "no
+  row" (inherit) is meaningfully different from either forced state.
+
+## Ordinary posting and reacting
+
+`SendMessages` gates ordinary (non-comment, non-announcement) channel posting —
+`TextMessageService::authorizeSend`'s default branch, checked only for a plain `Channel`
+whose `type !== 'announcement'` (an announcement channel stays gated solely by
+`PostAnnouncements`, never both). `React` gates adding/removing a reaction
+(`ReactionController`), resolving `$room` the same way `Comment` does (`$message->
+scopeEntity() instanceof Channel ? ...->room : null`, `$room = null` for a
+conversation-scoped message — see "Direct message restriction" below for why `React` is
+also granted to the global Member role). Both previously had **no** `Permission::*`
+check at all, only room/conversation membership — closing that gap is what makes
+`SendMessages`/`React` channel-overridable (see "Room permission ceilings" above)
+meaningful: a channel can now express "disable ordinary sending but keep comments
+enabled," which the code structurally could not represent before. Both are granted to
+the seeded Member role by default (see "Default roles" above).
+
+`ChannelPolicy::post(User, Channel): bool` was updated to match `authorizeSend` exactly
+— it used to return `true` unconditionally for every non-`announcement` channel, which
+meant `channel.can_post` (the prop `MessageInput`'s visibility is driven by) would lie
+for a member lacking `SendMessages`, showing a composer the backend would then 403 on
+submission. It now requires `SendMessages` for a non-announcement channel, same as
+`authorizeSend`.
 
 ## Direct message restriction
 
