@@ -125,7 +125,11 @@ app/
                                AttachmentController::show is the only place an
                                attachment's bytes are ever served from — GET
                                /attachments/{attachment}, gated by AttachmentPolicy
-                               (see docs/attachments.md), never a direct storage URL
+                               (see docs/attachments.md), never a direct storage URL;
+                               EmailVerificationController is notice/verify/resend —
+                               always registered regardless of
+                               config('verification.enabled'), see
+                               EnsureEmailIsVerifiedIfRequired
     Api/                      JSON controllers (axios targets), thin translators over
                                app/Services/ — see docs/service-layer.md.
                                ChannelFocusController is the focus/blur heartbeat
@@ -169,12 +173,23 @@ app/
     Controller.php            empty abstract base — Laravel ships none by default, keep it
   Http/Middleware/
     HandleInertiaRequests.php shares auth.user, rooms, conversations,
-                               recentCustomStatuses (see docs/status.md), flash
+                               recentCustomStatuses (see docs/status.md),
+                               registrationPaths (see docs/conversations-and-
+                               invites.md's "Server invites"), flash
+    EnsureEmailIsVerifiedIfRequired.php  wraps Laravel's stock
+                               EnsureEmailIsVerified so verification enforcement
+                               is a runtime config('verification.enabled') toggle
+                               rather than baked into route registration —
+                               always on the authenticated route group in
+                               routes/web.php; see config/verification.php
   Mail/                       Mailable classes (RoomInviteMail, ServerInviteMail),
                                ShouldQueue — sent via the `worker` container, Mailpit
                                catches them in dev
   Models/                     all UUID-keyed (HasUuids); Notification is the exception to
                                the "table name matches model" convention — see trap #22.
+                               User always implements MustVerifyEmail — inert on its own,
+                               only enforced when EnsureEmailIsVerifiedIfRequired's runtime
+                               config check is on, see config/verification.php.
                                NotificationPreference/VoiceDevicePreference — see docs/
                                notifications.md and docs/voice.md; Role/RolePermission/
                                RoleAssignment, ChannelRoleVisibility, RoomBan,
@@ -476,7 +491,11 @@ resources/
                                MessageList constructs one per paging direction)
     **/*.test.ts(x)           co-located next to the file under test
 routes/
-  web.php                     guest + auth Inertia routes
+  web.php                     guest + auth Inertia routes; the authenticated group
+                               carries EnsureEmailIsVerifiedIfRequired, and the
+                               /email/verify|resend routes sit in their own
+                               auth-only (not verified-gated) group so they're
+                               reachable regardless of the flag
   api.php                     /api/* under auth (session), axios targets, including
                                /settings/roles (global role list/store/reorder, self-
                                fetched by Settings' Roles tab), /rooms/{room}/
@@ -1080,6 +1099,8 @@ default `true` — `config/registration.php`; first-boot defaults only, seeding
 `InstanceSetting`'s single row the first time it's read — see
 `docs/conversations-and-invites.md`'s "Server invites" for how an admin overrides
 them afterward from Settings without touching these env vars again),
+`EMAIL_VERIFICATION_ENABLED` (default `false` — `config/verification.php`; a live
+runtime toggle, not a boot-time one — see `EnsureEmailIsVerifiedIfRequired`),
 `MAIL_MAILER=mailpit` (dev default; other options: `smtp`, `ses`, `log`, `array`
 — see README's `## Email`) + `MAIL_HOST`/`MAIL_PORT`/`MAIL_USERNAME`/
 `MAIL_PASSWORD`/`MAIL_ENCRYPTION` (used by `mailpit`/`smtp`) +

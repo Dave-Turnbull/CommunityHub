@@ -4,10 +4,12 @@ use App\Http\Controllers\Web\AttachmentController;
 use App\Http\Controllers\Web\AuthController;
 use App\Http\Controllers\Web\ChannelController;
 use App\Http\Controllers\Web\ConversationController;
+use App\Http\Controllers\Web\EmailVerificationController;
 use App\Http\Controllers\Web\InviteController;
 use App\Http\Controllers\Web\MessageController;
 use App\Http\Controllers\Web\RoomController;
 use App\Http\Controllers\Web\SettingsController;
+use App\Http\Middleware\EnsureEmailIsVerifiedIfRequired;
 use Illuminate\Support\Facades\Route;
 
 // ─── Guest ────────────────────────────────────────────────────────────────
@@ -21,10 +23,23 @@ Route::middleware('guest')->group(function () {
 // ─── Invite acceptance (guest or authenticated) ────────────────────────────
 Route::get('/invite/{token}', [InviteController::class, 'show']);
 
-// ─── Authenticated ────────────────────────────────────────────────────────
+// ─── Email verification (authenticated, always registered — see
+// EnsureEmailIsVerifiedIfRequired for why these must not 404 regardless of
+// config('verification.enabled')) ───────────────────────────────────────
 Route::middleware('auth')->group(function () {
-    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+    Route::get('/email/verify', [EmailVerificationController::class, 'notice'])->name('verification.notice');
+    Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])
+        ->middleware(['signed', 'throttle:6,1'])->name('verification.verify');
+    Route::post('/email/resend', [EmailVerificationController::class, 'resend'])
+        ->middleware('throttle:6,1')->name('verification.send');
 
+    // An unverified user stuck on the verify-email notice must still be
+    // able to log out — kept out of the 'verified'-gated group below.
+    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+});
+
+// ─── Authenticated ────────────────────────────────────────────────────────
+Route::middleware(['auth', EnsureEmailIsVerifiedIfRequired::class])->group(function () {
     Route::get('/', [ConversationController::class, 'index'])->name('home');
 
     Route::get('/rooms/create', [RoomController::class, 'create']);
