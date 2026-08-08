@@ -7,7 +7,6 @@ use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\Message;
 use App\Models\Room;
-use App\Models\RoomMember;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -20,7 +19,10 @@ class ReactionTest extends TestCase
     private function member(Room $room): User
     {
         $user = User::factory()->create();
-        RoomMember::factory()->for($room)->for($user)->create();
+        // addMember(), not a bare RoomMember row — assigns the room's
+        // default (Member) role too, which now carries the React
+        // permission reacting requires.
+        $room->addMember($user);
 
         return $user;
     }
@@ -31,6 +33,29 @@ class ReactionTest extends TestCase
         ConversationParticipant::factory()->for($conversation)->for($user)->create();
 
         return $user;
+    }
+
+    public function test_reacting_is_rejected_without_the_react_permission(): void
+    {
+        $message = Message::factory()->create();
+        $room = $message->channel->room;
+        $user = $this->member($room);
+
+        // React is granted to both the room-scoped and global Member roles
+        // (the latter so reacting in a DM works — see Role::seedGlobalDefaults)
+        // — PermissionChecker::can()'s union means either grant is enough,
+        // so both need stripping to actually test the rejection.
+        \App\Models\RoleAssignment::where('user_id', $user->id)
+            ->whereHas('role', fn ($q) => $q->whereNull('room_id'))
+            ->delete();
+        $memberRole = $room->roles()->where('is_default', true)->firstOrFail();
+        $memberRole->rolePermissions()->where('permission', 'react')->delete();
+
+        $response = $this->actingAs($user)
+            ->postJson("/api/messages/{$message->id}/reactions", ['emoji' => '👍']);
+
+        $response->assertForbidden();
+        $this->assertDatabaseCount('reactions', 0);
     }
 
     public function test_a_user_can_react_to_a_message(): void

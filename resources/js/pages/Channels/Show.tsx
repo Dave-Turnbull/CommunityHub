@@ -4,7 +4,7 @@ import { Head } from '@inertiajs/react'
 import { RoomRail } from '@/components/layout/RoomRail'
 import { ChannelSidebar } from '@/components/layout/ChannelSidebar'
 import { MemberList } from '@/components/layout/MemberList'
-import { ChannelVisibilityPanel } from '@/components/layout/ChannelVisibilityPanel'
+import { ChannelPermissionsPanel } from '@/components/layout/ChannelPermissionsPanel'
 import { CreateChannelPanel } from '@/components/layout/CreateChannelPanel'
 import { InvitePanel } from '@/components/layout/InvitePanel'
 import { RoomRolesPanel } from '@/components/roles/RoomRolesPanel'
@@ -100,7 +100,7 @@ export default function ChannelShow({
                                                     ? 'bg-sixth text-text-primary'
                                                     : 'text-text-muted hover:text-text-primary hover:bg-fifth',
                                             )}
-                                            title="Channel visibility"
+                                            title="Channel permissions"
                                         >
                                             🔒
                                         </button>
@@ -117,7 +117,7 @@ export default function ChannelShow({
 
                                 {visibilityOpen && (
                                     <div className="absolute top-full left-0 right-0 z-20 shadow-lg">
-                                        <ChannelVisibilityPanel
+                                        <ChannelPermissionsPanel
                                             channel={channel}
                                             roomRoles={room.roles ?? []}
                                             onUpdated={setChannel}

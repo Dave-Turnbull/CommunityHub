@@ -45,7 +45,7 @@ class ChannelController extends Controller
             ? TextMessageService::for($channel)->list($user, around: $highlightMessageId)
             : null;
 
-        $channel->load('visibilityRoles');
+        $channel->load(['visibilityRoles', 'permissionOverrides']);
         $channel->setAttribute('can_post', Gate::allows('post', $channel));
 
         return Inertia::render('Channels/Show', [

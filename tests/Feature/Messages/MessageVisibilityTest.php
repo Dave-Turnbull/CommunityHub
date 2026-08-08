@@ -36,7 +36,11 @@ class MessageVisibilityTest extends TestCase
         $user = User::factory()->create();
         RoomMember::factory()->for($room)->for($user)->create();
 
+        // SendMessages is the baseline posting ability every ordinary member
+        // has (granted to the seeded Member role by default) — this helper
+        // represents that same baseline, optionally topped up with $permission.
         $role = Role::factory()->for($room)->create();
+        $role->grant(Permission::SendMessages);
         if ($permission) {
             $role->grant($permission);
         }

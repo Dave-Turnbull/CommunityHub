@@ -9,6 +9,7 @@ use App\Models\Room;
 use App\Support\ChannelTypes\ChannelTypeRegistry;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -30,13 +31,17 @@ class RoomController extends Controller
             : redirect('/');
     }
 
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        Gate::authorize('create', Room::class);
+
         return Inertia::render('Rooms/Create');
     }
 
     public function store(Request $request): RedirectResponse
     {
+        Gate::authorize('create', Room::class);
+
         $validated = $request->validate([
             'name'     => ['required', 'string', 'max:100'],
             'icon_url' => ['nullable', 'url'],
@@ -47,6 +52,7 @@ class RoomController extends Controller
             'owner_id' => $request->user()->id,
         ]);
 
+        $room->snapshotPermissionCeiling($request->user());
         Role::seedDefaultsForRoom($room);
         $room->addMember($request->user(), asOwner: true);
 

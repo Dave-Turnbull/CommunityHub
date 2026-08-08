@@ -71,9 +71,9 @@ describe('RoomRolesPanel', () => {
         render(<RoomRolesPanel room={room} />)
         await screen.findByText('Owner')
 
-        const adminCheckbox = screen.getByLabelText('Administrator') as HTMLInputElement
-        expect(adminCheckbox.disabled).toBe(true)
-        expect(adminCheckbox.checked).toBe(false)
+        const adminToggle = screen.getByLabelText('Administrator') as HTMLButtonElement
+        expect(adminToggle.disabled).toBe(true)
+        expect(adminToggle.getAttribute('aria-checked')).toBe('false')
 
         expect(screen.getByRole('button', { name: 'Save permissions' })).toBeInTheDocument()
     })

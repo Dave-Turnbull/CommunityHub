@@ -7,6 +7,7 @@ use App\Events\ChannelDeleted;
 use App\Events\ChannelUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\Channel;
+use App\Models\ChannelPermissionOverride;
 use App\Models\ChannelRoleVisibility;
 use App\Models\Role;
 use App\Models\Room;
@@ -54,31 +55,34 @@ class ChannelController extends Controller
 
     public function update(Request $request, Channel $channel): JsonResponse
     {
-        // visibility_role_ids is gated by its own ManageChannelVisibility
-        // permission (see updateVisibility()), deliberately separate from
+        // visibility_role_ids/permission_overrides are both gated by
+        // ManageChannelVisibility (see updateVisibility()/
+        // updatePermissionOverrides()), deliberately separate from
         // ManageChannels below — an actor who only holds the former can
-        // restrict a channel without being able to rename/delete it.
+        // restrict/override a channel without being able to rename/delete it.
         $hasOtherFields = $request->hasAny(['name', 'topic', 'is_nsfw', 'slow_mode_seconds']);
         $hasVisibility  = $request->has('visibility_role_ids');
+        $hasOverrides   = $request->has('permission_overrides');
 
-        // Both authorizations are checked before *either* mutation runs —
-        // a mixed request (e.g. name + visibility_role_ids together) must
-        // never partially apply just because the actor lacks one of the two
+        // All authorizations are checked before *any* mutation runs — a
+        // mixed request (e.g. name + visibility_role_ids together) must
+        // never partially apply just because the actor lacks one of the
         // permissions it needs. Checking manage() then mutating then
         // checking manageVisibility() would let the name change commit even
         // though the overall request ends in a 403.
         if ($hasOtherFields) {
             Gate::authorize('manage', $channel);
         }
-        if ($hasVisibility) {
+        if ($hasVisibility || $hasOverrides) {
             Gate::authorize('manageVisibility', $channel);
         }
 
-        // Also transactional — updateVisibility() can still abort partway
-        // through (422, a role that outranks the actor) after $channel's
-        // other fields were already saved above; the transaction rolls that
-        // back too rather than leaving a half-applied update.
-        DB::transaction(function () use ($request, $channel, $hasOtherFields, $hasVisibility) {
+        // Also transactional — updateVisibility()/updatePermissionOverrides()
+        // can still abort partway through (422, a role that outranks the
+        // actor, or a force-grant the actor doesn't hold themselves) after
+        // $channel's other fields were already saved above; the transaction
+        // rolls that back too rather than leaving a half-applied update.
+        DB::transaction(function () use ($request, $channel, $hasOtherFields, $hasVisibility, $hasOverrides) {
             if ($hasOtherFields) {
                 $validated = $request->validate([
                     'name'              => ['sometimes', 'string', 'max:100'],
@@ -93,11 +97,15 @@ class ChannelController extends Controller
             if ($hasVisibility) {
                 $this->updateVisibility($request, $channel);
             }
+
+            if ($hasOverrides) {
+                $this->updatePermissionOverrides($request, $channel);
+            }
         });
 
         broadcast(new ChannelUpdated($channel))->toOthers();
 
-        return response()->json($channel->fresh()->load('visibilityRoles'));
+        return response()->json($channel->fresh()->load(['visibilityRoles', 'permissionOverrides']));
     }
 
     /**
@@ -144,6 +152,55 @@ class ChannelController extends Controller
         ChannelRoleVisibility::where('channel_id', $channel->id)->whereNotIn('role_id', $roleIds)->delete();
         foreach ($roleIds as $roleId) {
             ChannelRoleVisibility::firstOrCreate(['channel_id' => $channel->id, 'role_id' => $roleId]);
+        }
+    }
+
+    /**
+     * Full-replaces $channel's curated per-role permission overrides — see
+     * PermissionChecker::canInChannel() (the read side) and
+     * Permission::channelOverridableCases() for the fixed, curated set this
+     * accepts. A row with `allowed: true` additionally requires the actor
+     * hold that permission room-wide themselves — the same "can't grant
+     * what you don't hold" rule PermissionCeiling enforces for ordinary role
+     * grants, extended down to this layer. Deleted-and-recreated wholesale
+     * rather than a whereNotIn diff (see updateVisibility() above) since the
+     * uniqueness here is a 3-column composite, not a single role id.
+     */
+    private function updatePermissionOverrides(Request $request, Channel $channel): void
+    {
+        Gate::authorize('manageVisibility', $channel);
+
+        $room = $channel->room;
+        $overridableValues = array_map(fn (Permission $p) => $p->value, Permission::channelOverridableCases());
+
+        $validated = $request->validate([
+            'permission_overrides'              => ['present', 'array'],
+            'permission_overrides.*.role_id'    => ['required', 'uuid', Rule::exists('roles', 'id')->where('room_id', $room->id)],
+            'permission_overrides.*.permission' => ['required', 'string', Rule::in($overridableValues)],
+            'permission_overrides.*.allowed'    => ['required', 'boolean'],
+        ]);
+
+        $rows = $validated['permission_overrides'];
+
+        foreach ($rows as $row) {
+            if ($row['allowed'] === true) {
+                $permission = Permission::from($row['permission']);
+                abort_unless(
+                    PermissionChecker::can($request->user(), $permission, $room),
+                    422,
+                    "You cannot force-grant a permission you do not hold yourself: {$row['permission']}"
+                );
+            }
+        }
+
+        ChannelPermissionOverride::where('channel_id', $channel->id)->delete();
+        foreach ($rows as $row) {
+            ChannelPermissionOverride::create([
+                'channel_id' => $channel->id,
+                'role_id'    => $row['role_id'],
+                'permission' => $row['permission'],
+                'allowed'    => $row['allowed'],
+            ]);
         }
     }
 

@@ -31,10 +31,12 @@ class BootstrapGlobalAdminCommandTest extends TestCase
         $this->artisan('app:bootstrap-admin', ['email' => 'admin@example.com'])->assertSuccessful();
 
         // Every factory-created user already holds the seeded global Member
-        // role (see UserFactory::configure()) — this asserts bootstrap-admin
-        // itself only ever creates one Administrator role alongside it, not
-        // that "administrator" role count generically.
-        $this->assertDatabaseCount('roles', 2);
+        // role, and seedGlobalDefaults() also seeds "Server Moderator" (see
+        // UserFactory::configure()/Role::seedGlobalDefaults()) — this
+        // asserts bootstrap-admin itself only ever creates one Administrator
+        // role alongside those two, not that "administrator" role count
+        // generically.
+        $this->assertDatabaseCount('roles', 3);
         $this->assertSame(1, \App\Models\Role::where('name', 'Administrator')->whereNull('room_id')->count());
     }
 

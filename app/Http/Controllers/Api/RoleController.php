@@ -10,6 +10,7 @@ use App\Models\Room;
 use App\Models\User;
 use App\Support\ChannelTypes\ChannelTypeRegistry;
 use App\Support\Permission;
+use App\Support\PermissionCeiling;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,18 +27,19 @@ class RoleController extends Controller
      * matching NotificationPreferences/AudioSettings's pattern for settings
      * tab content.
      */
-    public function indexGlobal(): JsonResponse
+    public function indexGlobal(Request $request): JsonResponse
     {
         Gate::authorize('create', [Role::class, null]);
 
         $roles = Role::whereNull('room_id')
-            ->with(['rolePermissions', 'channelCategories', 'users:id,username,display_name,avatar_url'])
+            ->with([
+                'rolePermissions', 'channelCategories', 'users:id,username,display_name,avatar_url',
+                'roomPermissionCeilings', 'roomChannelCategoryCeilings',
+            ])
             ->orderByDesc('position')
             ->get();
 
-        $roles->each(
-            fn (Role $role) => $role->setAttribute('can_manage', Gate::allows('manage', $role))
-        );
+        $roles->each(fn (Role $role) => $this->decorateRole($role, $request->user()));
 
         return response()->json([
             'roles' => $roles,
@@ -63,14 +65,47 @@ class RoleController extends Controller
             'members.user:id,username,display_name,avatar_url',
         ]);
 
-        $room->roles->each(
-            fn (Role $role) => $role->setAttribute('can_manage', Gate::allows('manage', $role))
-        );
+        $room->roles->each(fn (Role $role) => $this->decorateRole($role, $request->user()));
 
         return response()->json([
             'roles'   => $room->roles,
             'members' => $room->members,
         ]);
+    }
+
+    /**
+     * Annotates $role with everything the frontend Roles UI needs beyond the
+     * raw permission/category rows: `can_manage` (Gate::allows('manage', ...),
+     * hierarchy-aware), `grantable_permissions`/`grantable_channel_categories`
+     * (what the *viewer* may currently add to this role — see
+     * PermissionCeiling — used to gray out a checkbox the viewer couldn't
+     * save anyway rather than letting them hit a 422), and, for a global
+     * role only, `can_manage_ceiling` + its current ceiling state. Guards
+     * the `manageCeiling` gate call to global roles only — that policy
+     * method `abort_unless`s (a real 422, not a returned `false`) when
+     * called on a room-scoped role, so calling it unconditionally here
+     * would 500 this endpoint for every room's role list.
+     */
+    private function decorateRole(Role $role, User $viewer): void
+    {
+        $role->setAttribute('can_manage', Gate::allows('manage', $role));
+        $role->setAttribute('grantable_permissions', PermissionCeiling::grantablePermissions($viewer, $role)->map(fn ($p) => $p->value)->values());
+        $role->setAttribute('grantable_channel_categories', PermissionCeiling::grantableCategories($viewer, $role)->values());
+
+        if ($role->room_id === null) {
+            $role->setAttribute('can_manage_ceiling', Gate::allows('manageCeiling', $role));
+            $role->setAttribute('room_permission_ceiling', $role->roomPermissionCeilings->pluck('permission')->map(fn ($p) => $p->value)->values());
+            $role->setAttribute('room_channel_category_ceiling', $role->roomChannelCategoryCeilings->pluck('category')->values());
+
+            // The *viewer's own* ceiling capacity — not this specific role's
+            // ceiling (same value on every role in the list, since it
+            // describes the actor, not the target) — see
+            // PermissionCeiling::actorCeilingCapacity(). Used the same way
+            // grantable_permissions is: gray out a ceiling checkbox the
+            // viewer couldn't save anyway.
+            $capacity = PermissionCeiling::actorCeilingCapacity($viewer);
+            $role->setAttribute('grantable_ceiling_permissions', $capacity === 'unrestricted' ? 'unrestricted' : array_values($capacity));
+        }
     }
 
     public function store(Request $request, Room $room): JsonResponse
@@ -92,12 +127,12 @@ class RoleController extends Controller
         ]);
 
         $role->load(['rolePermissions', 'channelCategories']);
-        // index() computes this per role on every fetch; store() skipped it,
-        // so a role you just created came back with no can_manage at all —
-        // RoleCard's `role.can_manage ?? false` then rendered it as
-        // unmanageable (no add-member UI, etc.) until a refetch corrected it.
-        // Compute it here too.
-        $role->setAttribute('can_manage', Gate::allows('manage', $role));
+        // index() decorates every role on every fetch; store() used to skip
+        // it, so a role you just created came back with no can_manage at
+        // all — RoleCard's `role.can_manage ?? false` then rendered it as
+        // unmanageable (no add-member UI, etc.) until a refetch corrected
+        // it. Decorate here too.
+        $this->decorateRole($role, $request->user());
 
         return response()->json($role, 201);
     }
@@ -120,7 +155,7 @@ class RoleController extends Controller
         ]);
 
         $role->load(['rolePermissions', 'channelCategories']);
-        $role->setAttribute('can_manage', Gate::allows('manage', $role));
+        $this->decorateRole($role, $request->user());
 
         return response()->json($role, 201);
     }
@@ -161,6 +196,30 @@ class RoleController extends Controller
         // ambiguous top of the hierarchy.
         if (array_key_exists('permissions', $validated) && in_array(Permission::Administrator->value, $validated['permissions'], true)) {
             abort(422, 'The administrator permission can only be granted to the Owner role.');
+        }
+
+        // An actor can only grant a permission they currently hold themselves
+        // — removal is always allowed, only additions are gated. This is
+        // what keeps a role's effective permissions bounded by everything
+        // above it in the hierarchy, all the way to a room's snapshot
+        // ceiling (see PermissionCeiling's docblock for the induction
+        // argument) — a real gap this closes: previously any actor with
+        // ManageRoles who outranked a role could grant it any permission
+        // regardless of what the actor held.
+        if (array_key_exists('permissions', $validated)) {
+            $existing = $role->rolePermissions->map(fn ($p) => $p->permission->value)->all();
+            $added = array_diff($validated['permissions'], $existing);
+            $grantable = PermissionCeiling::grantablePermissions($request->user(), $role)->map(fn ($p) => $p->value)->all();
+            $notGrantable = array_diff($added, $grantable);
+            abort_if($notGrantable !== [], 422, 'You cannot grant a permission you do not currently hold yourself: ' . implode(', ', $notGrantable));
+        }
+
+        if (array_key_exists('channel_categories', $validated)) {
+            $existing = $role->channelCategories->pluck('category')->all();
+            $added = array_diff($validated['channel_categories'], $existing);
+            $grantable = PermissionCeiling::grantableCategories($request->user(), $role)->all();
+            $notGrantable = array_diff($added, $grantable);
+            abort_if($notGrantable !== [], 422, 'You cannot grant a channel category you cannot create yourself: ' . implode(', ', $notGrantable));
         }
 
         DB::transaction(function () use ($role, $validated) {
@@ -241,11 +300,11 @@ class RoleController extends Controller
     }
 
     /**
-     * Global/instance-wide equivalent of reorder(). Global roles have no
-     * per-room hierarchy to compare against (RolePolicy::manage's `!$role->room`
-     * branch already grants global role management on ManageRoles alone, with
-     * no outranks() check) — so unlike reorder(), this doesn't need the
-     * actor's highestRoleFor() gate.
+     * Global/instance-wide equivalent of reorder(). Global roles now have a
+     * real hierarchy (see Role::highestGlobalRoleFor/RolePolicy::manage's
+     * global branch), so this mirrors reorder()'s outranksOrEquals() gate —
+     * the looser `>=` comparison, since the actor's own role is necessarily
+     * in the full-set payload, same reasoning as reorder().
      */
     public function reorderGlobal(Request $request): JsonResponse
     {
@@ -258,6 +317,14 @@ class RoleController extends Controller
 
         $customRoleCount = Role::whereNull('room_id')->where('is_system', false)->count();
         abort_unless(count($validated['role_ids']) === $customRoleCount, 422, 'role_ids must include every custom global role.');
+
+        $highest = Role::highestGlobalRoleFor($request->user());
+        abort_if($highest === null, 403);
+
+        $roles = Role::whereIn('id', $validated['role_ids'])->get()->keyBy('id');
+        foreach ($validated['role_ids'] as $roleId) {
+            abort_unless($highest->outranksOrEquals($roles[$roleId]), 403);
+        }
 
         $count = count($validated['role_ids']);
         foreach (array_values($validated['role_ids']) as $index => $roleId) {
