@@ -82,6 +82,43 @@ to group" notification has no associated message).
 `RoomPolicy::invite` checks `Room::hasMember` OR a global/room `ManageMembers` grant via
 `PermissionChecker` — see `docs/roles-and-permissions.md`.
 
+## Server invites
+
+A `RoomInvite` grants membership in one room — it has no bearing on whether the
+invited email may create an account in the first place. `ServerInvite` (its own
+model/table, deliberately not a nullable `room_id` on `RoomInvite` — the two gate
+entirely different actions) grants exactly that: the right to create an account at
+all, checked by `AuthController::showRegister`/`register` via
+`ServerInviteService::validateToken()`.
+
+This is one of three independently-toggleable **signup paths** — see
+`App\Models\InstanceSetting`, a single-row, instance-wide settings table:
+
+- `signup_manual_enabled` — the plain `/register` form, open to anyone.
+- `signup_email_invite_enabled` — registering via a valid, unexpired, unaccepted
+  `ServerInvite` token (`?invite={token}` on `/register`, or an `invite_token` field on
+  the POST) works *regardless* of whether manual signup is also open. An invite may be
+  scoped to one email (`ServerInvite.email` set — the registering email must match) or
+  left open (`email` null — a shareable link, anyone who has it may use it once).
+- `signup_oauth_enabled` — whether an unmatched Authentik/OAuth identity may provision
+  a brand-new account (see `docs/auth-and-sso.md`); unrelated to whether OAuth login
+  exists at all (`AUTHENTIK_ENABLED`).
+
+Turning all three off closes registration entirely — existing accounts (password or
+OAuth-linked) can still log in. Env vars (`SIGNUP_MANUAL_ENABLED`/
+`SIGNUP_EMAIL_INVITE_ENABLED`/`SIGNUP_OAUTH_ENABLED`, see `config/registration.php`)
+only seed `InstanceSetting`'s single row the *first* time it's read
+(`InstanceSetting::current()`) — after that, the row is the live source of truth, and
+an admin holding `ManageRoles` at global tier (the same check gating the Roles tab —
+see `InstanceSettingPolicy`) can flip any of the three from Settings' "Server" tab
+(`RegistrationSettings.tsx`, self-fetching `GET`/`PATCH /api/settings/instance`) with
+no redeploy. Changing the env var after the row already exists has no further effect.
+
+Creating a `ServerInvite` (`POST /api/server-invites`, `ServerInviteController`) is
+gated by `Permission::InviteServer` — previously declared but intentionally inert (see
+`CLAUDE.md`'s trap notes); this is its first real enforcement site. There is no
+list/revoke UI yet — a fast-follow, not a blocker for the signup path being real.
+
 ### Direct message restriction
 
 Starting a conversation (this file's `store`) and sending in an existing one both

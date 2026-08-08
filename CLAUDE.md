@@ -136,36 +136,66 @@ app/
                                VoiceDevicePreferenceController (see docs/voice.md);
                                ChannelController (distinct from Web\ChannelController) is
                                store/update/destroy/reorder — channel CRUD, plus
-                               visibility_role_ids on update (see docs/
-                               roles-and-permissions.md's "Channel visibility") — gated
-                               separately from the rest of update (docs/
-                               capabilities-and-channel-types.md); RoleController is
-                               index/store/update/destroy/addMember/removeMember for room
-                               roles, plus indexGlobal/storeGlobal/reorderGlobal for
-                               instance-wide roles — index/indexGlobal back
-                               RoomRolesPanel.tsx/Settings' self-fetching Roles tab
-                               respectively (see docs/roles-and-permissions.md); RoomMemberController is
+                               visibility_role_ids and permission_overrides on update (see
+                               docs/roles-and-permissions.md's "Channel visibility"/"Room
+                               permission ceilings") — both gated separately from the rest
+                               of update, both behind the same ManageChannelVisibility
+                               ability (docs/capabilities-and-channel-types.md);
+                               RoleController is index/store/update/destroy/addMember/
+                               removeMember for room roles, plus indexGlobal/storeGlobal/
+                               reorderGlobal for instance-wide roles — index/indexGlobal
+                               back RoomRolesPanel.tsx/Settings' self-fetching Roles tab
+                               respectively, and decorate every returned Role with
+                               can_manage/grantable_permissions/grantable_channel_categories
+                               plus (global roles only) can_manage_ceiling/
+                               grantable_ceiling_permissions/the current ceiling state
+                               (see docs/roles-and-permissions.md); RoleRoomCeilingController
+                               is update — a global role's room-permission ceiling, gated
+                               by RolePolicy::manageCeiling (see docs/
+                               roles-and-permissions.md's "Room permission ceilings");
+                               RoomMemberController is
                                destroy/ban/unban — kick/ban a room member (see docs/
                                roles-and-permissions.md's "Kick and ban");
                                ThemePreferenceController is
                                show/update for the Appearance panel's preset + per-variable
-                               overrides (see docs/theming.md)
+                               overrides (see docs/theming.md); InstanceSettingsController
+                               is show/update for the three signup-path toggles, backing
+                               Settings' self-fetching "Server" tab, gated by
+                               InstanceSettingPolicy (see docs/conversations-and-
+                               invites.md's "Server invites"); ServerInviteController is
+                               store only — creates an account-creation invite, gated by
+                               ServerInvitePolicy/Permission::InviteServer (no list/revoke
+                               UI yet)
     Controller.php            empty abstract base — Laravel ships none by default, keep it
   Http/Middleware/
     HandleInertiaRequests.php shares auth.user, rooms, conversations,
                                recentCustomStatuses (see docs/status.md), flash
-  Mail/                       Mailable classes (RoomInviteMail), ShouldQueue — sent via
-                               the `worker` container, Mailpit catches them in dev
+  Mail/                       Mailable classes (RoomInviteMail, ServerInviteMail),
+                               ShouldQueue — sent via the `worker` container, Mailpit
+                               catches them in dev
   Models/                     all UUID-keyed (HasUuids); Notification is the exception to
                                the "table name matches model" convention — see trap #22.
                                NotificationPreference/VoiceDevicePreference — see docs/
                                notifications.md and docs/voice.md; Role/RolePermission/
-                               RoleAssignment, ChannelRoleVisibility, RoomBan — see docs/
-                               roles-and-permissions.md; RecentCustomStatus — see docs/
+                               RoleAssignment, ChannelRoleVisibility, RoomBan,
+                               RoleRoomPermissionCeiling/RoleRoomChannelCategoryCeiling
+                               (a global role's room-permission ceiling),
+                               RoomPermissionCeiling/RoomChannelCategoryCeiling (a room's
+                               own snapshotted ceiling), ChannelPermissionOverride
+                               (schema only, not yet consumed) — see docs/
+                               roles-and-permissions.md's "Room permission ceilings";
+                               RecentCustomStatus — see docs/
                                status.md; ThemePreference
                                (one row per user: preset + jsonb overrides) — see docs/
                                theming.md; Vote, NotificationMute (schema only, not yet
-                               enforced) — see docs/comments-and-voting.md
+                               enforced) — see docs/comments-and-voting.md;
+                               InstanceSetting (single-row, instance-wide settings — today
+                               just the three signup-path toggles, lazily seeded from
+                               config/registration.php's env defaults via
+                               InstanceSetting::current()), ServerInvite (grants account
+                               creation, distinct from RoomInvite which grants room
+                               membership) — see docs/conversations-and-invites.md's
+                               "Server invites"
   Policies/                   authorization seams beyond simple membership checks —
                                see docs/roles-and-permissions.md and docs/
                                conversations-and-invites.md. RoomMemberPolicy backs
@@ -180,7 +210,10 @@ app/
                                Message row — used by Web\MessageController::show and by
                                AttachmentPolicy::view, which defers to it once an
                                attachment is on a sent message (uploader-only before
-                               that) — see docs/attachments.md
+                               that) — see docs/attachments.md; InstanceSettingPolicy and
+                               ServerInvitePolicy both reuse the same ManageRoles-at-
+                               global-tier check as managing global roles — see docs/
+                               conversations-and-invites.md's "Server invites"
   Providers/
     ChannelTypeServiceProvider.php  registers every built-in ChannelType — see docs/
                                capabilities-and-channel-types.md (ForumChannelType,
@@ -198,9 +231,14 @@ app/
                                RoomMembershipService is kick/ban + the owner-transfer
                                flow when the target is a room's Owner (see docs/
                                roles-and-permissions.md); VoteService — see docs/
-                               comments-and-voting.md
+                               comments-and-voting.md; ServerInviteService — creation +
+                               token validation for account-creation invites, see docs/
+                               conversations-and-invites.md's "Server invites"
   Support/                    ChannelFocus (see docs/notifications.md); Permission/
-                               PermissionChecker (see docs/roles-and-permissions.md);
+                               PermissionChecker/PermissionCeiling (the last is the
+                               grant-time "can only grant what you hold" primitive, room
+                               and server tier both — see docs/
+                               roles-and-permissions.md's "Room permission ceilings");
                                ChannelTypes/ + Capabilities/ (see docs/
                                capabilities-and-channel-types.md); Theme/ThemeTokens —
                                the CSS-variable/preset allow-list ThemePreferenceController
@@ -306,15 +344,18 @@ resources/
                                MemberList (renders a per-member kick/ban dropdown when
                                roomId + canManageMembers/canBanMembers are passed, e.g.
                                from Channels/Show — see docs/roles-and-permissions.md),
-                               ChannelVisibilityPanel (the "visible to roles" editor —
-                               unlike the `mainView` panels above, this one is toggled by
-                               Channels/Show independently of `mainView`: absolutely
-                               positioned below the channel header (not a modal, not a
-                               floating Radix popover) so it reads as inline without
-                               resizing the channel content beneath it or moving the
-                               message list's scroll position; closes on a second click
-                               of the 🔒 button, a click outside the header, or Cancel/a
-                               successful save), UserPanel
+                               ChannelPermissionsPanel (visibility — who sees this
+                               channel — and, filtered to what the channel's type
+                               actually supports, per-role curated permission overrides,
+                               one panel/one save — see docs/roles-and-permissions.md's
+                               "Room permission ceilings"; unlike the `mainView` panels
+                               above, this one is toggled by Channels/Show independently
+                               of `mainView`: absolutely positioned below the channel
+                               header (not a modal, not a floating Radix popover) so it
+                               reads as inline without resizing the channel content
+                               beneath it or moving the message list's scroll position;
+                               closes on a second click of the 🔒 button, a click outside
+                               the header, or Cancel/a successful save), UserPanel
                                (the avatar+name trigger — see docs/status.md),
                                UserStatusPopover (the popup itself: status switcher,
                                custom status color+text+save, recent statuses,
@@ -326,9 +367,27 @@ resources/
                                management, scope-agnostic (every API call is keyed by
                                role id, not room id) so it backs both RoomRolesPanel.tsx
                                and Settings' Roles tab — see docs/roles-and-permissions.md.
-                               RoomRolesPanel self-fetches via GET /api/rooms/{room}/roles
+                               Splits a global role's checklist into "Server permissions"
+                               (server-tier) and "Room permissions" (room-tier) sections;
+                               a room role only ever shows the latter. RoomRolesPanel
+                               self-fetches via GET /api/rooms/{room}/roles
                                (Api\RoleController::index) the same way
-                               GlobalRolesSettings.tsx self-fetches the Settings Roles tab
+                               GlobalRolesSettings.tsx self-fetches the Settings Roles tab.
+                               PermissionToggleList — the one shared, Toggle-switch-based
+                               permission checklist (grouped by PERMISSION_GROUPS, each
+                               row labeled + described from PERMISSION_DESCRIPTIONS, grayed
+                               out per `grantable`) reused by RoleCard, RoomCeilingSection,
+                               and ChannelPermissionsPanel — adding a new permission means
+                               extending the PermissionKey/PERMISSION_* maps once, not
+                               touching any of these three surfaces. RoomCeilingSection —
+                               a global role's room-permission-ceiling editor (only
+                               rendered when `role.can_manage_ceiling` is true), reuses
+                               PermissionToggleList scoped to room-tier permissions,
+                               PATCHes /api/settings/roles/{role}/room-ceiling. TriStateOverride
+                               — the Inherit/Allow/Deny segmented control
+                               ChannelPermissionsPanel's override grid uses (a channel
+                               override has a real third state a binary Toggle can't
+                               represent — see PermissionChecker::canInChannel())
       rooms/                  OwnerTransferModal — the confirmation shown when
                                kicking/banning a room's Owner would make the acting
                                admin the new Owner, see docs/roles-and-permissions.md
@@ -343,7 +402,12 @@ resources/
                                /api/settings/roles) like the other settings tabs rather
                                than Inertia-prop-driven, only rendered when
                                SettingsController::show's can_manage_global_roles is
-                               true (see docs/roles-and-permissions.md)
+                               true (see docs/roles-and-permissions.md);
+                               RegistrationSettings — the "Server" tab: the three signup-
+                               path toggles + a "generate server invite" affordance,
+                               self-fetching (GET/PATCH /api/settings/instance), only
+                               rendered when can_manage_instance_settings is true (see
+                               docs/conversations-and-invites.md's "Server invites")
       voice/                  VoiceChannelPanel, VoiceBar — a channel/conversation's
                                main-pane voice UI. Both render ParticipantVolumeControl
                                per remote participant (speaking-ring Avatar + volume
@@ -415,8 +479,11 @@ routes/
   web.php                     guest + auth Inertia routes
   api.php                     /api/* under auth (session), axios targets, including
                                /settings/roles (global role list/store/reorder, self-
-                               fetched by Settings' Roles tab) and /rooms/{room}/
-                               members|bans (kick/ban — see docs/roles-and-permissions.md)
+                               fetched by Settings' Roles tab), /rooms/{room}/
+                               members|bans (kick/ban — see docs/roles-and-permissions.md),
+                               /settings/instance (signup-path toggles, self-fetched by
+                               Settings' Server tab) and /server-invites (create only —
+                               see docs/conversations-and-invites.md's "Server invites")
   channels.php                broadcast auth: channel.{id} presence (now also checks
                                Channel::isVisibleTo() — see docs/
                                roles-and-permissions.md's "Channel visibility"),
@@ -663,7 +730,7 @@ of proving a change works and needs nothing installed:
 
 ## Traps already hit — do NOT reintroduce
 
-Full write-ups (51 of them) live in [docs/traps.md](docs/traps.md), grouped by
+Full write-ups (52 of them) live in [docs/traps.md](docs/traps.md), grouped by
 subsystem, with the original numbering preserved for old references. The
 short version, by group — read the full entry before touching adjacent code:
 
@@ -706,7 +773,9 @@ short version, by group — read the full entry before touching adjacent code:
   `Rule::exists()->where()` against a boolean column, `BelongsToMany::attach()`/
   `sync()` bypassing `HasUuids`' id generation on a UUID-PK pivot table, an
   `if ($role->room)`-gated safety net silently going dead once `room_id` became
-  legitimately nullable (global roles).
+  legitimately nullable (global roles), a DB column default not existing on a
+  freshly-`create()`d model until refreshed (a falsy check on it right after creation
+  silently takes the wrong branch).
 - **Notifications** (see also [docs/notifications.md](docs/notifications.md))
   — a preference category with no `Notification::notify()` producer is
   silently inert.
@@ -895,11 +964,34 @@ mechanism this app doesn't have yet) and deserves its own explicit go-ahead.
   (delete/pin others' messages) and `ManageEmojis` are declared in `App\Support\
   Permission` but have no `PermissionChecker::can()` call site anywhere yet — see the
   trap-#24-shaped warning in `docs/roles-and-permissions.md`. `ManageMembers`/
-  `BanMembers` (kick/ban) now do — see `docs/roles-and-permissions.md`'s "Kick and ban"
-  section for the `Role::effectiveModerationRank`-based comparison a future
-  `ManageMessages` moderation feature should look at before picking its own hierarchy
-  semantics, since it likely wants the peer-eligible `>=` shape, not `RolePolicy::
-  manage`'s role-management one.
+  `BanMembers` (kick/ban) and `InviteServer` (server invites) now do — see
+  `docs/roles-and-permissions.md`'s "Kick and ban" section for the
+  `Role::effectiveModerationRank`-based comparison a future `ManageMessages`
+  moderation feature should look at before picking its own hierarchy semantics,
+  since it likely wants the peer-eligible `>=` shape, not `RolePolicy::manage`'s
+  role-management one.
+- **Reapplying a server role's current room-permission ceiling to an already-created
+  room.** `Room::snapshotPermissionCeiling()` (see `docs/roles-and-permissions.md`'s
+  "Room permission ceilings") is deliberately one-shot, captured at creation time —
+  tightening or loosening a server role's ceiling later does not retroactively re-cap
+  rooms already created under it. A "reapply current defaults to this room" action
+  (presumably room-owner- or server-admin-triggered) was explicitly deferred rather than
+  built; needs a product decision on exactly what it does to a room's *already-granted*
+  role permissions (revoke anything outside the new ceiling? leave existing grants alone
+  and only change what's grantable going forward?) before any code.
+- **Onboarding flow for first-time server owners.** Every user holds the global `Member`
+  role by default, and that role is unrestricted (`has_room_permission_ceiling: false`)
+  — so as shipped, *every* room is unrestricted and every permission is available to
+  every room's Owner, until a server admin deliberately builds a restricted global role,
+  configures its ceiling, and moves the relevant users onto *only* that role (not also
+  the default Member — the union means holding any unrestricted role cancels a
+  restriction out). Nothing in the product surfaces this today; a new server owner has
+  no signal that this system exists or how to use it. A guided setup flow (e.g. shown
+  once to the first bootstrapped Administrator) walking through "do you want to cap what
+  rooms on this server can do — messaging, specific emoji sets, etc. — before anyone
+  creates one" would make the ceiling system discoverable and usable without reading
+  this doc first. Needs its own design pass (what it asks, when it's shown, whether it's
+  skippable/revisitable from Settings later) before any code.
 - **Runtime-installable channel-type plugins.** `App\Support\ChannelTypes\
   ChannelType` + `ChannelTypeRegistry` (see `docs/capabilities-and-channel-types.md`)
   is deliberately built as a **code-level** extension point — a new type ships
@@ -918,6 +1010,26 @@ mechanism this app doesn't have yet) and deserves its own explicit go-ahead.
   half loads in a sandboxed iframe with a typed SDK object instead of raw
   page access. This needs its own explicit design discussion before any code
   — don't start it as a side effect of touching `ChannelTypeRegistry`.
+- **Code-gated ephemeral voice rooms.** A private voice channel type where clicking it
+  prompts for a self-chosen 4/6/8-digit code rather than joining a fixed roster —
+  entering the same code as someone else joins their spawned room; being one digit off
+  puts you alone in a different one (no "wrong code" error, no enumeration signal). A
+  real departure from every existing voice surface, which assumes a persisted `Channel`
+  row is a hard precondition: `voice.channel.{id}`'s `Broadcast::channel` closure
+  (`routes/channels.php`) does `Channel::find($id)` and denies auth outright if it
+  returns null, and `VoiceSignalingService::canJoin()`/`ChannelPolicy` both take a real
+  `Channel` model. A code-keyed room has no such row, so this needs either (a) a new,
+  parallel presence-channel scheme (e.g. `voice.code.{roomId}.{code}`, room-membership
+  checked directly with no `Channel`/`hasCapability()` involved — TURN/coturn creds
+  already need no change, `VoiceSignalingService::iceServers()` is unscoped to any
+  channel today) or (b) actually persisting a throwaway `Channel` row per code, which
+  turns "ephemeral" into real rows needing a cleanup/expiry story. No existing pattern
+  in this codebase to model an ephemeral, non-DB-backed room after — this would be a
+  genuinely new concept, not an extension of `ChannelType`/`ChannelTypeRegistry`. Needs
+  a design pass on: room lifecycle (expires when empty? after a timeout regardless?),
+  whether codes are scoped per-room or instance-wide, and rate-limiting code entry
+  (guessing adjacent codes to land in someone else's room is the obvious abuse case)
+  before any code.
 
 ## Deploying behind a reverse proxy
 
@@ -957,6 +1069,17 @@ already a hard dependency — lets multiple Reverb instances share subscriber st
 the real upload size limit; raising it also means raising `docker/nginx/default.conf`'s
 `client_max_body_size` and `docker/app/php.ini`'s `upload_max_filesize`/`post_max_size`,
 see the Conventions bullet above),
+`UPLOAD_ALLOWED_MIMES` (default `jpeg,png,gif,webp,mp4,webm,mov,mp3,wav,ogg,pdf,txt,zip`
+— `config/uploads.php`'s `allowed_mimes`; deliberately excludes `svg`/`html`/`htm`, see
+`UploadController`'s doc-comment for why), `CORS_ALLOWED_ORIGINS` (comma-separated,
+empty by default — `config/cors.php` always allows `APP_URL` itself; this adds any
+additional origin, e.g. a future separate mobile app, that also needs credentialed
+access to `api/*`/`sanctum/csrf-cookie`/`broadcasting/auth`),
+`SIGNUP_MANUAL_ENABLED`/`SIGNUP_EMAIL_INVITE_ENABLED`/`SIGNUP_OAUTH_ENABLED` (all
+default `true` — `config/registration.php`; first-boot defaults only, seeding
+`InstanceSetting`'s single row the first time it's read — see
+`docs/conversations-and-invites.md`'s "Server invites" for how an admin overrides
+them afterward from Settings without touching these env vars again),
 `MAIL_MAILER=mailpit` (dev default; other options: `smtp`, `ses`, `log`, `array`
 — see README's `## Email`) + `MAIL_HOST`/`MAIL_PORT`/`MAIL_USERNAME`/
 `MAIL_PASSWORD`/`MAIL_ENCRYPTION` (used by `mailpit`/`smtp`) +

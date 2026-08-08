@@ -11,8 +11,14 @@ namespace App\Support;
  * declared now (so a Role's stored permission set can reference them and a
  * future milestone doesn't need a schema change) but have no enforcement
  * site yet — do not assume enabling them does anything until a controller
- * checks PermissionChecker::can() for that case. ManageMembers/BanMembers now
- * do — see RoomMemberPolicy/RoomMembershipService.
+ * checks PermissionChecker::can() for that case. ManageMembers/BanMembers/
+ * InviteServer now do — see RoomMemberPolicy/RoomMembershipService,
+ * ServerInviteService.
+ *
+ * Each case applies at server (global-role) tier, room tier, or both — see
+ * serverTierCases()/roomTierCases(). A curated subset also applies at
+ * channel tier via per-channel overrides — see channelOverridableCases()
+ * and docs/roles-and-permissions.md.
  *
  * Renaming or removing a case only silently orphans existing
  * `role_permissions` rows (there is no boot-time registry validating the
@@ -92,17 +98,132 @@ enum Permission: string
     /**
      * Room-scoped (global-scope-relevant too, same shape as
      * SendDirectMessages). Gates *authorship* of a threaded comment —
-     * standalone, deliberately independent of whatever gates sending an
-     * ordinary message in the same channel (there is no generic "can send
-     * messages" permission to make this a sibling of). A role can hold
-     * Comment without holding posting rights on the channel otherwise, or
-     * vice versa. Checked in TextMessageService's comment-send branch,
-     * alongside (never instead of) the channel's `comments_enabled`
-     * setting — a parameter, not a capability, see docs/
+     * standalone, deliberately independent of SendMessages, which gates
+     * ordinary (non-comment, non-announcement) posting in the same channel.
+     * A role can hold Comment without holding SendMessages, or vice versa —
+     * this is what lets a channel disable ordinary sending while leaving
+     * commenting enabled, or the reverse. Checked in TextMessageService's
+     * comment-send branch, alongside (never instead of) the channel's
+     * `comments_enabled` setting — a parameter, not a capability, see docs/
      * comments-and-voting.md. Granted to the seeded Member role by default.
+     * Channel-overridable — see docs/roles-and-permissions.md.
      */
     case Comment = 'comment';
 
-    /** Room-scoped. Gates casting/removing a vote — see VoteService. */
+    /** Room-scoped. Gates casting/removing a vote — see VoteService. Channel-overridable. */
     case Vote = 'vote';
+
+    /**
+     * Room-scoped. Gates ordinary (non-comment, non-announcement) posting in
+     * a channel — see TextMessageService::authorizeSend's default branch.
+     * Previously this had no RBAC gate at all (membership + `hasCapability(
+     * 'text.send_text')` was enough); this closes that gap and is what makes
+     * "disable ordinary sending but keep Comment enabled" on a single channel
+     * expressible. Does NOT apply to an 'announcement'-type channel — that
+     * stays gated solely by PostAnnouncements. Granted to the seeded Member
+     * role by default. Channel-overridable — see docs/roles-and-permissions.md.
+     */
+    case SendMessages = 'send_messages';
+
+    /**
+     * Room-scoped (global-scope-relevant too, same shape as Comment/
+     * SendDirectMessages). Gates adding/removing a reaction on a message —
+     * see ReactionController. Previously this had no RBAC gate at all
+     * (membership only). Granted to the seeded Member role by default.
+     * Channel-overridable — see docs/roles-and-permissions.md.
+     */
+    case React = 'react';
+
+    /**
+     * Server-wide (checked with $room = null). Gates creating a room — see
+     * RoomPolicy::create/Web\RoomController. Previously room creation had no
+     * gate at all; this closes that gap. Granted to the global Member role
+     * by default.
+     */
+    case CreateRoom = 'create_room';
+
+    /**
+     * Server-wide. Gates creating a ServerInvite — see
+     * ServerInviteService::create()/Api\ServerInviteController. A server
+     * invite grants the right to create an account at all (distinct from
+     * RoomInvite, which grants room membership) — see
+     * docs/conversations-and-invites.md's "Server invites".
+     */
+    case InviteServer = 'invite_server';
+
+    /**
+     * Room-scoped. Gates inviting a new member to a room — see
+     * RoomPolicy::invite. Split out of ManageMembers (which now means "kick"
+     * only) so a room-permission ceiling can grant invite rights without
+     * granting kick rights — the two are unrelated capabilities that used to
+     * share one enum case. Granted to the seeded Moderator role by default,
+     * alongside ManageMembers.
+     */
+    case InviteMembers = 'invite_members';
+
+    /**
+     * Every permission that applies at server (global-role) tier — used to
+     * validate a server role's ordinary permission grants and, distinctly,
+     * what may appear in a room-permission ceiling's *category* of concern
+     * (a ceiling itself only ever stores room-tier values — see
+     * PermissionCeiling). Administrator/ManageRoles apply at both tiers.
+     */
+    public static function serverTierCases(): array
+    {
+        return [
+            self::Administrator,
+            self::ManageRoles,
+            self::CreateRoom,
+            self::InviteServer,
+            self::SendDirectMessages,
+        ];
+    }
+
+    /**
+     * Every permission that applies at room tier — this is also the full set
+     * of values a room-permission ceiling (RoleRoomPermissionCeiling/
+     * RoomPermissionCeiling) may ever store, since a ceiling caps what a
+     * room's roles may hold, and only room-tier permissions live on room
+     * roles. Administrator/ManageRoles apply at both tiers.
+     */
+    public static function roomTierCases(): array
+    {
+        return [
+            self::Administrator,
+            self::ManageRoles,
+            self::ManageRoom,
+            self::ManageEmojis,
+            self::InviteMembers,
+            self::ManageMembers,
+            self::BanMembers,
+            self::ManageChannels,
+            self::ManageModChannels,
+            self::SeeAllChannels,
+            self::ManageChannelVisibility,
+            self::ManageMessages,
+            self::SendMessages,
+            self::PostAnnouncements,
+            self::Comment,
+            self::React,
+            self::Vote,
+        ];
+    }
+
+    /**
+     * The curated subset a channel's role-scoped permission_overrides may
+     * target — deliberately small (room-management-style permissions like
+     * ManageRoom/ManageRoles/BanMembers never appear here), see
+     * docs/roles-and-permissions.md's "Channel-tier permission overrides".
+     */
+    public static function channelOverridableCases(): array
+    {
+        return [
+            self::SendMessages,
+            self::PostAnnouncements,
+            self::Comment,
+            self::React,
+            self::Vote,
+            self::ManageChannelVisibility,
+        ];
+    }
 }

@@ -1,7 +1,7 @@
 import { Head, Link, useForm } from '@inertiajs/react'
 import type { SharedProps } from '@/types'
 
-export default function Login({ appName }: SharedProps) {
+export default function Login({ appName, registrationPaths }: SharedProps) {
     const { data, setData, post, processing, errors } = useForm({
         login: '',
         password: '',
@@ -74,12 +74,14 @@ export default function Login({ appName }: SharedProps) {
                             </button>
                         </div>
 
-                        <p className="text-sm text-text-muted mt-6">
-                            Need an account?{' '}
-                            <Link href="/register" className="text-text-link hover:text-text-link-hover hover:underline">
-                                Register
-                            </Link>
-                        </p>
+                        {registrationPaths.manual && (
+                            <p className="text-sm text-text-muted mt-6">
+                                Need an account?{' '}
+                                <Link href="/register" className="text-text-link hover:text-text-link-hover hover:underline">
+                                    Register
+                                </Link>
+                            </p>
+                        )}
                     </div>
                 </div>
             </div>

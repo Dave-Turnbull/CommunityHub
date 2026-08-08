@@ -197,6 +197,18 @@ export async function updateChannelVisibility(channelId: string, roleIds: string
     return data
 }
 
+// Visibility (who sees this channel) and permission overrides (who can do
+// what in it) are edited together in one panel (ChannelPermissionsPanel) and
+// saved as one request — see Api\ChannelController::update's transactional
+// handling of both fields together.
+export async function updateChannelPermissions(
+    channelId: string,
+    payload: { visibility_role_ids: string[]; permission_overrides: { role_id: string; permission: PermissionKey; allowed: boolean }[] }
+): Promise<Channel> {
+    const { data } = await axios.patch(`/api/channels/${channelId}`, payload)
+    return data
+}
+
 export async function deleteChannel(channelId: string): Promise<void> {
     await axios.delete(`/api/channels/${channelId}`)
 }
@@ -259,6 +271,40 @@ export async function createGlobalRole(name: string): Promise<Role> {
 
 export async function reorderGlobalRoles(roleIds: string[]): Promise<void> {
     await axios.patch('/api/settings/roles/reorder', { role_ids: roleIds })
+}
+
+export async function updateRoleRoomCeiling(
+    roleId: string,
+    payload: { has_ceiling: boolean; permissions?: PermissionKey[]; channel_categories?: string[] }
+): Promise<{ has_room_permission_ceiling: boolean; room_permission_ceiling: PermissionKey[]; room_channel_category_ceiling: string[] }> {
+    const { data } = await axios.patch(`/api/settings/roles/${roleId}/room-ceiling`, payload)
+    return data
+}
+
+// ── Instance settings (server signup-path toggles) ─────────────────────
+// Backs Settings' self-fetching "Server" tab — see Api\InstanceSettingsController.
+
+export interface InstanceSettings {
+    signup_manual_enabled: boolean
+    signup_email_invite_enabled: boolean
+    signup_oauth_enabled: boolean
+}
+
+export async function fetchInstanceSettings(): Promise<InstanceSettings> {
+    const { data } = await axios.get('/api/settings/instance')
+    return data
+}
+
+export async function updateInstanceSettings(payload: InstanceSettings): Promise<InstanceSettings> {
+    const { data } = await axios.patch('/api/settings/instance', payload)
+    return data
+}
+
+// A server invite (account-creation invite) — distinct from a room invite.
+// `email` is optional: omit it for an open, shareable link.
+export async function createServerInvite(email?: string): Promise<{ url: string }> {
+    const { data } = await axios.post('/api/server-invites', { email: email || undefined })
+    return data
 }
 
 // ── Room membership (kick/ban) ──────────────────────────────────────────

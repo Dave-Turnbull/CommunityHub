@@ -35,21 +35,29 @@ vi.mock('@/components/settings/GlobalRolesSettings', () => ({
     GlobalRolesSettings: () => null,
 }))
 
+vi.mock('@/components/settings/RegistrationSettings', () => ({
+    RegistrationSettings: () => null,
+}))
+
 const user: User = {
     id: 'user-1', username: 'alice', display_name: 'Alice', avatar_url: null, status: 'online',
     bio: 'Hello there', custom_status: 'Should not appear', custom_status_color: '#ff00aa',
 }
 
-const props = (overrides: { can_manage_global_roles?: boolean } = {}): SharedProps & { user: User; can_manage_global_roles: boolean } => ({
+const props = (
+    overrides: { can_manage_global_roles?: boolean; can_manage_instance_settings?: boolean } = {}
+): SharedProps & { user: User; can_manage_global_roles: boolean; can_manage_instance_settings: boolean } => ({
     appName: 'CommunityHub',
     maxUploadSizeBytes: 100 * 1024 * 1024,
     auth: { user },
     rooms: [],
     conversations: [],
     recentCustomStatuses: [],
+    registrationPaths: { manual: true, emailInvite: true, oauth: true },
     flash: {},
     user,
     can_manage_global_roles: false,
+    can_manage_instance_settings: false,
     ...overrides,
 })
 
@@ -90,5 +98,17 @@ describe('Settings/Index', () => {
         // Profile stays the default tab even when Roles is present — see
         // Settings/Index.tsx's tab ordering.
         expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('data-state', 'active')
+    })
+
+    it('does not show a Server tab for a user who cannot manage instance settings', () => {
+        render(<SettingsIndex {...props({ can_manage_instance_settings: false })} />)
+
+        expect(screen.queryByRole('tab', { name: 'Server' })).not.toBeInTheDocument()
+    })
+
+    it('shows a Server tab for a server admin', () => {
+        render(<SettingsIndex {...props({ can_manage_instance_settings: true })} />)
+
+        expect(screen.getByRole('tab', { name: 'Server' })).toBeInTheDocument()
     })
 })

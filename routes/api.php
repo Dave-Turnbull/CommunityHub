@@ -3,13 +3,16 @@
 use App\Http\Controllers\Api\ChannelController;
 use App\Http\Controllers\Api\ChannelFocusController;
 use App\Http\Controllers\Api\ConversationController;
+use App\Http\Controllers\Api\InstanceSettingsController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\NotificationPreferenceController;
 use App\Http\Controllers\Api\ReactionController;
 use App\Http\Controllers\Api\RoleController;
+use App\Http\Controllers\Api\RoleRoomCeilingController;
 use App\Http\Controllers\Api\RoomInviteController;
 use App\Http\Controllers\Api\RoomMemberController;
+use App\Http\Controllers\Api\ServerInviteController;
 use App\Http\Controllers\Api\ThemePreferenceController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\UserStatusController;
@@ -48,6 +51,19 @@ Route::middleware('auth')->group(function () {
     Route::get('/settings/roles',               [RoleController::class, 'indexGlobal']);
     Route::post('/settings/roles',              [RoleController::class, 'storeGlobal']);
     Route::patch('/settings/roles/reorder',     [RoleController::class, 'reorderGlobal']);
+
+    // A global role's room-permission ceiling — gated by RolePolicy::manageCeiling,
+    // see docs/roles-and-permissions.md's "Room permission ceilings".
+    Route::patch('/settings/roles/{role}/room-ceiling', [RoleRoomCeilingController::class, 'update']);
+
+    // Instance-wide settings (today: the three signup-path toggles) — backs
+    // Settings' self-fetching "Server" tab, gated by InstanceSettingPolicy.
+    Route::get('/settings/instance',   [InstanceSettingsController::class, 'show']);
+    Route::patch('/settings/instance', [InstanceSettingsController::class, 'update']);
+
+    // Server invites — account-creation invites, distinct from room invites
+    // above. Gated by ServerInvitePolicy (Permission::InviteServer).
+    Route::post('/server-invites', [ServerInviteController::class, 'store']);
 
     // Room membership — kick/ban, gated by RoomMemberPolicy (see docs/roles-and-permissions.md).
     Route::delete('/rooms/{room}/members/{user}',    [RoomMemberController::class, 'destroy']);

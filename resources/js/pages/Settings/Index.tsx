@@ -6,6 +6,7 @@ import { NotificationPreferences } from '@/components/settings/NotificationPrefe
 import { AudioSettings } from '@/components/settings/AudioSettings'
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
 import { GlobalRolesSettings } from '@/components/settings/GlobalRolesSettings'
+import { RegistrationSettings } from '@/components/settings/RegistrationSettings'
 import type { SharedProps, User } from '@/types'
 
 interface Props extends SharedProps {
@@ -14,9 +15,12 @@ interface Props extends SharedProps {
     // (anyone holding ManageRoles globally) see the Roles tab at all. See
     // docs/roles-and-permissions.md.
     can_manage_global_roles: boolean
+    // Gate::allows('manage', InstanceSetting::class) — gates the Server tab
+    // (signup-path toggles). See InstanceSettingPolicy.
+    can_manage_instance_settings: boolean
 }
 
-export default function SettingsIndex({ user, can_manage_global_roles }: Props) {
+export default function SettingsIndex({ user, can_manage_global_roles, can_manage_instance_settings }: Props) {
     const { data, setData, patch, processing, isDirty } = useForm({
         display_name: user.display_name,
         bio:          user.bio ?? '',
@@ -134,6 +138,9 @@ export default function SettingsIndex({ user, can_manage_global_roles }: Props) 
                             },
                             ...(can_manage_global_roles
                                 ? [{ value: 'roles', label: 'Roles', content: <GlobalRolesSettings /> } as TabItem]
+                                : []),
+                            ...(can_manage_instance_settings
+                                ? [{ value: 'server', label: 'Server', content: <RegistrationSettings /> } as TabItem]
                                 : []),
                         ]}
                     />
