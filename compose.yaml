@@ -38,7 +38,8 @@
 #   (the apex — chat.$DOMAIN / ws.$DOMAIN are derived from it)
 # Commonly overridden:
 #   AUTHENTIK_ENABLED + its AUTHENTIK_* siblings, MAIL_*, AWS_*
-#   (only if FILESYSTEM_DISK=r2).
+#   (only if FILESYSTEM_DISK=r2), TURN_PUBLIC_HOST (the directly-reachable
+#   coturn hostname — see the note on it below).
 
 # Passed as Docker build args (not `environment:`) to every service below
 # that builds docker/app/Dockerfile — Vite needs these at `npm run build`
@@ -97,7 +98,13 @@ x-laravel-env: &laravel-env
   TURN_SECRET: "${TURN_SECRET:?set TURN_SECRET}"
   TURN_REALM: ${TURN_REALM:-communityhub}
   TURN_PORT: ${TURN_PORT:-3478}
-  TURN_PUBLIC_HOST: ${DOMAIN:?set DOMAIN}
+  # The one public hostname that CANNOT go through the Cloudflare Tunnel —
+  # WebRTC media is raw UDP/TCP, so the browser must reach coturn's published
+  # ports directly. That means a DNS-only (grey-cloud) record pointing at the
+  # real public IP, which is why this is overridable instead of derived from
+  # ${DOMAIN} like chat./ws. are: the apex is proxied and must stay that way.
+  # Defaults to the apex only so the stack still boots unconfigured.
+  TURN_PUBLIC_HOST: ${TURN_PUBLIC_HOST:-${DOMAIN:?set DOMAIN}}
 
   # Defaults to Laravel's `log` driver so the stack boots without any mail
   # config; switch MAIL_MAILER to smtp/ses and set the rest once real mail
