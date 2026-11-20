@@ -119,7 +119,10 @@ services:
     networks: [communityhub]
 
   coturn:
-    image: coturn/coturn:latest
+    # Pinned to match compose.yaml. No denied-peer-ip list here on purpose:
+    # local testing with iceTransportPolicy 'relay' needs relaying to
+    # private peer addresses, and this instance is not internet-exposed.
+    image: coturn/coturn:4.19.2
     container_name: communityhub_coturn
     restart: unless-stopped
     command: >
