@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\AcceptsPendingRoomInvite;
 use App\Models\User;
 use App\Services\AuthentikLoginService;
+use App\Services\DefaultRoomService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -39,7 +40,7 @@ class AuthentikController extends Controller
         return Socialite::driver('authentik')->redirect();
     }
 
-    public function callback(Request $request, AuthentikLoginService $service): RedirectResponse
+    public function callback(Request $request, AuthentikLoginService $service, DefaultRoomService $defaultRoom): RedirectResponse
     {
         abort_unless(config('services.authentik.enabled'), 404);
 
@@ -64,7 +65,7 @@ class AuthentikController extends Controller
         }
 
         if ($user = $service->provision($oauthUser)) {
-            return $this->completeLogin($request, $user);
+            return $this->completeLogin($request, $user, $defaultRoom->landingPath($user));
         }
 
         return redirect('/login')->with(
@@ -105,11 +106,15 @@ class AuthentikController extends Controller
         return $this->completeLogin($request, $user);
     }
 
-    private function completeLogin(Request $request, User $user): RedirectResponse
+    private function completeLogin(Request $request, User $user, ?string $newAccountLanding = null): RedirectResponse
     {
         Auth::login($user);
         $request->session()->regenerate();
 
-        return $this->acceptPendingInvite($request) ?? redirect()->intended('/');
+        if ($redirect = $this->acceptPendingInvite($request)) {
+            return $redirect;
+        }
+
+        return $newAccountLanding ? redirect($newAccountLanding) : redirect()->intended('/');
     }
 }

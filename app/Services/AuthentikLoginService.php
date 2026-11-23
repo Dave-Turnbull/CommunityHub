@@ -22,6 +22,8 @@ use Laravel\Socialite\Contracts\User as SocialiteUser;
  */
 class AuthentikLoginService
 {
+    public function __construct(private readonly DefaultRoomService $defaultRoom) {}
+
     public function findLinkedUser(string $providerUserId): ?User
     {
         return UserOAuthIdentity::where('provider', 'authentik')
@@ -71,6 +73,8 @@ class AuthentikLoginService
         RoleAssignment::firstOrCreate(['role_id' => Role::seedGlobalDefaults()->id, 'user_id' => $user->id]);
 
         $this->link($user, $oauthUser->getId(), $email);
+
+        $this->defaultRoom->enrollIfEligible($user);
 
         return $user;
     }

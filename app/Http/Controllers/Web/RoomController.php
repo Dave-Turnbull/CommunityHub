@@ -21,10 +21,7 @@ class RoomController extends Controller
         $user = $request->user();
         abort_unless($room->hasMember($user->id), 403);
 
-        $first = $room->channels()
-            ->whereIn('type', ChannelTypeRegistry::typeKeysWithCapability('text.read'))
-            ->get()
-            ->first(fn (Channel $channel) => $channel->isVisibleTo($user));
+        $first = $room->firstVisibleTextChannelFor($user);
 
         return $first
             ? redirect("/channels/{$first->id}")
@@ -82,10 +79,7 @@ class RoomController extends Controller
 
         $room->addMember($request->user());
 
-        $first = $room->channels()
-            ->whereIn('type', ChannelTypeRegistry::typeKeysWithCapability('text.read'))
-            ->get()
-            ->first(fn (Channel $channel) => $channel->isVisibleTo($request->user()));
+        $first = $room->firstVisibleTextChannelFor($request->user());
 
         return redirect($first ? "/channels/{$first->id}" : '/');
     }

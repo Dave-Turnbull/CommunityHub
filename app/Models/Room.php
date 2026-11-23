@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ChannelTypes\ChannelTypeRegistry;
 use App\Support\PermissionCeiling;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -51,6 +52,14 @@ class Room extends Model
     public function hasMember(string $userId): bool
     {
         return $this->members()->where('user_id', $userId)->exists();
+    }
+
+    public function firstVisibleTextChannelFor(User $user): ?Channel
+    {
+        return $this->channels()
+            ->whereIn('type', ChannelTypeRegistry::typeKeysWithCapability('text.read'))
+            ->get()
+            ->first(fn (Channel $channel) => $channel->isVisibleTo($user));
     }
 
     public function isBanned(string $userId): bool

@@ -288,6 +288,12 @@ export interface InstanceSettings {
     signup_manual_enabled: boolean
     signup_email_invite_enabled: boolean
     signup_oauth_enabled: boolean
+    default_room_id: string | null
+}
+
+export interface DefaultRoomOption {
+    id: string
+    name: string
 }
 
 export async function fetchInstanceSettings(): Promise<InstanceSettings> {
@@ -297,6 +303,19 @@ export async function fetchInstanceSettings(): Promise<InstanceSettings> {
 
 export async function updateInstanceSettings(payload: InstanceSettings): Promise<InstanceSettings> {
     const { data } = await axios.patch('/api/settings/instance', payload)
+    return data
+}
+
+export async function fetchDefaultRoomOptions(): Promise<DefaultRoomOption[]> {
+    const { data } = await axios.get('/api/settings/instance/rooms')
+    return data
+}
+
+export async function updateDefaultRoom(roomId: string | null, enrollExisting: boolean): Promise<InstanceSettings> {
+    const { data } = await axios.put('/api/settings/instance/default-room', {
+        room_id: roomId,
+        enroll_existing: enrollExisting,
+    })
     return data
 }
 

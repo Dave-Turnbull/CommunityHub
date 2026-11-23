@@ -120,6 +120,62 @@ gated by `Permission::InviteServer` — previously declared but intentionally in
 `CLAUDE.md`'s trap notes); this is its first real enforcement site. There is no
 list/revoke UI yet — a fast-follow, not a blocker for the signup path being real.
 
+### Default room
+
+`InstanceSetting.default_room_id` (nullable; the foreign key nulls itself if the room
+row is deleted) names one room accounts are joined to automatically. Unset — the
+default — nothing is joined. `App\Services\DefaultRoomService` owns every part of it.
+
+**Setting it.** Settings' "Server" tab (`RegistrationSettings.tsx`) has a "Default
+room" card: a dropdown fed by `GET /api/settings/instance/rooms` (every room on the
+instance, id and name only — deliberately not limited to rooms the acting admin belongs
+to), an explicit Save, and a Clear button. It saves through
+`PUT /api/settings/instance/default-room` (`room_id`, nullable to clear;
+`enroll_existing`, optional boolean), separate from the signup toggles' auto-saving
+`PATCH` — that `PATCH` never touches `default_room_id`. Both endpoints sit behind the
+same `InstanceSettingPolicy` gate as the toggles.
+
+**Who gets enrolled, and when.** Every path goes through
+`DefaultRoomService::enrollIn()` and from there `Room::addMember()`, so an enrolled
+user holds the room's default ("Member") role exactly as if they had used its invite
+link.
+
+- *A new account* is enrolled at creation — `AuthController::register` (manual and
+  server-invite signup alike) and `AuthentikLoginService::provision`.
+- *While email verification is enforced* (`config('verification.enabled')`), an
+  unverified account is skipped at creation and enrolled when it verifies instead, by a
+  `Verified` listener registered in `AppServiceProvider`. That listener doesn't
+  distinguish new accounts from old ones: any account verifying while a default room is
+  set is enrolled.
+- *Existing accounts* are only enrolled when the admin ticks "Also add all existing
+  users now" on save (`enroll_existing`), which dispatches the queued
+  `EnrollExistingUsersInDefaultRoom` job. It walks every user, re-adds anyone previously
+  kicked (a kick leaves no record), and does nothing if the default room has changed
+  again by the time the worker runs it.
+
+Turning verification enforcement off (`EMAIL_VERIFICATION_ENABLED`, an env var — there
+is no event when it changes) does not enrol the accounts that were skipped while it was
+on: they stay out until a bulk run includes them or they follow their old verification
+link.
+
+`enrollIn()` skips a user banned from the room rather than letting `addMember()` abort,
+and skips unverified accounts while verification is enforced — on every path, the bulk
+job included. Enrolment is otherwise a one-off: a member who is later kicked is not
+re-added by anything except another bulk run.
+
+A pending `RoomInvite` is honoured independently, so an invited signup joins both
+rooms.
+
+**Where a new account lands.** In order: the invited room's channel if signup completed
+a pending room invite (`AcceptsPendingRoomInvite`), else the default room's first
+visible text-capable channel (`DefaultRoomService::landingPath()` →
+`Room::firstVisibleTextChannelFor()`), else `/`. The same `landingPath()` decides where
+`EmailVerificationController::verify` redirects after a successful verification. An
+ordinary login by an existing account is unaffected.
+
+There is no "member joined" broadcast, so a bulk-enrolled user sees the room on their
+next page load, not live.
+
 ### Direct message restriction
 
 Starting a conversation (this file's `store`) and sending in an existing one both

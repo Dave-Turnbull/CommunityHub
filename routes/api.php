@@ -60,6 +60,8 @@ Route::middleware('auth')->group(function () {
     // Settings' self-fetching "Server" tab, gated by InstanceSettingPolicy.
     Route::get('/settings/instance',   [InstanceSettingsController::class, 'show']);
     Route::patch('/settings/instance', [InstanceSettingsController::class, 'update']);
+    Route::get('/settings/instance/rooms', [InstanceSettingsController::class, 'rooms']);
+    Route::put('/settings/instance/default-room', [InstanceSettingsController::class, 'updateDefaultRoom']);
 
     // Server invites — account-creation invites, distinct from room invites
     // above. Gated by ServerInvitePolicy (Permission::InviteServer).
