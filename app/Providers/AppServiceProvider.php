@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\DefaultRoomService;
+use Illuminate\Auth\Events\Verified;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Authentik\Provider as AuthentikProvider;
@@ -20,6 +22,13 @@ class AppServiceProvider extends ServiceProvider
         // in AuthentikController, not by whether this listener exists.
         Event::listen(function (SocialiteWasCalled $event) {
             $event->extendSocialite('authentik', AuthentikProvider::class);
+        });
+
+        // The deferred half of default-room enrolment — see
+        // DefaultRoomService::enrollIn() for why an unverified account is
+        // skipped at creation while verification is enforced.
+        Event::listen(function (Verified $event) {
+            app(DefaultRoomService::class)->enrollIfEligible($event->user);
         });
     }
 }

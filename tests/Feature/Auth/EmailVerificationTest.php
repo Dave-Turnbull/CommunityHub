@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\Channel;
+use App\Models\InstanceSetting;
+use App\Models\Room;
 use App\Models\User;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -66,6 +69,26 @@ class EmailVerificationTest extends TestCase
 
         $response->assertRedirect('/');
         $this->assertNotNull($user->fresh()->email_verified_at);
+    }
+
+    public function test_verifying_joins_the_default_room_and_lands_in_it(): void
+    {
+        config(['verification.enabled' => true]);
+        $room    = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create(['type' => 'text']);
+        InstanceSetting::factory()->create(['default_room_id' => $room->id]);
+        $user = User::factory()->create(['email_verified_at' => null]);
+
+        $url = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes(60),
+            ['id' => $user->id, 'hash' => sha1($user->email)]
+        );
+
+        $response = $this->actingAs($user)->get($url);
+
+        $response->assertRedirect("/channels/{$channel->id}");
+        $this->assertTrue($room->hasMember($user->id));
     }
 
     public function test_an_invalid_signature_is_rejected(): void

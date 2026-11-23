@@ -5,13 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * A single-row, instance-wide settings table — today, just the three
- * signup-path toggles (see AuthController::register/showRegister,
- * AuthentikLoginService). Deliberately a fixed-column singleton rather than
- * a key-value store: there's exactly one row, and every setting so far is a
- * plain boolean an admin flips from Settings.
+ * A single-row, instance-wide settings table — the three signup-path
+ * toggles (see AuthController::register/showRegister, AuthentikLoginService)
+ * and the optional default room accounts are auto-joined to (see
+ * DefaultRoomService). Deliberately a fixed-column singleton rather than a
+ * key-value store: there's exactly one row, and every setting so far is a
+ * plain column an admin changes from Settings.
  */
 class InstanceSetting extends Model
 {
@@ -21,6 +23,7 @@ class InstanceSetting extends Model
         'signup_manual_enabled',
         'signup_email_invite_enabled',
         'signup_oauth_enabled',
+        'default_room_id',
     ];
 
     protected function casts(): array
@@ -31,6 +34,8 @@ class InstanceSetting extends Model
             'signup_oauth_enabled'        => 'boolean',
         ];
     }
+
+    public function defaultRoom(): BelongsTo { return $this->belongsTo(Room::class, 'default_room_id'); }
 
     /**
      * The single settings row, lazily seeded from config/registration.php's

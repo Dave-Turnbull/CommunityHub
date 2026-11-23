@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Services\DefaultRoomService;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,11 +27,11 @@ class EmailVerificationController extends Controller
         return Inertia::render('Auth/VerifyEmail');
     }
 
-    public function verify(EmailVerificationRequest $request): RedirectResponse
+    public function verify(EmailVerificationRequest $request, DefaultRoomService $defaultRoom): RedirectResponse
     {
         $request->fulfill();
 
-        return redirect('/');
+        return redirect($defaultRoom->landingPath($request->user()) ?? '/');
     }
 
     public function resend(Request $request): RedirectResponse

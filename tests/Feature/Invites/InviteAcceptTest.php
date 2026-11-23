@@ -3,6 +3,7 @@
 namespace Tests\Feature\Invites;
 
 use App\Models\Channel;
+use App\Models\InstanceSetting;
 use App\Models\Room;
 use App\Models\RoomInvite;
 use App\Models\User;
@@ -118,5 +119,32 @@ class InviteAcceptTest extends TestCase
         $response = $this->actingAs($user)->get("/invite/{$invite->token}");
 
         $response->assertRedirect("/channels/{$channel->id}");
+    }
+
+    public function test_registering_with_a_pending_invite_joins_the_default_room_too_but_lands_in_the_invited_room(): void
+    {
+        $defaultRoom = Room::factory()->create();
+        Channel::factory()->for($defaultRoom)->create(['type' => 'text']);
+        InstanceSetting::factory()->create(['default_room_id' => $defaultRoom->id]);
+
+        $room    = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create(['type' => 'text']);
+        $invite  = RoomInvite::factory()->for($room)->create(['email' => 'newperson@example.com']);
+
+        $this->get("/invite/{$invite->token}");
+
+        $response = $this->post('/register', [
+            'username'              => 'newperson',
+            'display_name'          => 'New Person',
+            'email'                 => 'newperson@example.com',
+            'password'              => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $user = User::where('email', 'newperson@example.com')->firstOrFail();
+
+        $response->assertRedirect("/channels/{$channel->id}");
+        $this->assertTrue($room->hasMember($user->id));
+        $this->assertTrue($defaultRoom->hasMember($user->id));
     }
 }

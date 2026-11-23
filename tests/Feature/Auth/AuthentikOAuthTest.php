@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\Channel;
 use App\Models\InstanceSetting;
+use App\Models\Room;
 use App\Models\User;
 use App\Models\UserOAuthIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -119,6 +121,35 @@ class AuthentikOAuthTest extends TestCase
         $this->assertAuthenticatedAs($user);
         $this->assertNull($user->password);
         $this->assertDatabaseHas('user_oauth_identities', ['user_id' => $user->id, 'provider_user_id' => 'sub-123']);
+    }
+
+    public function test_a_provisioned_account_joins_the_default_room_and_lands_in_it(): void
+    {
+        $room    = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create(['type' => 'text']);
+        InstanceSetting::factory()->create(['default_room_id' => $room->id]);
+        Socialite::fake('authentik', $this->fakeOAuthUser());
+
+        $response = $this->get('/auth/authentik/callback');
+
+        $user = User::where('email', 'oauth-user@example.com')->firstOrFail();
+        $response->assertRedirect("/channels/{$channel->id}");
+        $this->assertTrue($room->hasMember($user->id));
+    }
+
+    public function test_an_existing_linked_account_logging_in_is_not_sent_to_the_default_room(): void
+    {
+        $room = Room::factory()->create();
+        Channel::factory()->for($room)->create(['type' => 'text']);
+        InstanceSetting::factory()->create(['default_room_id' => $room->id]);
+        $user = User::factory()->create();
+        $room->addMember($user);
+        UserOAuthIdentity::create([
+            'user_id' => $user->id, 'provider' => 'authentik', 'provider_user_id' => 'sub-123', 'email' => $user->email,
+        ]);
+        Socialite::fake('authentik', $this->fakeOAuthUser());
+
+        $this->get('/auth/authentik/callback')->assertRedirect('/');
     }
 
     public function test_a_new_identity_is_rejected_when_oauth_signup_is_closed(): void

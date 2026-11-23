@@ -111,6 +111,9 @@ app/
     BootstrapGlobalAdmin.php  `app:bootstrap-admin {email}` — the one bootstrap path for
                                the first instance-wide Administrator role, see docs/
                                roles-and-permissions.md
+  Jobs/                       queued jobs, run by the `worker` container —
+                               EnrollExistingUsersInDefaultRoom (see docs/
+                               conversations-and-invites.md's "Default room")
   Http/Controllers/
     Web/                      Inertia page controllers (return Inertia::render).
                                SettingsController::show computes can_manage_global_roles
@@ -171,7 +174,10 @@ app/
                                ThemePreferenceController is
                                show/update for the Appearance panel's preset + per-variable
                                overrides (see docs/theming.md); InstanceSettingsController
-                               is show/update for the three signup-path toggles, backing
+                               is show/update for the three signup-path toggles plus
+                               rooms/updateDefaultRoom for the optional default room
+                               accounts auto-join (see docs/conversations-and-invites.md's
+                               "Default room"), backing
                                Settings' self-fetching "Server" tab, gated by
                                InstanceSettingPolicy (see docs/conversations-and-
                                invites.md's "Server invites"); ServerInviteController is
@@ -217,8 +223,9 @@ app/
                                (one row per user: preset + jsonb overrides) — see docs/
                                theming.md; Vote, NotificationMute (schema only, not yet
                                enforced) — see docs/comments-and-voting.md;
-                               InstanceSetting (single-row, instance-wide settings — today
-                               just the three signup-path toggles, lazily seeded from
+                               InstanceSetting (single-row, instance-wide settings — the
+                               three signup-path toggles plus default_room_id, the optional
+                               room accounts auto-join; the toggles are lazily seeded from
                                config/registration.php's env defaults via
                                InstanceSetting::current()), ServerInvite (grants account
                                creation, distinct from RoomInvite which grants room
@@ -266,7 +273,11 @@ app/
                                RoomMembershipService is kick/ban + the owner-transfer
                                flow when the target is a room's Owner (see docs/
                                roles-and-permissions.md); VoteService — see docs/
-                               comments-and-voting.md; ServerInviteService — creation +
+                               comments-and-voting.md; DefaultRoomService — every default-room
+                               enrolment path (account creation, email verification, the
+                               bulk job) plus the post-signup landing path, see docs/
+                               conversations-and-invites.md's "Default room";
+                               ServerInviteService — creation +
                                token validation for account-creation invites, see docs/
                                conversations-and-invites.md's "Server invites";
                                AuthentikLoginService — OAuth identity resolution
@@ -448,8 +459,10 @@ resources/
                                SettingsController::show's can_manage_global_roles is
                                true (see docs/roles-and-permissions.md);
                                RegistrationSettings — the "Server" tab: the three signup-
-                               path toggles + a "generate server invite" affordance,
-                               self-fetching (GET/PATCH /api/settings/instance), only
+                               path toggles, the default-room picker (explicit Save/Clear,
+                               PUT /api/settings/instance/default-room) + a "generate
+                               server invite" affordance, self-fetching (GET/PATCH
+                               /api/settings/instance), only
                                rendered when can_manage_instance_settings is true (see
                                docs/conversations-and-invites.md's "Server invites")
       voice/                  VoiceChannelPanel, VoiceBar — a channel/conversation's
@@ -533,7 +546,8 @@ routes/
                                fetched by Settings' Roles tab), /rooms/{room}/
                                members|bans (kick/ban — see docs/roles-and-permissions.md),
                                /settings/instance (signup-path toggles, self-fetched by
-                               Settings' Server tab) and /server-invites (create only —
+                               Settings' Server tab; plus /settings/instance/rooms and
+                               /settings/instance/default-room for the default room) and /server-invites (create only —
                                see docs/conversations-and-invites.md's "Server invites")
   channels.php                broadcast auth: channel.{id} presence (now also checks
                                Channel::isVisibleTo() — see docs/
