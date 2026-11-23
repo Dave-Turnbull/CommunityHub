@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\Channel;
 use App\Models\InstanceSetting;
+use App\Models\Room;
 use App\Models\ServerInvite;
 use App\Models\User;
 use App\Support\Permission;
@@ -57,6 +59,71 @@ class RegistrationTest extends TestCase
         $user = User::where('email', 'new@example.com')->firstOrFail();
 
         $this->assertTrue(PermissionChecker::can($user, Permission::SendDirectMessages));
+    }
+
+    public function test_registering_joins_the_default_room_as_an_ordinary_member_and_lands_in_it(): void
+    {
+        $room    = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create(['type' => 'text']);
+        InstanceSetting::factory()->create(['default_room_id' => $room->id]);
+
+        $response = $this->post('/register', [
+            'username'              => 'newuser',
+            'display_name'          => 'New User',
+            'email'                 => 'new@example.com',
+            'password'              => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $user = User::where('email', 'new@example.com')->firstOrFail();
+
+        $response->assertRedirect("/channels/{$channel->id}");
+        $this->assertTrue($room->hasMember($user->id));
+        $this->assertDatabaseHas('role_assignments', [
+            'user_id' => $user->id,
+            'role_id' => $room->roles()->where('is_default', true)->firstOrFail()->id,
+        ]);
+        $this->assertDatabaseMissing('role_assignments', [
+            'user_id' => $user->id,
+            'role_id' => $room->roles()->where('is_system', true)->where('is_default', false)->firstOrFail()->id,
+        ]);
+    }
+
+    public function test_registering_joins_no_room_and_lands_on_messages_when_no_default_room_is_set(): void
+    {
+        Room::factory()->create();
+
+        $response = $this->post('/register', [
+            'username'              => 'newuser',
+            'display_name'          => 'New User',
+            'email'                 => 'new@example.com',
+            'password'              => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertRedirect('/');
+        $this->assertDatabaseCount('room_members', 0);
+    }
+
+    public function test_registering_does_not_join_the_default_room_until_verified_when_verification_is_enforced(): void
+    {
+        config(['verification.enabled' => true]);
+        $room = Room::factory()->create();
+        Channel::factory()->for($room)->create(['type' => 'text']);
+        InstanceSetting::factory()->create(['default_room_id' => $room->id]);
+
+        $response = $this->post('/register', [
+            'username'              => 'newuser',
+            'display_name'          => 'New User',
+            'email'                 => 'new@example.com',
+            'password'              => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $user = User::where('email', 'new@example.com')->firstOrFail();
+
+        $response->assertRedirect('/');
+        $this->assertFalse($room->hasMember($user->id));
     }
 
     public function test_username_must_be_lowercase_alphanumeric(): void
