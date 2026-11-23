@@ -47,8 +47,9 @@ encode the actual dependency graph between subsystems.
   affordance, the contiguous-run message cache and its driver seam, and the
   optimistic edit/reaction/delete path.
 - [conversations-and-invites.md](conversations-and-invites.md) — message scoping,
-  conversation creation/deduplication, group participants, room invites, and the
-  three independently-toggleable server signup paths.
+  conversation creation/deduplication, group participants, room invites, the
+  three independently-toggleable server signup paths, and the optional default room
+  accounts are joined to automatically.
 - [auth-and-sso.md](auth-and-sso.md) — password login, the optional Authentik/OAuth
   login method (account linking vs. provisioning, the "auto sign-on" behavior), and
   why linking never trusts an IdP email claim alone.

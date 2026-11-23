@@ -86,7 +86,9 @@ On callback, `AuthentikLoginService` resolves the incoming Socialite user in ord
    with a flash error instead of silently failing. If open, a new `User` is created
    with `password: null`, a username derived from the OIDC `preferred_username`/email
    local-part (with a numeric suffix on collision), and the default global role — the
-   same `Role::seedGlobalDefaults()` assignment `AuthController::register()` does.
+   same `Role::seedGlobalDefaults()` assignment `AuthController::register()` does. The
+   new account is also enrolled in the instance's default room, if one is set, and
+   lands in it — see `docs/conversations-and-invites.md`'s "Default room".
 
 ### Data model
 
@@ -114,7 +116,8 @@ invite" step right after `Auth::login()` — factored into the
 `App\Http\Controllers\Web\Concerns\AcceptsPendingRoomInvite` trait rather than
 duplicated, since it's the exact same `session('pending_invite_token')` → `RoomInvite`
 lookup either way (see `InviteController`'s guest flow for where that session key gets
-set).
+set). A pending invite's redirect takes precedence over the default-room landing a
+newly created account otherwise gets.
 
 ### Frontend
 

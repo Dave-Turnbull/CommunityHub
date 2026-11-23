@@ -8,6 +8,7 @@ use App\Models\InstanceSetting;
 use App\Models\Role;
 use App\Models\RoleAssignment;
 use App\Models\User;
+use App\Services\DefaultRoomService;
 use App\Services\ServerInviteService;
 use App\Services\UserStatusService;
 use Illuminate\Http\RedirectResponse;
@@ -24,6 +25,7 @@ class AuthController extends Controller
     public function __construct(
         private readonly UserStatusService $status,
         private readonly ServerInviteService $invites,
+        private readonly DefaultRoomService $defaultRoom,
     ) {}
 
     public function showLogin(): Response
@@ -124,6 +126,8 @@ class AuthController extends Controller
         // Role::seedGlobalDefaults()/docs/roles-and-permissions.md.
         RoleAssignment::firstOrCreate(['role_id' => Role::seedGlobalDefaults()->id, 'user_id' => $user->id]);
 
+        $this->defaultRoom->enrollIfEligible($user);
+
         $invite?->accept();
 
         if (config('verification.enabled')) {
@@ -133,7 +137,13 @@ class AuthController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
 
-        return $this->acceptPendingInvite($request) ?? redirect()->intended('/');
+        if ($redirect = $this->acceptPendingInvite($request)) {
+            return $redirect;
+        }
+
+        $landing = $this->defaultRoom->landingPath($user);
+
+        return $landing ? redirect($landing) : redirect()->intended('/');
     }
 
     public function logout(Request $request): RedirectResponse
