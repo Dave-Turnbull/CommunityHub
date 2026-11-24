@@ -9,6 +9,7 @@ use App\Models\RoomBan;
 use App\Models\RoomMember;
 use App\Models\User;
 use App\Policies\RoomMemberPolicy;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 
 /**
@@ -45,6 +46,17 @@ class RoomMembershipService
         Gate::authorize('ban', [RoomMember::class, $room, $target]);
 
         RoomBan::where('room_id', $room->id)->where('user_id', $target->id)->delete();
+    }
+
+    /** @return Collection<int, RoomBan> */
+    public function bans(Room $room, User $actor): Collection
+    {
+        Gate::authorize('viewBans', [RoomMember::class, $room]);
+
+        return RoomBan::where('room_id', $room->id)
+            ->with(['user:id,username,display_name,avatar_url', 'bannedBy:id,username,display_name'])
+            ->latest()
+            ->get();
     }
 
     /**

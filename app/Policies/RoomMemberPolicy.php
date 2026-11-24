@@ -29,6 +29,11 @@ class RoomMemberPolicy
         return $this->canAct($actor, $room, $target, Permission::BanMembers);
     }
 
+    public function viewBans(User $actor, Room $room): bool
+    {
+        return PermissionChecker::can($actor, Permission::BanMembers, $room);
+    }
+
     private function canAct(User $actor, Room $room, User $target, Permission $permission): bool
     {
         if ($actor->is($target)) {

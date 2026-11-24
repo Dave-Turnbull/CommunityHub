@@ -732,7 +732,7 @@ is needed here.
 `ManageMembers` (kick) and `BanMembers` (kick + block rejoin) have real enforcement now
 — `RoomMemberPolicy::kick`/`ban`, backed by `RoomMembershipService`, called from
 `Api\RoomMemberController` (`DELETE /rooms/{room}/members/{user}`,
-`POST`/`DELETE /rooms/{room}/bans/{user}`).
+`GET /rooms/{room}/bans`, `POST`/`DELETE /rooms/{room}/bans/{user}`).
 
 `Role::effectiveModerationRank(User $user, Room $room): float` is a **different**
 comparison from `highestRoleFor()`/`rank()` alone: it returns `INF` if the user holds a
@@ -759,6 +759,18 @@ room-join path (`RoomController::store`/`join`, `RoomInvite::accept`) already fu
 through, so a ban blocks rejoining via invite link, invite code, or email invite alike
 with one guard. Unbanning (`DELETE /rooms/{room}/bans/{user}`) is gated by the same
 `ban` ability.
+
+**Listing bans.** `GET /rooms/{room}/bans` (`RoomMembershipService::bans`) is gated by
+`RoomMemberPolicy::viewBans` — `PermissionChecker::can($actor, Permission::BanMembers,
+$room)` only, with no target and so no rank comparison (a non-member, a plain member, and
+a `ManageMembers`-only holder all get 403). It returns every ban in that room, newest
+first, as `{ id, user: { id, username, display_name, avatar_url }, banned_by: { id,
+username, display_name } | null, banned_at }`. Because the list has no per-target
+comparison, a row can appear that the viewer's `unban` call then rejects with 403 (the
+banned user outranks the viewer); the UI surfaces that as an inline error. `MemberList`
+renders the list as a collapsible "Banned — N" section, only when `roomId` and
+`canBanMembers` are passed; it fetches on first expand, refetches after a successful ban
+from the member dropdown, and drops a row once its unban call resolves.
 
 **Removing a room's Owner.** Since only a global Administrator can ever kick/ban
 Owner, and doing so necessarily leaves the room without one,
