@@ -181,9 +181,9 @@ app/
                                Settings' self-fetching "Server" tab, gated by
                                InstanceSettingPolicy (see docs/conversations-and-
                                invites.md's "Server invites"); ServerInviteController is
-                               store only — creates an account-creation invite, gated by
-                               ServerInvitePolicy/Permission::InviteServer (no list/revoke
-                               UI yet)
+                               index/store/destroy — list outstanding, create, and revoke
+                               account-creation invites, all gated by
+                               ServerInvitePolicy/Permission::InviteServer
     Controller.php            empty abstract base — Laravel ships none by default, keep it
   Http/Middleware/
     HandleInertiaRequests.php shares auth.user, rooms, conversations,
@@ -461,8 +461,9 @@ resources/
                                RegistrationSettings — the "Server" tab: the three signup-
                                path toggles, the default-room picker (explicit Save/Clear,
                                PUT /api/settings/instance/default-room) + a "generate
-                               server invite" affordance, self-fetching (GET/PATCH
-                               /api/settings/instance), only
+                               server invite" affordance + the outstanding-invites list with
+                               per-row Revoke, self-fetching (GET/PATCH
+                               /api/settings/instance, GET /api/server-invites), only
                                rendered when can_manage_instance_settings is true (see
                                docs/conversations-and-invites.md's "Server invites")
       voice/                  VoiceChannelPanel, VoiceBar — a channel/conversation's
@@ -547,7 +548,7 @@ routes/
                                members|bans (kick/ban — see docs/roles-and-permissions.md),
                                /settings/instance (signup-path toggles, self-fetched by
                                Settings' Server tab; plus /settings/instance/rooms and
-                               /settings/instance/default-room for the default room) and /server-invites (create only —
+                               /settings/instance/default-room for the default room) and /server-invites (list/create/revoke —
                                see docs/conversations-and-invites.md's "Server invites")
   channels.php                broadcast auth: channel.{id} presence (now also checks
                                Channel::isVisibleTo() — see docs/
