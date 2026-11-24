@@ -4,10 +4,13 @@ import {
     createServerInvite,
     fetchDefaultRoomOptions,
     fetchInstanceSettings,
+    fetchServerInvites,
+    revokeServerInvite,
     updateDefaultRoom,
     updateInstanceSettings,
 } from '@/services/api'
 import type { DefaultRoomOption, InstanceSettings } from '@/services/api'
+import type { ServerInvite } from '@/types'
 
 /**
  * The three server signup-path toggles (manual self-registration, email
@@ -28,6 +31,9 @@ export function RegistrationSettings() {
     const [inviteEmail, setInviteEmail] = useState('')
     const [creatingInvite, setCreatingInvite] = useState(false)
     const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+    const [invites, setInvites] = useState<ServerInvite[] | null>(null)
+    const [revokingId, setRevokingId] = useState<string | null>(null)
+    const [inviteError, setInviteError] = useState<string | null>(null)
 
     useEffect(() => {
         fetchInstanceSettings().then((loaded) => {
@@ -35,6 +41,7 @@ export function RegistrationSettings() {
             setSelectedRoomId(loaded.default_room_id ?? '')
         })
         fetchDefaultRoomOptions().then(setRooms)
+        fetchServerInvites().then(setInvites)
     }, [])
 
     const saveDefaultRoom = async (roomId: string | null, addExisting: boolean) => {
@@ -76,8 +83,22 @@ export function RegistrationSettings() {
             const { url } = await createServerInvite(inviteEmail.trim() || undefined)
             setInviteUrl(url)
             setInviteEmail('')
+            setInvites(await fetchServerInvites())
         } finally {
             setCreatingInvite(false)
+        }
+    }
+
+    const revokeInvite = async (id: string) => {
+        setRevokingId(id)
+        setInviteError(null)
+        try {
+            await revokeServerInvite(id)
+            setInvites((current) => current && current.filter((invite) => invite.id !== id))
+        } catch {
+            setInviteError('Could not revoke that invite.')
+        } finally {
+            setRevokingId(null)
         }
     }
 
@@ -228,6 +249,41 @@ export function RegistrationSettings() {
                     <p className="text-xs text-text-secondary mt-3 break-all">
                         {inviteUrl}
                     </p>
+                )}
+            </div>
+
+            <div className="bg-second rounded-lg p-6">
+                <p className="text-sm font-medium text-text-primary mb-4">Outstanding invites</p>
+                {invites === null ? (
+                    <p className="text-xs text-text-muted">Loading…</p>
+                ) : invites.length === 0 ? (
+                    <p className="text-xs text-text-muted">No outstanding invites.</p>
+                ) : (
+                    <ul className="divide-y divide-fifth">
+                        {invites.map((invite) => (
+                            <li key={invite.id} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                                <div className="min-w-0">
+                                    <p className="text-sm text-text-primary truncate">
+                                        {invite.email ?? 'Anyone with the link'}
+                                    </p>
+                                    <p className="text-xs text-text-muted mt-0.5">
+                                        Invited by {invite.invited_by.display_name} · expires{' '}
+                                        {new Date(invite.expires_at).toLocaleDateString()}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => revokeInvite(invite.id)}
+                                    disabled={revokingId === invite.id}
+                                    className="px-3 py-1.5 rounded bg-third hover:bg-fourth text-text-primary text-sm font-medium transition-colors duration-100 disabled:opacity-50"
+                                >
+                                    Revoke
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                {inviteError && (
+                    <p role="alert" className="text-xs text-danger mt-3">{inviteError}</p>
                 )}
             </div>
         </div>

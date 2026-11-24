@@ -117,8 +117,18 @@ no redeploy. Changing the env var after the row already exists has no further ef
 
 Creating a `ServerInvite` (`POST /api/server-invites`, `ServerInviteController`) is
 gated by `Permission::InviteServer` — previously declared but intentionally inert (see
-`CLAUDE.md`'s trap notes); this is its first real enforcement site. There is no
-list/revoke UI yet — a fast-follow, not a blocker for the signup path being real.
+`CLAUDE.md`'s trap notes); this is its first real enforcement site.
+
+Listing and revoking use the same permission, with no per-inviter ownership rule: any
+holder of `InviteServer` sees and can revoke every outstanding invite
+(`ServerInvitePolicy::viewAny`/`delete` both delegate to `create`; `ServerInviteService::
+outstanding()`/`revoke()` re-check it, as `create()` does). `GET /api/server-invites`
+returns invites that are neither accepted nor expired, newest first, with `id`, `email`
+(null for an open link), `invited_by`, `expires_at` and `created_at`. The token is
+stored raw but is deliberately omitted from the list — it is only returned by the
+create response. `DELETE /api/server-invites/{serverInvite}` hard-deletes the row (as
+`RoomInvite` does), so `validateToken()` no longer finds the token. Settings' "Server"
+tab renders the list below the create-invite card, with a Revoke button per row.
 
 ### Default room
 
