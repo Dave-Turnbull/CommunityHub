@@ -64,6 +64,10 @@ each file is removed from the `local` disk and its `Attachment` row is actually 
 orphaned file nothing ever cleans up isn't). The message row lives on as a
 soft-deleted stub, same as one with no attachments ever did.
 
+Deleting a whole room reuses the same path: `RoomService::delete` calls
+`TextMessageService::deleteAttachments` for every message (soft-deleted ones included) in
+the room's channels before the room's database cascade removes the rows.
+
 ## Tests
 
 | | |

@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\NotificationPreferenceController;
 use App\Http\Controllers\Api\ReactionController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\RoleRoomCeilingController;
+use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\RoomInviteController;
 use App\Http\Controllers\Api\RoomMemberController;
 use App\Http\Controllers\Api\ServerInviteController;
@@ -37,6 +38,12 @@ Route::middleware('auth')->group(function () {
     Route::patch('/channels/{channel}',              [ChannelController::class, 'update']);
     Route::delete('/channels/{channel}',             [ChannelController::class, 'destroy']);
     Route::patch('/rooms/{room}/channels/reorder',  [ChannelController::class, 'reorder']);
+
+    // Room settings — edit (ManageRoom) / delete (owner only), gated by RoomPolicy; leave is any member
+    // but the owner (RoomMembershipService::leave). See docs/roles-and-permissions.md's "Room settings".
+    Route::patch('/rooms/{room}',        [RoomController::class, 'update']);
+    Route::delete('/rooms/{room}',       [RoomController::class, 'destroy']);
+    Route::post('/rooms/{room}/leave',   [RoomController::class, 'leave']);
 
     // Roles — gated by RolePolicy (manage_roles permission + hierarchy, see PermissionChecker/Role::outranks)
     Route::get('/rooms/{room}/roles',                        [RoleController::class, 'index']);

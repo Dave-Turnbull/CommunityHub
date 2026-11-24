@@ -595,6 +595,10 @@ export interface ChannelPageProps extends SharedProps {
     // server-side when a kick/ban is actually attempted).
     can_manage_members: boolean
     can_ban_members: boolean
+    // Gate::allows('update'/'delete', $room) — RoomPolicy: ManageRoom, and owner-only.
+    // Each gates a section of RoomSettingsPanel.
+    can_manage_room: boolean
+    can_delete_room: boolean
 }
 
 export interface DMPageProps extends SharedProps {
@@ -605,7 +609,7 @@ export interface DMPageProps extends SharedProps {
 }
 
 // Which panel Channels/Show's <main> is currently showing — 'channel' is the
-// normal channel content; the other three are ChannelSidebar-triggered panels
+// normal channel content; the others are ChannelSidebar-triggered panels
 // that render in place of it (see docs/capabilities-and-channel-types.md).
 // Not persisted across navigation: Inertia's default preserveState:false
 // remounts Channels/Show on every channel switch, resetting this for free.
@@ -614,3 +618,4 @@ export type MainView =
     | { type: 'roles' }
     | { type: 'create-channel' }
     | { type: 'invite' }
+    | { type: 'room-settings' }
