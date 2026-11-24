@@ -87,8 +87,16 @@ export async function removeMessage(scopeId: string, message: Message): Promise<
     remove(scopeId, message.id)
 
     try {
-        await deleteMessage(message.id)
-        await cache.dropMessage(scopeId, message.id)
+        const tombstone = await deleteMessage(message.id)
+
+        // A message with comments is not gone, it becomes a `[deleted]`
+        // placeholder in the same place — see docs/comments-and-voting.md.
+        if (tombstone) {
+            insert(scopeId, tombstone)
+            await cache.patchMessage(scopeId, tombstone)
+        } else {
+            await cache.dropMessage(scopeId, message.id)
+        }
     } catch (error) {
         // Back where it was, not appended at the end — hence insert().
         insert(scopeId, message)

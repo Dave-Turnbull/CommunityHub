@@ -9,6 +9,7 @@ import { ReplyPreviewContent } from '@/components/chat/ReplyPreviewContent'
 import { removeMessage, saveEdit, toggleReaction } from '@/services/messageActions'
 import type { Message, PaginatedMessages, User } from '@/types'
 import { MessageContent } from '@/components/chat/MessageContent'
+import { DeletedPlaceholder } from '@/components/chat/DeletedPlaceholder'
 
 interface Props {
     message: Message
@@ -68,6 +69,7 @@ export function MessageRow({
     }
 
     const isMine = message.author_id === currentUser.id
+    const tombstoned = !!message.is_tombstoned
 
     const react = (emoji: string) => {
         toggleReaction(scopeId, message, emoji).catch(() => {})
@@ -132,7 +134,11 @@ export function MessageRow({
                         </button>
                     )}
 
-                    {editing ? (
+                    {tombstoned ? (
+                        <div className="leading-relaxed">
+                            <DeletedPlaceholder />
+                        </div>
+                    ) : editing ? (
                         <div>
                             <textarea
                                 value={draft}
@@ -158,12 +164,12 @@ export function MessageRow({
                         </div>
                     )}
 
-                    {!!message.attachments?.length && (
+                    {!tombstoned && !!message.attachments?.length && (
                         <MessageAttachments attachments={message.attachments} />
                     )}
 
                     {/* Reactions */}
-                    {!!message.reactions?.length && (
+                    {!tombstoned && !!message.reactions?.length && (
                         <div className="flex flex-wrap gap-1 mt-1.5">
                             {message.reactions.map((r) => (
                                 <button
@@ -208,6 +214,7 @@ export function MessageRow({
                                         currentUserId={currentUser.id}
                                         canComment
                                         maxDepth={maxCommentDepth}
+                                        parentTombstoned={tombstoned}
                                     />
                                 </div>
                             )}
@@ -216,42 +223,44 @@ export function MessageRow({
                 </div>
 
                 {/* Hover actions */}
-                <div className="opacity-0 group-hover:opacity-100 flex items-start gap-0.5 transition-opacity">
-                    <EmojiPicker onSelect={react}>
-                        <button className="p-1 rounded hover:bg-sixth text-text-muted hover:text-text-primary">
-                            😀
-                        </button>
-                    </EmojiPicker>
+                {!tombstoned && (
+                    <div className="opacity-0 group-hover:opacity-100 flex items-start gap-0.5 transition-opacity">
+                        <EmojiPicker onSelect={react}>
+                            <button className="p-1 rounded hover:bg-sixth text-text-muted hover:text-text-primary">
+                                😀
+                            </button>
+                        </EmojiPicker>
 
-                    <button
-                        onClick={() => onReply(message)}
-                        className="p-1 rounded hover:bg-sixth text-text-muted hover:text-text-primary"
-                        title="Reply"
-                    >
-                        ↩
-                    </button>
-
-                    {isMine && (
-                        <DropdownMenu
-                            trigger={
-                                <button className="p-1 rounded hover:bg-sixth text-text-muted hover:text-text-primary">
-                                    ⋯
-                                </button>
-                            }
-                            align="end"
-                            sideOffset={4}
-                            className="min-w-[160px] p-1 rounded-md bg-fourth border border-sixth shadow-xl text-sm"
+                        <button
+                            onClick={() => onReply(message)}
+                            className="p-1 rounded hover:bg-sixth text-text-muted hover:text-text-primary"
+                            title="Reply"
                         >
-                            <DropdownMenu.Item onSelect={() => setEditing(true)}>Edit</DropdownMenu.Item>
-                            <DropdownMenu.Item
-                                onSelect={() => { removeMessage(scopeId, message).catch(() => {}) }}
-                                danger
+                            ↩
+                        </button>
+
+                        {isMine && (
+                            <DropdownMenu
+                                trigger={
+                                    <button className="p-1 rounded hover:bg-sixth text-text-muted hover:text-text-primary">
+                                        ⋯
+                                    </button>
+                                }
+                                align="end"
+                                sideOffset={4}
+                                className="min-w-[160px] p-1 rounded-md bg-fourth border border-sixth shadow-xl text-sm"
                             >
-                                Delete
-                            </DropdownMenu.Item>
-                        </DropdownMenu>
-                    )}
-                </div>
+                                <DropdownMenu.Item onSelect={() => setEditing(true)}>Edit</DropdownMenu.Item>
+                                <DropdownMenu.Item
+                                    onSelect={() => { removeMessage(scopeId, message).catch(() => {}) }}
+                                    danger
+                                >
+                                    Delete
+                                </DropdownMenu.Item>
+                            </DropdownMenu>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     )

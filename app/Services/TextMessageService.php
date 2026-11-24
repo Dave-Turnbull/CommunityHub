@@ -152,7 +152,7 @@ class TextMessageService
     /** @param \Illuminate\Support\Collection<int, Message> $messages */
     private function describeWindow(Collection $messages): array
     {
-        $scope = fn () => $this->entity instanceof Message ? $this->entity->children() : $this->entity->messages();
+        $scope = fn () => ($this->entity instanceof Message ? $this->entity->children() : $this->entity->messages())->listed();
 
         $hasOlder = $messages->isNotEmpty()
             && $scope()->where('created_at', '<', $messages->first()->created_at)->exists();
@@ -173,12 +173,18 @@ class TextMessageService
     {
         $query = $this->entity instanceof Message ? $this->entity->children() : $this->entity->messages();
 
-        return $query->with([
+        return $query->listed()->with([
             'author:id,username,display_name,avatar_url,status',
             'attachments',
             'replyTo.author:id,display_name,avatar_url',
             'replyTo.attachments',
-        ])->withCount('children as comment_count');
+        ])->withCount(self::listedChildren());
+    }
+
+    /** `comment_count` counts tombstoned comments too — they are listed, as `[deleted]`. */
+    private static function listedChildren(): array
+    {
+        return ['children as comment_count' => fn ($q) => $q->listed()];
     }
 
     public function send(User $user, array $validated): Message
@@ -259,32 +265,45 @@ class TextMessageService
         return $message;
     }
 
-    public static function destroyMessage(User $user, Message $message): void
+    /**
+     * Returns the blanked tombstone when the message was tombstoned (so the
+     * caller can hand the deleter the same payload everyone else is
+     * broadcast), null when it was plainly or cascade deleted.
+     */
+    public static function destroyMessage(User $user, Message $message): ?Message
     {
         abort_unless($message->author_id === $user->id, 403);
 
         [$type, $id] = self::scope($message);
+        $root = $type === 'message' ? $message->scopeEntity() : null;
         $messageId = $message->id;
-        $hasChildren = $message->children()->exists();
+        $hasChildren = $message->children()->listed()->exists();
 
         static::deleteAttachments($message);
 
-        // A message with a live comment thread either tombstones (soft-
-        // delete + a `[deleted]` marker the UI keeps children attached
-        // under) or, if the root channel's `cascade_delete_comments`
-        // setting is true, cascades the delete through every descendant —
-        // see docs/comments-and-voting.md. A childless message keeps the
-        // plain soft-delete behavior unchanged.
+        // A message with a comment thread either tombstones (soft-delete +
+        // `is_tombstoned`, kept in every list as a blanked placeholder with
+        // its comments beneath it) or, if the root channel's
+        // `cascade_delete_comments` setting is true, cascades the delete
+        // through every descendant — see docs/comments-and-voting.md. A
+        // childless message keeps the plain soft-delete behavior unchanged.
         if ($hasChildren && static::cascadeDeleteComments($message)) {
             static::cascadeDelete($message);
         } elseif ($hasChildren) {
             $message->update(['is_tombstoned' => true]);
             $message->delete();
+
+            $tombstone = self::hydrate($message->fresh(), $user->id);
+            broadcast(new MessageUpdated($tombstone, $type, $id))->toOthers();
+
+            return $tombstone;
         } else {
             $message->delete();
         }
 
-        broadcast(new MessageDeleted($messageId, $type, $id))->toOthers();
+        broadcast(new MessageDeleted($messageId, $type, $id, $root))->toOthers();
+
+        return null;
     }
 
     private static function cascadeDeleteComments(Message $message): bool
@@ -296,10 +315,14 @@ class TextMessageService
 
     private static function cascadeDelete(Message $message): void
     {
-        foreach ($message->children()->get() as $child) {
+        foreach ($message->children()->listed()->get() as $child) {
             static::deleteAttachments($child);
             static::cascadeDelete($child);
-            $child->delete();
+        }
+
+        // A tombstone met on the way down stops being listed.
+        if ($message->is_tombstoned) {
+            $message->update(['is_tombstoned' => false]);
         }
 
         $message->delete();
@@ -476,7 +499,7 @@ class TextMessageService
             'replyTo.author:id,display_name,avatar_url',
             'replyTo.attachments',
         ]);
-        $message->loadCount('children as comment_count');
+        $message->loadCount(self::listedChildren());
         $message->setAttribute('reactions', $message->reactionSummary($userId));
         $message->setAttribute('votes', $message->voteSummary($userId));
 

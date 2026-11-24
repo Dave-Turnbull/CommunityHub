@@ -11,6 +11,16 @@ vi.mock('@/services/api', () => ({
     removeReaction: vi.fn(async () => []),
     editMessage: vi.fn(async (id: string, content: string) => ({ id, content, is_edited: true })),
     deleteMessage: vi.fn(async () => {}),
+    fetchComments: vi.fn(),
+    sendComment: vi.fn(),
+}))
+
+vi.mock('@/services/echo', () => ({
+    subscribe: vi.fn(() => vi.fn()),
+}))
+
+vi.mock('@inertiajs/react', () => ({
+    usePage: () => ({ props: { maxUploadSizeBytes: 5 * 1024 * 1024 } }),
 }))
 
 const author: User = {
@@ -428,5 +438,66 @@ describe('MessageRow', () => {
         const thumbnail = screen.getByAltText('vacation.png') as HTMLImageElement
         expect(thumbnail.src).toContain('/storage/vacation.png')
         expect(screen.queryByText('📎 vacation.png')).not.toBeInTheDocument()
+    })
+
+    describe('a tombstoned message', () => {
+        const tombstone: Message = {
+            ...baseMessage,
+            author_id: viewer.id,
+            content: null,
+            is_tombstoned: true,
+            comment_count: 2,
+            reactions: [{ emoji: '🔥', count: 1, reacted: false }],
+            attachments: [{
+                id: 'att-1', url: '/a/1', filename: 'secret.png', mime_type: 'image/png',
+                size_bytes: 1, width: 1, height: 1,
+            }],
+        }
+
+        const renderTombstone = () =>
+            render(
+                <MessageRow
+                    message={tombstone}
+                    scopeId="chan-1"
+                    grouped={false}
+                    currentUser={viewer}
+                    onReply={vi.fn()}
+                    commentsEnabled
+                    broadcastScope={{ id: 'chan-1', type: 'channel' }}
+                />
+            )
+
+        it('shows the placeholder in place of the body, attachments and reactions', () => {
+            renderTombstone()
+
+            expect(screen.getByText('[deleted]')).toBeInTheDocument()
+            expect(screen.queryByAltText('secret.png')).not.toBeInTheDocument()
+            expect(screen.queryByText('🔥')).not.toBeInTheDocument()
+        })
+
+        it('hides the react, reply and edit/delete controls even for the author', () => {
+            renderTombstone()
+
+            expect(screen.queryByRole('button', { name: '😀' })).not.toBeInTheDocument()
+            expect(screen.queryByRole('button', { name: '↩' })).not.toBeInTheDocument()
+            expect(screen.queryByRole('button', { name: '⋯' })).not.toBeInTheDocument()
+        })
+
+        it('keeps the comments toggle working, with no composer under the placeholder', async () => {
+            vi.mocked(api.fetchComments).mockResolvedValue({
+                data: [{
+                    ...baseMessage, id: 'c1', channel_id: null, parent_message_id: 'msg-1', depth: 1,
+                    content: 'a surviving comment',
+                }],
+                has_older: false, older_cursor: null, has_newer: false, newer_cursor: null,
+            })
+            renderTombstone()
+
+            await userEvent.click(screen.getByRole('button', { name: /2 comments/ }))
+
+            expect(api.fetchComments).toHaveBeenCalledWith('msg-1')
+            expect(await screen.findByText('a surviving comment')).toBeInTheDocument()
+            expect(screen.queryByPlaceholderText('Write a comment…')).not.toBeInTheDocument()
+        })
     })
 })

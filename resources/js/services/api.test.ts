@@ -94,12 +94,19 @@ describe('api service', () => {
         expect(mockedAxios.patch).toHaveBeenCalledWith('/api/messages/msg-1', { content: 'edited' })
     })
 
-    it('deleteMessage deletes by id', async () => {
+    it('deleteMessage deletes by id and resolves null for a real delete', async () => {
         mockedAxios.delete.mockResolvedValue({ data: { deleted: true } })
 
-        await deleteMessage('msg-1')
+        expect(await deleteMessage('msg-1')).toBeNull()
 
         expect(mockedAxios.delete).toHaveBeenCalledWith('/api/messages/msg-1')
+    })
+
+    it('deleteMessage resolves the tombstone when the server kept the message in place', async () => {
+        const tombstone = { id: 'msg-1', is_tombstoned: true, content: null, deleted: true }
+        mockedAxios.delete.mockResolvedValue({ data: tombstone })
+
+        expect(await deleteMessage('msg-1')).toEqual(tombstone)
     })
 
     it('focusChannel posts to the focus endpoint', async () => {

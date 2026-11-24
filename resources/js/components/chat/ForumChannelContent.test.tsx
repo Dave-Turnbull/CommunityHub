@@ -25,7 +25,7 @@ vi.mock('@/components/emoji/EmojiPicker', () => ({
 }))
 
 vi.mock('@/components/messages/VoteControl', () => ({
-    VoteControl: () => null,
+    VoteControl: () => <span aria-label="Upvote" />,
 }))
 
 import * as api from '@/services/api'
@@ -76,5 +76,40 @@ describe('ForumChannelContent', () => {
         expect(link).toHaveAttribute('rel', 'noopener noreferrer')
         expect(screen.getByText('Read this').tagName).toBe('STRONG')
         expect(within(link.closest('div')!).queryByText('**Read this**')).toBeNull()
+    })
+
+    describe('a tombstoned post', () => {
+        const tombstone = {
+            ...post, content: null, title: null, is_tombstoned: true, comment_count: 2,
+        } as unknown as Message
+
+        beforeEach(() => {
+            vi.mocked(api.fetchChannelMessages).mockResolvedValue({
+                data: [tombstone], has_older: false, older_cursor: null, has_newer: false, newer_cursor: null,
+            } as any)
+            vi.mocked(api.fetchComments).mockResolvedValue({
+                data: [{ ...post, id: 'c1', parent_message_id: 'post-1', depth: 1, content: 'a surviving comment' }],
+                has_older: false, older_cursor: null, has_newer: false, newer_cursor: null,
+            } as any)
+        })
+
+        it('shows the placeholder and no vote control in the list, with the comment count intact', async () => {
+            render(<ForumChannelContent channel={channel} currentUser={viewer} />)
+
+            expect(await screen.findByText('[deleted]')).toBeInTheDocument()
+            expect(screen.queryByLabelText('Upvote')).not.toBeInTheDocument()
+            expect(screen.getByText('💬 2 comments')).toBeInTheDocument()
+        })
+
+        it('opens into a detail view with the placeholder, its comments, and no composer', async () => {
+            render(<ForumChannelContent channel={channel} currentUser={viewer} />)
+
+            await userEvent.click(await screen.findByText('[deleted]'))
+
+            expect(await screen.findByText('a surviving comment')).toBeInTheDocument()
+            expect(screen.getByText('[deleted]')).toBeInTheDocument()
+            expect(screen.getAllByLabelText('Upvote')).toHaveLength(1)
+            expect(screen.queryByPlaceholderText('Write a comment…')).not.toBeInTheDocument()
+        })
     })
 })

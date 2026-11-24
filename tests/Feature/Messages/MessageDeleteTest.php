@@ -29,7 +29,11 @@ class MessageDeleteTest extends TestCase
         $response->assertJson(['deleted' => true]);
         $this->assertSoftDeleted('messages', ['id' => $message->id]);
 
-        Event::assertDispatched(MessageDeleted::class);
+        Event::assertDispatched(MessageDeleted::class, fn (MessageDeleted $e) => $e->broadcastWith() === [
+            'message_id' => $message->id,
+            'scope_type' => 'channel',
+            'scope_id'   => $message->channel_id,
+        ]);
     }
 
     public function test_a_non_author_cannot_delete_a_message(): void

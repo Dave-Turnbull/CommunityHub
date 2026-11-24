@@ -76,8 +76,14 @@ export async function editMessage(messageId: string, content: string): Promise<M
     return data
 }
 
-export async function deleteMessage(messageId: string): Promise<void> {
-    await axios.delete(`/api/messages/${messageId}`)
+/**
+ * Resolves to the blanked tombstone when the server kept the message in place
+ * as a `[deleted]` placeholder (it had comments), null when it was really
+ * deleted.
+ */
+export async function deleteMessage(messageId: string): Promise<Message | null> {
+    const { data } = await axios.delete(`/api/messages/${messageId}`)
+    return data?.is_tombstoned ? data : null
 }
 
 // ── Comments ─────────────────────────────────────────────────────────────

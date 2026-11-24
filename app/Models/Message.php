@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class Message extends Model
 {
@@ -40,8 +42,58 @@ class Message extends Model
     /** A comment's immediate parent — another message, never a channel/conversation directly. */
     public function parentMessage(): BelongsTo { return $this->belongsTo(Message::class, 'parent_message_id'); }
 
-    /** Denormalized top-level ancestor — the channel/conversation-scoped message a comment tree hangs off. */
-    public function root(): BelongsTo { return $this->belongsTo(Message::class, 'root_message_id'); }
+    /**
+     * Denormalized top-level ancestor — the channel/conversation-scoped message a comment tree hangs off.
+     * withTrashed(): a tombstoned root stays the scope its live comments resolve through.
+     */
+    public function root(): BelongsTo { return $this->belongsTo(Message::class, 'root_message_id')->withTrashed(); }
+
+    /**
+     * Every row a list may show: live ones plus tombstones (soft-deleted with
+     * `is_tombstoned`). A plain delete or a cascade delete stays excluded, so
+     * this is not interchangeable with withTrashed().
+     */
+    public function scopeListed(Builder $query): void
+    {
+        $query->withoutGlobalScope(SoftDeletingScope::class)
+            ->where(fn (Builder $q) => $q->whereNull('deleted_at')->orWhere('is_tombstoned', true));
+    }
+
+    /** A deleted message kept in place as a `[deleted]` placeholder because live comments hang beneath it. */
+    public function isTombstone(): bool
+    {
+        return $this->is_tombstoned && $this->trashed();
+    }
+
+    /**
+     * The one place a tombstone's content is withheld: every JSON response and
+     * broadcast payload serializes a message through here, so nothing the
+     * author deleted can reach a client however the row was loaded.
+     */
+    public function toArray(): array
+    {
+        $array = parent::toArray();
+
+        if (! $this->isTombstone()) {
+            return $array;
+        }
+
+        $array = array_merge($array, [
+            'content'     => null,
+            'title'       => null,
+            'reply_to_id' => null,
+            'reply_to'    => null,
+            'attachments' => [],
+            'reactions'   => [],
+            'votes'       => ['score' => 0, 'mine' => null],
+        ]);
+
+        if (array_key_exists('vote_score', $array)) {
+            $array['vote_score'] = 0;
+        }
+
+        return $array;
+    }
 
     /** A message/comment's direct children — what makes comments-on-comments possible. */
     public function children(): HasMany { return $this->hasMany(Message::class, 'parent_message_id'); }

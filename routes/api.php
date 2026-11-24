@@ -81,7 +81,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/messages/{message}', [MessageController::class, 'destroy']);
 
     // Comments — a message's own children, see docs/comments-and-voting.md.
-    Route::get('/messages/{message}/comments',  [MessageController::class, 'indexComments']);
+    Route::get('/messages/{listedMessage}/comments',  [MessageController::class, 'indexComments']);
     Route::post('/messages/{message}/comments', [MessageController::class, 'storeComment'])->middleware('throttle:messages');
 
     // Conversations — creation is deferred to the first message send, see
