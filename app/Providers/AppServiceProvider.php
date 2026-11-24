@@ -4,7 +4,10 @@ namespace App\Providers;
 
 use App\Services\DefaultRoomService;
 use Illuminate\Auth\Events\Verified;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Authentik\Provider as AuthentikProvider;
 use SocialiteProviders\Manager\SocialiteWasCalled;
@@ -30,5 +33,11 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(function (Verified $event) {
             app(DefaultRoomService::class)->enrollIfEligible($event->user);
         });
+
+        foreach (['messages', 'uploads', 'reactions', 'invites', 'conversations'] as $name) {
+            RateLimiter::for($name, fn (Request $request) => Limit::perMinute(
+                (int) config("rate_limits.{$name}")
+            )->by($request->user()?->id ?? $request->ip()));
+        }
     }
 }
