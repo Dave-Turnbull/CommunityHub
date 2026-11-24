@@ -13,7 +13,10 @@ talking — appear in real time without a page refresh.
 A room is a space with its own members, channels, and roles. Anyone with
 permission can create a room, and create, rename, or reorder channels within it.
 Channels can be text (send, edit, delete, and reply to messages; attach images
-and files by drag-drop or file picker; react with emoji) or voice.
+and files by drag-drop or file picker; react with emoji) or voice. Messages
+render links and basic formatting (bold, italic, strikethrough, code, quotes),
+and a room's name and icon can be edited, or the room left or deleted, from its
+settings panel.
 
 **Direct messaging**
 
@@ -47,8 +50,9 @@ account and applied on every device.
 **Also included**
 
 Presence and status (online, idle, do-not-disturb, or a custom message and
-colour), a member list per room, per-category notification preferences (email
-and in-app), and room invites by link or by email.
+colour), a member list per room, unread counts per channel and conversation,
+typing indicators, per-category notification preferences (email and in-app),
+room invites by link or by email, and password reset by email.
 
 ## Design principles
 

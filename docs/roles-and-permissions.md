@@ -61,8 +61,9 @@ capability), `React` (`ReactionController` — closed the same class of gap), `C
 (`RoomPolicy::create`/`Web\RoomController` — room creation previously had no gate at
 all), `InviteServer` (`ServerInvitePolicy`/`ServerInviteService` — creating, listing and
 revoking account-creation invites, see
-[conversations-and-invites.md](conversations-and-invites.md)'s "Server invites").
-`ManageRoom`/`ManageMessages`/`ManageEmojis` are declared for schema stability but are
+[conversations-and-invites.md](conversations-and-invites.md)'s "Server invites"),
+`ManageRoom` (`RoomPolicy::update` — room rename/re-icon, see "Room settings: edit, leave,
+delete" below). `ManageMessages`/`ManageEmojis` are declared for schema stability but are
 currently inert — nothing checks them.
 
 `InviteMembers` was split out of `ManageMembers` (which now means "kick" only) so a
@@ -79,8 +80,7 @@ data migration backfilling `role_permissions.permission` alongside updating that
 
 Backend enforcement doesn't group permissions at all — `PermissionChecker::can()` treats
 every `Permission` case identically, and any role can be granted a permission from any
-group below. Two independent, frontend-only groupings sort the same 20 (`InviteServer`
-included, still inert) `PermissionKey`s, both defined in `resources/js/types/index.ts`
+group below. Two independent, frontend-only groupings sort the same 20 `PermissionKey`s, both defined in `resources/js/types/index.ts`
 with no backend equivalent — nothing server-side needs to know about either:
 
 **`PERMISSION_TIERS`** (`Record<PermissionKey, ('server'|'room')[]>`) — which scope(s) a
