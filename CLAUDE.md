@@ -733,8 +733,11 @@ assuming something is undocumented.
 **Backend — PHPUnit, no Pest.** `phpunit.xml` points every test run at an
 in-memory SQLite DB (`DB_CONNECTION=sqlite`, `DB_DATABASE=:memory:`) with
 `BROADCAST_CONNECTION=null`, `QUEUE_CONNECTION=sync`, `SESSION_DRIVER=array`,
-`CACHE_STORE=file` — the suite never touches the dev Postgres/Redis data and
-needs nothing running beyond the `app` container.
+`CACHE_STORE=array` — the suite never touches the dev Postgres/Redis data and
+needs nothing running beyond the `app` container. The cache store is in-memory on
+purpose: route throttles (`/register` is 3/min) count in the cache, so a store that
+outlives the process makes back-to-back or concurrent suite runs trip rate limits in
+unrelated tests.
 - Every domain model has a matching factory in `database/factories/` and uses
   `HasFactory`. Add both together for any new model.
 - Feature tests use `RefreshDatabase` and go through the real HTTP kernel
