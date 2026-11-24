@@ -446,4 +446,49 @@ describe('ChannelSidebar', () => {
             expect(router.visit).not.toHaveBeenCalled()
         })
     })
+    describe('unread badges', () => {
+        const channels = (counts: Record<string, number | undefined>): Channel[] =>
+            Object.entries(counts).map(([name, unread_count], position) =>
+                channel({ id: `c-${name}`, name, position, unread_count }))
+
+        it('shows a count badge and emphasizes the name of an unread channel', () => {
+            render(<ChannelSidebar room={room} channels={channels({ general: 0, news: 3 })} activeChannelId="c-general" {...defaultProps} />)
+
+            expect(screen.getByLabelText('3 unread')).toHaveTextContent('3')
+            expect(screen.getByText('news').closest('a')?.parentElement).toHaveClass('font-semibold', '[&_a]:text-text-primary')
+            expect(screen.getByText('general').closest('a')?.parentElement).not.toHaveClass('font-semibold')
+        })
+
+        it('caps the displayed count at 99+', () => {
+            render(<ChannelSidebar room={room} channels={channels({ general: 0, busy: 100, almost: 99 })} activeChannelId="c-general" {...defaultProps} />)
+
+            expect(screen.getByLabelText('100 unread')).toHaveTextContent('99+')
+            expect(screen.getByLabelText('99 unread')).toHaveTextContent('99')
+            expect(screen.getByLabelText('99 unread')).not.toHaveTextContent('99+')
+        })
+
+        it('shows no badge on a read channel or when the count is absent', () => {
+            render(<ChannelSidebar room={room} channels={channels({ general: 0, news: undefined })} activeChannelId="c-other" {...defaultProps} />)
+
+            expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument()
+        })
+
+        it('never shows a badge on the active channel', () => {
+            render(<ChannelSidebar room={room} channels={channels({ general: 5 })} activeChannelId="c-general" {...defaultProps} />)
+
+            expect(screen.queryByLabelText(/unread/)).not.toBeInTheDocument()
+        })
+
+        it('shows the badge on a voice channel row too, next to the row menu', () => {
+            const list = [channel({ id: 'c-voice', name: 'Lounge', type: 'voice', unread_count: 2 })]
+
+            render(<ChannelSidebar room={room} channels={list} activeChannelId="c-other" {...defaultProps} canManageChannels />)
+
+            const badge = screen.getByLabelText('2 unread')
+            const row = badge.parentElement as HTMLElement
+            expect(within(row).getByTitle('Channel actions')).toBeInTheDocument()
+            expect(row).toContainElement(screen.getByText('Lounge'))
+            expect(badge).not.toContainElement(screen.getByTitle('Channel actions'))
+        })
+    })
 })

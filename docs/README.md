@@ -64,6 +64,10 @@ encode the actual dependency graph between subsystems.
   (comments as messages whose parent is another message), the `comments_enabled`
   parameter + standalone `Permission::Comment`/`Vote`, the `vote` Feature, tombstone
   vs. cascade deletion, score+timeframe sorting, and the `forum` `ChannelType`.
+- [unread-counts.md](unread-counts.md) — per-user read markers, what counts as unread (and
+  the join-time baseline), the set-based count queries and how channel visibility is
+  applied inside them, the sidebar/rail surfaces, and the "accurate as of last navigation"
+  limitation.
 - [e2ee-proposal.md](e2ee-proposal.md) — **proposal, not implemented/approved.**
   Requirements sketch for a purpose-built end-to-end-encrypted communication Feature
   and the multi-device key system it depends on.

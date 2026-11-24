@@ -4,6 +4,7 @@ import { RoomRail } from '@/components/layout/RoomRail'
 import { DMSidebar } from '@/components/layout/DMSidebar'
 import { AddParticipantsModal } from '@/components/messages/AddParticipantsModal'
 import { Avatar } from '@/components/ui/Avatar'
+import { useMarkRead } from '@/hooks/useMarkRead'
 import { channelTypeDescriptor } from '@/services/channelTypes'
 import type { DMPageProps } from '@/types'
 
@@ -11,6 +12,8 @@ export default function DMShow({
     auth, rooms, conversations, conversation, messages: initial, highlight_message_id, recentCustomStatuses,
 }: DMPageProps) {
     const [addingPeople, setAddingPeople] = useState(false)
+
+    useMarkRead('conversation', conversation.id)
 
     const other = conversation.participants?.find((p) => p.user_id !== auth.user.id)
 

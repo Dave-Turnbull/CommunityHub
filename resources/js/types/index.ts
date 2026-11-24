@@ -44,6 +44,9 @@ export interface Room {
     icon_url: string | null
     owner_id: string
     invite_code: string
+    // True when any channel in the room the viewer can see has unread messages
+    // — shared `rooms` prop only (HandleInertiaRequests). See docs/unread-counts.md.
+    has_unread?: boolean
     channels?: Channel[]
     custom_emojis?: CustomEmoji[]
     // Present on ChannelPageProps.room (Web\ChannelController::show) — backs
@@ -300,6 +303,10 @@ export interface Channel {
     position: number
     voice_mode: VoiceConnectionMode
     settings: Record<string, unknown> | null
+    // Top-level messages from others since the viewer last read this channel,
+    // as of the page load — see docs/unread-counts.md. Only on the
+    // `room.channels` list (Web\ChannelController::show), not every Channel payload.
+    unread_count?: number
     // Roles that may see this channel — empty/absent means visible to every
     // room member (opt-in restriction, see Permission.SeeAllChannels/
     // ManageChannelVisibility). Only present when the backend eager-loads it
