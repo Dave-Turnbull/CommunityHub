@@ -6,6 +6,7 @@ use App\Models\Conversation;
 use App\Models\InstanceSetting;
 use App\Models\RecentCustomStatus;
 use App\Models\Room;
+use App\Services\ReadMarkerService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -59,22 +60,33 @@ class HandleInertiaRequests extends Middleware
                 ? RecentCustomStatus::recentForUser($user->id)
                 : [],
 
-            'rooms' => fn () => $user
-                ? Room::whereHas('members', fn ($q) => $q->where('user_id', $user->id))
-                        ->get(['id', 'name', 'icon_url', 'owner_id', 'invite_code'])
-                : [],
+            'rooms' => function () use ($user) {
+                if (! $user) {
+                    return [];
+                }
 
-            'conversations' => fn () => $user
-                ? Conversation::whereHas('participants', fn ($q) => $q->where('user_id', $user->id))
-                        ->with(['participants.user:id,username,display_name,avatar_url,status', 'lastMessage'])
-                        ->latest('updated_at')
-                        ->limit(50)
-                        ->get()
-                        ->map(function ($c) {
-                            $c->unread_count = 0;   // TODO: read receipts
-                            return $c;
-                        })
-                : [],
+                $unreadRoomIds = array_flip(app(ReadMarkerService::class)->roomIdsWithUnread($user));
+
+                return Room::whereHas('members', fn ($q) => $q->where('user_id', $user->id))
+                    ->get(['id', 'name', 'icon_url', 'owner_id', 'invite_code'])
+                    ->each(fn (Room $room) => $room->setAttribute('has_unread', isset($unreadRoomIds[$room->id])));
+            },
+
+            'conversations' => function () use ($user) {
+                if (! $user) {
+                    return [];
+                }
+
+                $conversations = Conversation::whereHas('participants', fn ($q) => $q->where('user_id', $user->id))
+                    ->with(['participants.user:id,username,display_name,avatar_url,status', 'lastMessage'])
+                    ->latest('updated_at')
+                    ->limit(50)
+                    ->get();
+
+                $unread = app(ReadMarkerService::class)->conversationUnreadCounts($user, $conversations->modelKeys());
+
+                return $conversations->each(fn ($c) => $c->unread_count = $unread[$c->id] ?? 0);
+            },
 
             'flash' => [
                 'success' => $request->session()->get('success'),

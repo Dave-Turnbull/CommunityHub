@@ -152,7 +152,9 @@ app/
     Api/                      JSON controllers (axios targets), thin translators over
                                app/Services/ — see docs/service-layer.md.
                                ChannelFocusController is the focus/blur heartbeat
-                               endpoint (see docs/notifications.md); ConversationController
+                               endpoint (see docs/notifications.md); ReadMarkerController
+                               is channel/conversation mark-read (see docs/unread-counts.md);
+                               ConversationController
                                (distinct from Web\ConversationController) handles
                                candidates/resolve/store/addParticipants (see docs/
                                conversations-and-invites.md); VoiceIceServersController/
@@ -200,7 +202,8 @@ app/
                                ServerInvitePolicy/Permission::InviteServer
     Controller.php            empty abstract base — Laravel ships none by default, keep it
   Http/Middleware/
-    HandleInertiaRequests.php shares auth.user, rooms, conversations,
+    HandleInertiaRequests.php shares auth.user, rooms (with has_unread), conversations
+                               (with unread_count — docs/unread-counts.md),
                                recentCustomStatuses (see docs/status.md),
                                registrationPaths (see docs/conversations-and-
                                invites.md's "Server invites"), flash
@@ -224,7 +227,9 @@ app/
                                only enforced when EnsureEmailIsVerifiedIfRequired's runtime
                                config check is on, see config/verification.php.
                                NotificationPreference/VoiceDevicePreference — see docs/
-                               notifications.md and docs/voice.md; Role/RolePermission/
+                               notifications.md and docs/voice.md; ReadMarker (per-user
+                               last-read time per channel/conversation) — see docs/
+                               unread-counts.md; Role/RolePermission/
                                RoleAssignment, ChannelRoleVisibility, RoomBan,
                                RoleRoomPermissionCeiling/RoleRoomChannelCategoryCeiling
                                (a global role's room-permission ceiling),
@@ -302,7 +307,9 @@ app/
                                token validation for account-creation invites, see docs/
                                conversations-and-invites.md's "Server invites";
                                AuthentikLoginService — OAuth identity resolution
-                               (linked/linkable/provision), see docs/auth-and-sso.md
+                               (linked/linkable/provision), see docs/auth-and-sso.md;
+                               ReadMarkerService — mark-read + set-based unread counts
+                               (conversations, channels, rooms), see docs/unread-counts.md
   Support/                    ChannelFocus (see docs/notifications.md); Permission/
                                PermissionChecker/PermissionCeiling (the last is the
                                grant-time "can only grant what you hold" primitive, room
@@ -419,7 +426,9 @@ resources/
                                indicators");
                                ForumChannelContent (the `forum` channel type's post
                                list + detail view) — see docs/comments-and-voting.md
-      layout/                 RoomRail, ChannelSidebar (the "🛡 Roles"/"+ Add
+      layout/                 RoomRail (unread dot from a room's `has_unread`), ChannelSidebar
+                               (per-row unread badge from `unread_count` — see docs/
+                               unread-counts.md; the "🛡 Roles"/"+ Add
                                channel"/invite-people affordances don't open modals —
                                they call back up to Channels/Show, which swaps its
                                `mainView` state and renders the matching panel in place
@@ -428,7 +437,7 @@ resources/
                                docs/capabilities-and-channel-types.md; when
                                `canManageChannels`, every channel row of any type is
                                wrapped with ChannelRowMenu — rename/move/delete, see that
-                               doc's "Renaming, reordering, and deleting"), DMSidebar,
+                               doc's "Renaming, reordering, and deleting"), DMSidebar (unread_count badge),
                                MemberList (renders a per-member kick/ban dropdown when
                                roomId + canManageMembers/canBanMembers are passed, e.g.
                                from Channels/Show, plus, when canBanMembers, a collapsible
@@ -538,7 +547,9 @@ resources/
     hooks/                    useChat (one scope's message window: loadOlder/
                                loadNewer/jumpToPresent/commitSent — see docs/
                                messages-and-pagination.md), useAutoScroll, useNotifications,
-                               useChannelFocus (see docs/notifications.md),
+                               useChannelFocus (see docs/notifications.md), useMarkRead
+                               (best-effort mark-read while a page is open — see docs/
+                               unread-counts.md),
                                useVoiceChannel (see docs/voice.md)
     services/                 api.ts (axios — the only place a component may call axios
                                directly), channelTypes.tsx (frontend channel-type

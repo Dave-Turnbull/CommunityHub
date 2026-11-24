@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\NotificationPreferenceController;
 use App\Http\Controllers\Api\ReactionController;
+use App\Http\Controllers\Api\ReadMarkerController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\RoleRoomCeilingController;
 use App\Http\Controllers\Api\RoomController;
@@ -32,6 +33,10 @@ Route::middleware('auth')->group(function () {
     // Channel focus — see App\Support\ChannelFocus
     Route::post('/channels/{channel}/focus', [ChannelFocusController::class, 'focus']);
     Route::post('/channels/{channel}/blur',  [ChannelFocusController::class, 'blur']);
+
+    // Read markers — see App\Services\ReadMarkerService, docs/unread-counts.md
+    Route::post('/channels/{channel}/read',         [ReadMarkerController::class, 'channel']);
+    Route::post('/conversations/{conversation}/read', [ReadMarkerController::class, 'conversation']);
 
     // Channel CRUD — gated by ChannelPolicy (manage_channels permission), see PermissionChecker
     Route::post('/rooms/{room}/channels',           [ChannelController::class, 'store']);

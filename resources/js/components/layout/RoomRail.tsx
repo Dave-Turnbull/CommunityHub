@@ -59,6 +59,14 @@ export function RoomRail({ rooms, currentUserId, activeRoomId }: Props) {
                                 ? <img src={r.icon_url} alt="" className="w-full h-full object-cover" />
                                 : r.name[0]?.toUpperCase()}
 
+                            {r.has_unread && (
+                                <span
+                                    role="img"
+                                    aria-label="Unread messages"
+                                    className="absolute top-0.5 right-0.5 w-2.5 h-2.5 rounded-full bg-danger"
+                                />
+                            )}
+
                             {/* Active indicator underline */}
                             <span className={clsx(
                                 'absolute -bottom-1.5 left-1/2 -translate-x-1/2 h-1 rounded-t-full bg-inverse transition-all duration-200',

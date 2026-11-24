@@ -143,6 +143,16 @@ export async function blurChannel(channelId: string): Promise<void> {
     await axios.post(`/api/channels/${channelId}/blur`)
 }
 
+// ── Read markers ─────────────────────────────────────────────────────────
+
+export async function markChannelRead(channelId: string): Promise<void> {
+    await axios.post(`/api/channels/${channelId}/read`)
+}
+
+export async function markConversationRead(conversationId: string): Promise<void> {
+    await axios.post(`/api/conversations/${conversationId}/read`)
+}
+
 // ── Reactions ────────────────────────────────────────────────────────────
 
 // Both return the message's full, authoritative reaction summary — what
