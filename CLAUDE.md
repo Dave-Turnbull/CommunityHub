@@ -171,6 +171,11 @@ app/
                                RoomMemberController is
                                destroy/ban/unban — kick/ban a room member (see docs/
                                roles-and-permissions.md's "Kick and ban");
+                               RoomController (distinct from Web\RoomController) is
+                               update/destroy/leave — rename/re-icon (ManageRoom), delete
+                               (owner only), leave (any non-owner member), see docs/
+                               roles-and-permissions.md's "Room settings: edit, leave,
+                               delete";
                                ThemePreferenceController is
                                show/update for the Appearance panel's preset + per-variable
                                overrides (see docs/theming.md); InstanceSettingsController
@@ -236,7 +241,9 @@ app/
                                auth-and-sso.md
   Policies/                   authorization seams beyond simple membership checks —
                                see docs/roles-and-permissions.md and docs/
-                               conversations-and-invites.md. RoomMemberPolicy backs
+                               conversations-and-invites.md. RoomPolicy::update/delete
+                               gate room edit (ManageRoom) and delete (owner only), see
+                               docs/roles-and-permissions.md; RoomMemberPolicy backs
                                RoomMember (Laravel's convention-based auto-discovery
                                maps the RoomMember model to it) — kick/ban, a different
                                hierarchy comparison than RolePolicy's, see docs/
@@ -270,9 +277,11 @@ app/
                                Not the same thing as Support/Capabilities' Feature — a
                                Feature declares what a capability *is*, a Service is
                                where the operation actually lives and gets authorized.
-                               RoomMembershipService is kick/ban + the owner-transfer
+                               RoomMembershipService is kick/ban/leave + the owner-transfer
                                flow when the target is a room's Owner (see docs/
-                               roles-and-permissions.md); VoteService — see docs/
+                               roles-and-permissions.md); RoomService is room edit/delete
+                               (delete also clears attachment files and room-keyed
+                               notifications the DB can't cascade); VoteService — see docs/
                                comments-and-voting.md; DefaultRoomService — every default-room
                                enrolment path (account creation, email verification, the
                                bulk job) plus the post-signup landing path, see docs/
@@ -418,7 +427,10 @@ resources/
                                UserStatusPopover (the popup itself: status switcher,
                                custom status color+text+save, recent statuses,
                                Settings/Logout — see docs/status.md), InvitePanel,
-                               CreateChannelPanel — the latter two render inline in
+                               CreateChannelPanel, RoomSettingsPanel (name/icon edit,
+                               leave, delete — each section gated by can_manage_room/
+                               can_delete_room/ownership, opened by ChannelSidebar's ⚙
+                               button, shown to every member) — these render inline in
                                Channels/Show's main pane (see `mainView` above), not as
                                centered modals
       roles/                  RoleCard — one role's permission checklist + member
@@ -548,6 +560,8 @@ routes/
                                /settings/roles (global role list/store/reorder, self-
                                fetched by Settings' Roles tab), /rooms/{room}/
                                members|bans (kick/ban — see docs/roles-and-permissions.md),
+                               PATCH/DELETE /rooms/{room} + POST /rooms/{room}/leave (room
+                               settings — same doc),
                                /settings/instance (signup-path toggles, self-fetched by
                                Settings' Server tab; plus /settings/instance/rooms and
                                /settings/instance/default-room for the default room) and /server-invites (create only —

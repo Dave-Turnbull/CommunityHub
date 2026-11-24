@@ -61,6 +61,14 @@ avoids re-passing it to every method.
 
 `MessageController` is a thin translator over this service for every one of its routes.
 
+### `RoomService`
+
+Room edit/delete, authorized through `RoomPolicy` (`update` = `ManageRoom`, `delete` =
+owner only) via `Gate::forUser($actor)`. `delete()` clears attachment files and room-keyed
+notifications before the room row goes, since neither cascades — see
+`docs/roles-and-permissions.md`'s "Room settings: edit, leave, delete". Leaving a room is
+`RoomMembershipService::leave()`, next to kick/ban.
+
 ### `VoiceSignalingService`
 
 Deliberately thin — voice call orchestration (join/leave/mute) stays entirely

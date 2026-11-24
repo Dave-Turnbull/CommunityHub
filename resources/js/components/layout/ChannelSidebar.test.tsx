@@ -54,6 +54,7 @@ const defaultProps = {
     onSelectRoles: vi.fn(),
     onSelectCreateChannel: vi.fn(),
     onSelectInvite: vi.fn(),
+    onSelectRoomSettings: vi.fn(),
 }
 
 describe('ChannelSidebar', () => {
@@ -210,6 +211,30 @@ describe('ChannelSidebar', () => {
 
         await u.click(screen.getByTitle('Invite people'))
         expect(onSelectInvite).toHaveBeenCalled()
+    })
+
+    it('shows the room settings button to every member and calls onSelectRoomSettings on click', async () => {
+        const onSelectRoomSettings = vi.fn()
+        const u = userEvent.setup()
+
+        render(
+            <ChannelSidebar room={room} channels={[]} activeChannelId="" {...defaultProps} onSelectRoomSettings={onSelectRoomSettings} />
+        )
+
+        await u.click(screen.getByTitle('Room settings'))
+        expect(onSelectRoomSettings).toHaveBeenCalled()
+    })
+
+    it('marks the room settings button active only on the room-settings view', () => {
+        const { rerender } = render(
+            <ChannelSidebar room={room} channels={[]} activeChannelId="" {...defaultProps} />
+        )
+        expect(screen.getByTitle('Room settings')).not.toHaveClass('bg-sixth')
+
+        rerender(
+            <ChannelSidebar room={room} channels={[]} activeChannelId="" {...defaultProps} activeView={{ type: 'room-settings' }} />
+        )
+        expect(screen.getByTitle('Room settings')).toHaveClass('bg-sixth')
     })
 
     it('reflects a channel added to the shared store by another tab/user (e.g. via ChannelCreated)', () => {
