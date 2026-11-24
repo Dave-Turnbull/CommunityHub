@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Channel;
 use App\Models\Role;
 use App\Policies\ChannelPolicy;
+use App\Services\ReadMarkerService;
 use App\Services\TextMessageService;
 use App\Support\Permission;
 use App\Support\PermissionChecker;
@@ -16,7 +17,7 @@ use Inertia\Response;
 
 class ChannelController extends Controller
 {
-    public function show(Request $request, Channel $channel): Response
+    public function show(Request $request, Channel $channel, ReadMarkerService $readMarkers): Response
     {
         $user = $request->user();
         $room = $channel->room;
@@ -26,6 +27,13 @@ class ChannelController extends Controller
 
         $room->load(['channels', 'customEmojis', 'roles']);
         $room->setRelation('channels', $room->channels->filter(fn (Channel $c) => $c->isVisibleTo($user))->values());
+
+        $readMarkers->markChannelRead($channel, $user);
+        $unreadCounts = $readMarkers->channelUnreadCounts($room->id, $user);
+        $room->channels->each(fn (Channel $c) => $c->setAttribute(
+            'unread_count',
+            $c->id === $channel->id ? 0 : ($unreadCounts[$c->id] ?? 0),
+        ));
 
         $members = $room->members()
             ->with('user:id,username,display_name,avatar_url,status,custom_status')
@@ -57,6 +65,9 @@ class ChannelController extends Controller
             'highlight_message_id'             => $highlightMessageId,
             'creatable_channel_types'          => app(ChannelPolicy::class)->creatableTypeKeys($user, $room),
             'can_manage_roles'                 => Gate::allows('create', [Role::class, $room]),
+            'can_manage_channels'              => Gate::allows('manage', $channel),
+            'can_manage_room'                  => Gate::allows('update', $room),
+            'can_delete_room'                  => Gate::allows('delete', $room),
             'can_manage_channel_visibility'    => Gate::allows('manageVisibility', $channel),
             // Whether the viewer holds ManageMembers/BanMembers at all — not
             // per-target eligibility, which needs a specific target user and

@@ -25,7 +25,8 @@ vi.mock('@inertiajs/react', () => ({
 
 const props = (
     overrides: Partial<SharedProps['registrationPaths']> = {},
-    authentikEnabled = false
+    authentikEnabled = false,
+    flash: SharedProps['flash'] = {}
 ): SharedProps => ({
     appName: 'CommunityHub',
     maxUploadSizeBytes: 100 * 1024 * 1024,
@@ -33,7 +34,7 @@ const props = (
     rooms: [],
     conversations: [],
     recentCustomStatuses: [],
-    flash: {},
+    flash,
     registrationPaths: { manual: true, emailInvite: true, oauth: true, ...overrides },
     authentikEnabled,
 })
@@ -63,5 +64,17 @@ describe('Auth/Login', () => {
         const link = screen.getByText('Log in with Authentik')
         expect(link).toBeInTheDocument()
         expect(link).toHaveAttribute('href', '/auth/authentik/redirect')
+    })
+
+    it('links to the forgot-password page', () => {
+        render(<Login {...props()} />)
+
+        expect(screen.getByText('Forgot password?')).toHaveAttribute('href', '/forgot-password')
+    })
+
+    it('shows a flash success message', () => {
+        render(<Login {...props({}, false, { success: 'Your password has been reset.' })} />)
+
+        expect(screen.getByText('Your password has been reset.')).toBeInTheDocument()
     })
 })

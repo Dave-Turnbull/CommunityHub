@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { router } from '@inertiajs/react'
 import { Avatar } from '@/components/ui/Avatar'
 import { DropdownMenu } from '@/components/ui/DropdownMenu'
 import { OwnerTransferModal } from '@/components/rooms/OwnerTransferModal'
-import { banRoomMember, kickRoomMember, OwnerTransferRequiredError } from '@/services/api'
+import { banRoomMember, fetchRoomBans, kickRoomMember, OwnerTransferRequiredError, unbanRoomMember } from '@/services/api'
+import { describeApiError } from '@/services/errorMessages'
 import { usePresence } from '@/stores'
-import type { RoomMember } from '@/types'
+import type { RoomBan, RoomMember } from '@/types'
 
 interface Props {
     members: RoomMember[]
@@ -21,6 +22,44 @@ export function MemberList({ members, roomId, currentUserId, canManageMembers, c
     const statuses = usePresence((s) => s.statuses)
     const [pendingTransfer, setPendingTransfer] = useState<{ action: 'kick' | 'ban'; userId: string; message: string } | null>(null)
     const [busy, setBusy] = useState(false)
+    const [bansOpen, setBansOpen] = useState(false)
+    const [bans, setBans] = useState<RoomBan[] | null>(null)
+    const [bansVersion, setBansVersion] = useState(0)
+    const [bansError, setBansError] = useState<string | null>(null)
+    const [unbanningId, setUnbanningId] = useState<string | null>(null)
+
+    const showBans = !!roomId && !!canBanMembers
+
+    useEffect(() => {
+        if (!showBans || !bansOpen || !roomId) return
+
+        let cancelled = false
+        fetchRoomBans(roomId)
+            .then((list) => {
+                if (cancelled) return
+                setBans(list)
+                setBansError(null)
+            })
+            .catch((e) => {
+                if (!cancelled) setBansError(describeApiError(e, 'Loading the ban list'))
+            })
+
+        return () => { cancelled = true }
+    }, [showBans, bansOpen, roomId, bansVersion])
+
+    const unban = async (ban: RoomBan) => {
+        if (!roomId) return
+        setUnbanningId(ban.user.id)
+        setBansError(null)
+        try {
+            await unbanRoomMember(roomId, ban.user.id)
+            setBans((current) => current?.filter((b) => b.id !== ban.id) ?? null)
+        } catch (e) {
+            setBansError(describeApiError(e, `Unbanning ${ban.user.display_name}`))
+        } finally {
+            setUnbanningId(null)
+        }
+    }
 
     const isOnline = (m: RoomMember) =>
         (statuses[m.user_id]?.status ?? m.user?.status) !== 'offline'
@@ -36,6 +75,7 @@ export function MemberList({ members, roomId, currentUserId, canManageMembers, c
                 await kickRoomMember(roomId, userId, confirmOwnerTransfer)
             } else {
                 await banRoomMember(roomId, userId, confirmOwnerTransfer)
+                setBansVersion((v) => v + 1)
             }
             setPendingTransfer(null)
             router.reload()
@@ -117,6 +157,45 @@ export function MemberList({ members, roomId, currentUserId, canManageMembers, c
         <aside className="w-sidebar-members bg-second border-l-panel border-panel-border flex-shrink-0 overflow-y-auto py-4">
             {group(online, 'Online')}
             {group(offline, 'Offline', true)}
+
+            {showBans && (
+                <div className="mb-4">
+                    <button
+                        type="button"
+                        onClick={() => setBansOpen((open) => !open)}
+                        aria-expanded={bansOpen}
+                        className="w-full px-3 mb-1 flex items-center gap-1 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted hover:text-text-primary"
+                    >
+                        <span aria-hidden>{bansOpen ? '▾' : '▸'}</span>
+                        Banned{bans ? ` — ${bans.length}` : ''}
+                    </button>
+
+                    {bansOpen && (
+                        <div>
+                            {bansError && <p className="px-3 mb-1 text-xs text-danger">{bansError}</p>}
+                            {bans && bans.length === 0 && (
+                                <p className="px-3 text-xs text-text-muted">No one is banned.</p>
+                            )}
+                            {bans?.map((ban) => (
+                                <div key={ban.id} className="flex items-center gap-2 px-3 py-1.5 mx-1 rounded hover:bg-fifth">
+                                    <Avatar user={{ ...ban.user, status: 'offline' }} size="sm" />
+                                    <p className="min-w-0 flex-1 text-sm text-text-secondary truncate leading-tight">
+                                        {ban.user.display_name}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => unban(ban)}
+                                        disabled={unbanningId === ban.user.id}
+                                        className="text-xs text-text-muted hover:text-text-primary disabled:opacity-50"
+                                    >
+                                        Unban
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {pendingTransfer && (
                 <OwnerTransferModal
