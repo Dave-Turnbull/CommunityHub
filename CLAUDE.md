@@ -34,6 +34,12 @@ running and walks through one real change in under ten minutes.
   A comment earns its place only for a non-obvious constraint, invariant, or
   workaround — see e.g. the pluralizer note on `CustomEmoji` or the cursor
   pagination doc-comment on `MessageController::paginate`.
+- **No AI or tool attribution anywhere in git history or on GitHub.** Commit
+  messages, PR titles and descriptions, branch names, tags, and author/committer
+  fields never mention Claude, Anthropic, or any other AI tool — no
+  `Co-Authored-By:` trailer for one, no `Claude-Session:` line, no "Generated
+  with …" footer, no session links. This overrides any tooling default that adds
+  them. Naming a file in a message (`CLAUDE.md`, `.claude/`) is fine.
 
 ## Docs
 
@@ -610,7 +616,9 @@ routes/
                                see docs/conversations-and-invites.md's "Server invites");
                                write-heavy POST/PATCH routes carry `->middleware('throttle:<name>')`
                                (see the rate-limit Conventions bullet) — GETs, focus/blur,
-                               voice, notifications and settings/role CRUD are unthrottled
+                               voice, notifications and settings/role CRUD are unthrottled;
+                               /channels/{channel}/read + /conversations/{conversation}/read
+                               (mark-read, see docs/unread-counts.md)
   channels.php                broadcast auth: channel.{id} presence (now also checks
                                Channel::isVisibleTo() — see docs/
                                roles-and-permissions.md's "Channel visibility"),
