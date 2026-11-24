@@ -36,6 +36,8 @@ interface Props {
      * Not offered for comments/ordinary messages, which have no headline.
      */
     showTitleField?: boolean
+    /** Called as the text changes to a non-empty value; never for a 'message' (comment/forum) scope. */
+    onTyping?: () => void
 }
 
 interface ComposerError {
@@ -49,7 +51,7 @@ interface ComposerError {
 class ComposerFriendlyError extends Error {}
 
 export function MessageInput({
-    scopeId, scopeType, placeholder, replyTo, onClearReply, onSend, onSent, leading, showTitleField,
+    scopeId, scopeType, placeholder, replyTo, onClearReply, onSend, onSent, leading, showTitleField, onTyping,
 }: Props) {
     const [text, setText] = useState('')
     const [title, setTitle] = useState('')
@@ -267,7 +269,11 @@ export function MessageInput({
                         value={text}
                         placeholder={isDragActive ? 'Drop files here' : placeholder}
                         disabled={busy}
-                        onChange={(e) => { setText(e.target.value); grow() }}
+                        onChange={(e) => {
+                            setText(e.target.value)
+                            grow()
+                            if (e.target.value.trim() && scopeType !== 'message') onTyping?.()
+                        }}
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
                         }}

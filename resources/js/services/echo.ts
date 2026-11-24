@@ -1,6 +1,6 @@
 import Echo from 'laravel-echo'
 import Pusher from 'pusher-js'
-import { useChannels, useMessages, useNotifications, usePresence } from '@/stores'
+import { useChannels, useMessages, useNotifications, usePresence, useTyping } from '@/stores'
 import * as cache from '@/services/messageCache'
 import type { AppNotification, Channel, Message, ReactionSummary, UserStatus } from '@/types'
 
@@ -57,6 +57,7 @@ export function subscribe(
         const scope = targetScope(ev)
         store.add(scope, ev.message)
         cache.appendLive(scope, ev.message)
+        if (scope === scopeId) useTyping.getState().clear(scope, ev.message.author_id)
     })
     chan.listen('.MessageUpdated', (ev: { message: Message; scope_type?: string; scope_id?: string }) => {
         const scope = targetScope(ev)
@@ -76,7 +77,26 @@ export function subscribe(
         store.setVoteScore(targetScope(ev), ev.message_id, ev.score)
     })
 
+    // Whispered by sendTyping() on this same channel. Only the sender's id
+    // travels — a whisper is client-authored, so it is never trusted for
+    // anything display-related; TypingIndicator resolves the name locally.
+    chan.listenForWhisper('typing', (ev: { user_id?: unknown }) => {
+        if (typeof ev?.user_id === 'string') useTyping.getState().touch(scopeId, ev.user_id)
+    })
+
     return () => e.leave(name)
+}
+
+/**
+ * Tell everyone else on this channel/conversation that `userId` is typing.
+ * A client event on the channel subscribe() already holds — never a second
+ * subscription, and never reaches PHP. Callers throttle.
+ */
+export function sendTyping(scopeType: 'channel' | 'conversation', scopeId: string, userId: string): void {
+    const e = getEcho()
+    const name = `${scopeType}.${scopeId}`
+    const chan = scopeType === 'channel' ? e.join(name) : e.private(name)
+    chan.whisper('typing', { user_id: userId })
 }
 
 type PresencePayload = {

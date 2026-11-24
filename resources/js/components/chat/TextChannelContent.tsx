@@ -1,9 +1,14 @@
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { usePage } from '@inertiajs/react'
 import { MessageList } from '@/components/chat/MessageList'
 import { MessageInput } from '@/components/chat/MessageInput'
+import { TypingIndicator } from '@/components/chat/TypingIndicator'
 import { useChat } from '@/hooks/useChat'
-import type { Message, PaginatedMessages, User } from '@/types'
+import { sendTyping } from '@/services/echo'
+import type { Conversation, Message, PaginatedMessages, RoomMember, User } from '@/types'
+
+const TYPING_THROTTLE_MS = 3000
 
 interface Props {
     scopeId: string
@@ -66,6 +71,28 @@ export function TextChannelContent({
     const { messages, hasOlder, hasNewer, loadOlder, loadNewer, jumpToPresent, jumpToMessage, commitSent } =
         useChat({ scopeId, scopeType, initial: initialMessages })
 
+    // The display name comes from data this client already holds for the scope
+    // (the room's members / the conversation's participants), never from the
+    // whisper itself — see services/echo.ts's `typing` listener.
+    const pageProps = usePage().props as { members?: RoomMember[]; conversation?: Conversation }
+    const { members, conversation } = pageProps
+    const resolveTypingName = useCallback((userId: string) => {
+        if (scopeType === 'channel') {
+            const member = members?.find((m) => m.user_id === userId)
+            return member?.nickname ?? member?.user?.display_name
+        }
+        return conversation?.participants?.find((p) => p.user_id === userId)?.user?.display_name
+    }, [scopeType, members, conversation])
+
+    const lastTypingWhisper = useRef({ scopeId: '', at: 0 })
+    const announceTyping = () => {
+        const now = Date.now()
+        const last = lastTypingWhisper.current
+        if (last.scopeId === scopeId && now - last.at < TYPING_THROTTLE_MS) return
+        lastTypingWhisper.current = { scopeId, at: now }
+        sendTyping(scopeType, scopeId, currentUser.id)
+    }
+
     const jump = () => {
         setJumpToken((t) => t + 1)
         jumpToPresent()
@@ -116,6 +143,8 @@ export function TextChannelContent({
                 broadcastScope={{ id: scopeId, type: scopeType }}
             />
 
+            <TypingIndicator scopeId={scopeId} currentUserId={currentUser.id} resolveName={resolveTypingName} />
+
             {canPost ? (
                 <MessageInput
                     scopeId={scopeId}
@@ -125,6 +154,7 @@ export function TextChannelContent({
                     onClearReply={() => setReplyTo(null)}
                     onSent={commitSent}
                     leading={jumpButton}
+                    onTyping={announceTyping}
                 />
             ) : (
                 // No composer at all when the viewer can't post — but the
