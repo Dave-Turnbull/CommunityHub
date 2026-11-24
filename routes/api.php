@@ -65,7 +65,9 @@ Route::middleware('auth')->group(function () {
 
     // Server invites — account-creation invites, distinct from room invites
     // above. Gated by ServerInvitePolicy (Permission::InviteServer).
+    Route::get('/server-invites', [ServerInviteController::class, 'index']);
     Route::post('/server-invites', [ServerInviteController::class, 'store']);
+    Route::delete('/server-invites/{serverInvite}', [ServerInviteController::class, 'destroy']);
 
     // Room membership — kick/ban, gated by RoomMemberPolicy (see docs/roles-and-permissions.md).
     Route::delete('/rooms/{room}/members/{user}',    [RoomMemberController::class, 'destroy']);
