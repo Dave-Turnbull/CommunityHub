@@ -8,6 +8,7 @@ use App\Http\Controllers\Web\ConversationController;
 use App\Http\Controllers\Web\EmailVerificationController;
 use App\Http\Controllers\Web\InviteController;
 use App\Http\Controllers\Web\MessageController;
+use App\Http\Controllers\Web\PasswordResetController;
 use App\Http\Controllers\Web\RoomController;
 use App\Http\Controllers\Web\SettingsController;
 use App\Http\Middleware\EnsureEmailIsVerifiedIfRequired;
@@ -19,6 +20,11 @@ Route::middleware('guest')->group(function () {
     Route::post('/login',    [AuthController::class, 'login'])->middleware('throttle:5,1');
     Route::get('/register',  [AuthController::class, 'showRegister'])->name('register');
     Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:3,1');
+
+    Route::get('/forgot-password',  [PasswordResetController::class, 'showForgot'])->name('password.request');
+    Route::post('/forgot-password', [PasswordResetController::class, 'sendLink'])->middleware('throttle:5,1');
+    Route::get('/reset-password/{token}', [PasswordResetController::class, 'showReset'])->name('password.reset');
+    Route::post('/reset-password',  [PasswordResetController::class, 'reset'])->middleware('throttle:5,1')->name('password.update');
 
     // Authentik/OAuth — always registered, gated per-request inside
     // AuthentikController (config('services.authentik.enabled')) rather
@@ -68,4 +74,5 @@ Route::middleware(['auth', EnsureEmailIsVerifiedIfRequired::class])->group(funct
 
     Route::get('/settings',   [SettingsController::class, 'show']);
     Route::patch('/settings', [SettingsController::class, 'update']);
+    Route::put('/settings/password', [SettingsController::class, 'updatePassword'])->middleware('throttle:5,1');
 });

@@ -1,7 +1,7 @@
 import { Head, Link, useForm } from '@inertiajs/react'
 import type { SharedProps } from '@/types'
 
-export default function Login({ appName, registrationPaths, authentikEnabled }: SharedProps) {
+export default function Login({ appName, registrationPaths, authentikEnabled, flash }: SharedProps) {
     const { data, setData, post, processing, errors } = useForm({
         login: '',
         password: '',
@@ -20,6 +20,10 @@ export default function Login({ appName, registrationPaths, authentikEnabled }: 
                     </div>
 
                     <div className="bg-second rounded-lg p-8 shadow-2xl">
+                        {flash.success && (
+                            <p className="text-sm text-text-secondary mb-4">{flash.success}</p>
+                        )}
+
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1.5">
@@ -55,15 +59,23 @@ export default function Login({ appName, registrationPaths, authentikEnabled }: 
                                 )}
                             </div>
 
-                            <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={data.remember}
-                                    onChange={(e) => setData('remember', e.target.checked)}
-                                    className="rounded border-sixth bg-third text-accent-primary focus:ring-accent-primary"
-                                />
-                                Remember me
-                            </label>
+                            <div className="flex items-center justify-between">
+                                <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={data.remember}
+                                        onChange={(e) => setData('remember', e.target.checked)}
+                                        className="rounded border-sixth bg-third text-accent-primary focus:ring-accent-primary"
+                                    />
+                                    Remember me
+                                </label>
+                                <Link
+                                    href="/forgot-password"
+                                    className="text-sm text-text-link hover:text-text-link-hover hover:underline"
+                                >
+                                    Forgot password?
+                                </Link>
+                            </div>
 
                             <button
                                 onClick={() => post('/login')}
