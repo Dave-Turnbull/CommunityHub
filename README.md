@@ -138,7 +138,7 @@ Settings live in `.env`. The ones most worth knowing:
 | Variable | What it does |
 |---|---|
 | `APP_NAME` | The display name shown throughout the app. Change it and the whole instance rebrands. |
-| `MAIL_MAILER` | Which mailer sends invites. Defaults to `mailpit`, which keeps everything local — read it at http://localhost:8025. Set to `smtp`, `ses`, or `log` for anything else. |
+| `MAIL_MAILER` | Which mailer sends invites and password-reset emails. Defaults to `mailpit`, which keeps everything local — read it at http://localhost:8025. Set to `smtp`, `ses`, or `log` for anything else. |
 | `FILESYSTEM_DISK` | Where uploads go. `public` (local disk) by default; `r2` stores them in Cloudflare R2 via the `AWS_*` variables. |
 | `TURN_*` | Credentials and public host for the bundled TURN relay used by voice. |
 
