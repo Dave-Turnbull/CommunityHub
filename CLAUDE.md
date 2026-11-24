@@ -1119,12 +1119,17 @@ Two separate compose files, not one file for both jobs:
   the one place to configure secrets — `APP_KEY`/`DB_PASSWORD`/
   `REVERB_APP_KEY`/`REVERB_APP_SECRET`/`TURN_SECRET` have no default and fail
   the deploy loudly if unset (so is `DOMAIN` itself — the apex domain, with
-  no default). `nginx` and `reverb` carry `caddy`/`caddy.reverse_proxy`
-  labels and join an external `caddy` docker network (must already exist,
-  with the Caddy container attached) — Reverb gets its own subdomain
-  (`ws.$DOMAIN`) rather than sharing nginx's, because the browser connects
-  to it directly (see
-  `resources/js/services/echo.ts`); `VITE_REVERB_PORT=443` (through Caddy)
+  no default). `nginx` and `reverb` carry `caddy` labels for the same site
+  (`chat.$DOMAIN`) and join an external `caddy` docker network (must already
+  exist, with the Caddy container attached) — Reverb shares nginx's host
+  rather than getting its own subdomain: its labels add a `/app/*` route
+  (the Pusher protocol's fixed WebSocket path, see
+  `resources/js/services/echo.ts`) to that site, so a hostname-scoped auth
+  layer in front of the app (e.g. Cloudflare Access, whose cookie is
+  per-hostname) covers the socket too — a separate `ws.` host behind the
+  same login never connects, since a WebSocket handshake can't follow a
+  login redirect. `/app/*` is reserved on that host as a result — never add
+  a Laravel route under it. `VITE_REVERB_PORT=443` (through Caddy)
   while the internal `REVERB_PORT` stays `8080` — same REVERB_HOST-vs-
   VITE_REVERB_HOST split as the general guidance below, just automated via env
   vars instead of hand-set per environment. Authentik's `AUTHENTIK_*` vars are
