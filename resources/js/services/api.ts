@@ -13,6 +13,7 @@ import type {
     ReactionSummary,
     RecentCustomStatus,
     Role,
+    Room,
     RoomInvite,
     RoomMember,
     User,
@@ -359,6 +360,25 @@ export async function banRoomMember(roomId: string, userId: string, confirmOwner
 
 export async function unbanRoomMember(roomId: string, userId: string): Promise<void> {
     await axios.delete(`/api/rooms/${roomId}/bans/${userId}`)
+}
+
+// ── Room settings (edit / leave / delete) ────────────────────────────────
+// See RoomPolicy and RoomMembershipService::leave. Leaving 422s for the owner.
+
+export async function updateRoom(
+    roomId: string,
+    payload: { name?: string; icon_url?: string | null }
+): Promise<Room> {
+    const { data } = await axios.patch(`/api/rooms/${roomId}`, payload)
+    return data
+}
+
+export async function deleteRoom(roomId: string): Promise<void> {
+    await axios.delete(`/api/rooms/${roomId}`)
+}
+
+export async function leaveRoom(roomId: string): Promise<void> {
+    await axios.post(`/api/rooms/${roomId}/leave`)
 }
 
 // ── Room invites ─────────────────────────────────────────────────────────
