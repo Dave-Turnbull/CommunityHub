@@ -223,10 +223,10 @@ thread it through.
 - `comment_reply` is a new notification category — `NOTIFICATION_CATEGORY_LABELS`,
   `NotificationFeed`'s `present()` switch (links to `/messages/{message_id}`, the
   existing "go to message" direct-link resolver — see
-  [messages-and-pagination.md](messages-and-pagination.md); note
-  `Web\MessageController::show` does not yet have a comment-aware branch, so a
-  comment-reply link today resolves via whatever that endpoint currently does with a
-  `parent_message_id`-scoped message — a follow-up, not yet built).
+  [messages-and-pagination.md](messages-and-pagination.md); a comment is never in a
+  channel/conversation window, so that endpoint redirects a comment link to the comment's
+  *root* message in the root's scope — the link lands on the post, it does not open the
+  comment popout or scroll to the comment itself).
 
 ## The `message_and_comment` channel type
 
