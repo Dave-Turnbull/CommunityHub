@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Support\Permission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class ChannelCrudTest extends TestCase
@@ -361,5 +362,35 @@ class ChannelCrudTest extends TestCase
         ]);
 
         $response->assertStatus(422);
+    }
+
+    public function test_channel_page_reports_can_manage_channels_true_for_a_manage_channels_member(): void
+    {
+        $room    = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $user    = $this->memberWithManageChannels($room);
+
+        $this->actingAs($user)->get("/channels/{$channel->id}")
+            ->assertInertia(fn (Assert $page) => $page->where('can_manage_channels', true));
+    }
+
+    public function test_channel_page_reports_can_manage_channels_false_for_a_plain_member(): void
+    {
+        $room    = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $user    = $this->plainMember($room);
+
+        $this->actingAs($user)->get("/channels/{$channel->id}")
+            ->assertInertia(fn (Assert $page) => $page->where('can_manage_channels', false));
+    }
+
+    public function test_channel_page_reports_can_manage_channels_false_for_a_category_grant_only_member(): void
+    {
+        $room    = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $user    = $this->memberWithCategoryGrant($room, 'mod');
+
+        $this->actingAs($user)->get("/channels/{$channel->id}")
+            ->assertInertia(fn (Assert $page) => $page->where('can_manage_channels', false));
     }
 }

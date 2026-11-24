@@ -571,6 +571,10 @@ export interface ChannelPageProps extends SharedProps {
     creatable_channel_types: string[]
     // Gate::allows('create', [Role::class, $room]) — drives ChannelSidebar's "Roles" button.
     can_manage_roles: boolean
+    // Gate::allows('manage', $channel) — ChannelPolicy::manage, the same ability
+    // behind rename/delete/reorder. Not derivable from creatable_channel_types
+    // (a per-category create grant lacks it). Gates ChannelSidebar's row menu.
+    can_manage_channels: boolean
     // Gate::allows('manageVisibility', $channel) — separate from
     // creatable_channel_types, see Permission.ManageChannelVisibility.
     can_manage_channel_visibility: boolean
