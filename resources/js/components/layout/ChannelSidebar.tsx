@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { Link, router } from '@inertiajs/react'
 import { UserPanel } from './UserPanel'
@@ -57,6 +57,10 @@ export function ChannelSidebar({
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const renameInput = useRef<HTMLInputElement>(null)
+
+    // Read from the page's own `channels` prop, not the store: the store only
+    // catches up after mount and would flash the previous page's counts.
+    const unreadById = useMemo(() => new Map(channels.map((c) => [c.id, c.unread_count ?? 0])), [channels])
 
     useEffect(() => {
         if (renamingId) renameInput.current?.select()
@@ -208,6 +212,7 @@ export function ChannelSidebar({
 
                             {group.map((c, index, arr) => {
                                 const active = activeView.type === 'channel' && c.id === activeChannelId
+                                const unread = c.id === activeChannelId ? 0 : (unreadById.get(c.id) ?? 0)
 
                                 if (renamingId === c.id) {
                                     return (
@@ -232,13 +237,21 @@ export function ChannelSidebar({
 
                                 return (
                                     <div key={c.id} className="group flex items-start gap-1">
-                                        <div className="flex-1 min-w-0">
+                                        <div className={clsx('flex-1 min-w-0', unread > 0 && 'font-semibold [&_a]:text-text-primary')}>
                                             {SidebarItem ? (
                                                 <SidebarItem channel={c} active={active} currentUser={currentUser} />
                                             ) : (
                                                 <DefaultChannelRow channel={c} active={active} />
                                             )}
                                         </div>
+                                        {unread > 0 && (
+                                            <span
+                                                aria-label={`${unread} unread`}
+                                                className="mt-2 flex-shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-xxs font-bold bg-danger text-inverse leading-none"
+                                            >
+                                                {unread > 99 ? '99+' : unread}
+                                            </span>
+                                        )}
                                         {canManageChannels && (
                                             <ChannelRowMenu
                                                 canMoveUp={index > 0}

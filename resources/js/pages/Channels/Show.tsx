@@ -10,6 +10,7 @@ import { InvitePanel } from '@/components/layout/InvitePanel'
 import { RoomSettingsPanel } from '@/components/layout/RoomSettingsPanel'
 import { RoomRolesPanel } from '@/components/roles/RoomRolesPanel'
 import { useChannelFocus } from '@/hooks/useChannelFocus'
+import { useMarkRead } from '@/hooks/useMarkRead'
 import { useChannels, useUI } from '@/stores'
 import { channelTypeDescriptor, isTextCapableChannelType } from '@/services/channelTypes'
 import type { ChannelPageProps, MainView } from '@/types'
@@ -36,6 +37,7 @@ export default function ChannelShow({
     const channelName = useChannels((s) => s.channels[room.id]?.find((c) => c.id === channel.id)?.name ?? channel.name)
 
     useChannelFocus(isTextCapable ? channel.id : null)
+    useMarkRead('channel', isTextCapable ? channel.id : null)
 
     const showChannel = () => setMainView({ type: 'channel' })
 

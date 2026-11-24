@@ -67,9 +67,12 @@ export function DMSidebar({ conversations, currentUser, recentCustomStatuses, ac
                                 )}
                             </div>
 
-                            {c.unread_count > 0 && (
-                                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-xxs font-bold bg-danger text-inverse leading-none">
-                                    {c.unread_count}
+                            {c.unread_count > 0 && c.id !== activeConversationId && (
+                                <span
+                                    aria-label={`${c.unread_count} unread`}
+                                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-xxs font-bold bg-danger text-inverse leading-none"
+                                >
+                                    {c.unread_count > 99 ? '99+' : c.unread_count}
                                 </span>
                             )}
                         </Link>
