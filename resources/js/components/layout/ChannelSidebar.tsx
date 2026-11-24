@@ -23,6 +23,7 @@ interface Props {
     onSelectRoles: () => void
     onSelectCreateChannel: () => void
     onSelectInvite: () => void
+    onSelectRoomSettings: () => void
 }
 
 function DefaultChannelRow({ channel, active }: { channel: Channel; active: boolean }) {
@@ -47,6 +48,7 @@ function DefaultChannelRow({ channel, active }: { channel: Channel; active: bool
 export function ChannelSidebar({
     room, channels, activeChannelId, activeView, currentUser, recentCustomStatuses,
     creatableChannelTypes = [], canManageRoles, canManageChannels, onSelectRoles, onSelectCreateChannel, onSelectInvite,
+    onSelectRoomSettings,
 }: Props) {
     const list = useChannels((s) => s.channels[room.id] ?? channels)
     const { setChannels, updateChannel: storeUpdateChannel, removeChannel } = useChannels()
@@ -175,6 +177,18 @@ export function ChannelSidebar({
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                             <path d="M11 4a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM3 15.5c0-2.5 2.5-4 5-4s5 1.5 5 4v.5H3v-.5ZM15.5 7v2h2v1.5h-2v2H14v-2h-2V9h2V7h1.5Z" />
                         </svg>
+                    </button>
+                    <button
+                        onClick={onSelectRoomSettings}
+                        title="Room settings"
+                        className={clsx(
+                            'p-1 rounded transition-colors duration-100',
+                            activeView.type === 'room-settings'
+                                ? 'bg-sixth text-text-primary'
+                                : 'text-text-muted hover:text-text-primary',
+                        )}
+                    >
+                        ⚙
                     </button>
                 </div>
             </div>

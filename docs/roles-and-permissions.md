@@ -783,6 +783,44 @@ and the Owner role assignment transfer to them). This requires an explicit
 the frontend can show `OwnerTransferModal`'s confirmation before resubmitting. The new
 owner can hand the role off again afterward through the normal room role UI.
 
+## Room settings: edit, leave, delete
+
+`Api\RoomController` (`PATCH`/`DELETE /api/rooms/{room}`, `POST /api/rooms/{room}/leave`)
+is a thin translator over `RoomService` (edit/delete) and `RoomMembershipService::leave`.
+The UI is `RoomSettingsPanel.tsx`, opened by the ⚙ button in `ChannelSidebar`'s header
+(shown to every member), one of Channels/Show's inline `mainView` panels.
+
+- **Edit** — `RoomPolicy::update` is `ManageRoom` in that room. Accepts `name` (string,
+  max 100, not blank when present) and `icon_url` (nullable URL); an omitted field is left
+  alone, a `null` icon clears it. Returns the room in the shared `rooms` prop's shape.
+  The panel then calls `router.reload()` so the sidebar header and `RoomRail` pick up the
+  new name from the refreshed props.
+- **Delete** — `RoomPolicy::delete` is the room's `owner_id` only; neither `ManageRoom`
+  nor a global Administrator qualifies. The panel makes the owner type the room's exact
+  name before enabling the button. Everything under the room cascades at the database
+  level: channels, messages (including soft-deleted ones, and through them reactions,
+  votes, comment threads and attachment rows), memberships, roles with their permissions
+  and assignments, bans, invites, custom emoji, channel visibility/permission overrides,
+  and the room's snapshotted permission ceilings. Two things the database cannot reach are
+  handled by `RoomService::delete` first: attachment **files** on the private `local` disk
+  (removed through `TextMessageService::deleteAttachments`, the same path deleting a single
+  message uses — see `docs/attachments.md`) and in-app notifications keyed to the room
+  (`room_message`, `room_invite`, matched on `data.room_id`). `instance_settings.
+  default_room_id` is `nullOnDelete`, so deleting the instance's default room leaves the
+  instance with no default. A `comment_reply` notification carries only message ids, so
+  one pointing into a deleted room stays in the feed and its link 404s.
+- **Leave** — any member except the owner. `RoomMembershipService::leave` removes exactly
+  what a kick removes (the `room_members` row and the user's room-scoped role
+  assignments, via the same private `detach()`) and writes no `room_bans` row, so the
+  user can rejoin through the invite code or an invite. The owner gets a 422 ("Transfer
+  ownership or delete the room first.") because there is no standalone ownership
+  transfer; a non-member gets a 403.
+- **Props** — `Web\ChannelController::show` computes `can_manage_room` and
+  `can_delete_room` with `Gate::allows`, which gate the panel's edit and delete sections.
+
+No broadcast events are emitted for any of these: other clients see a rename on their next
+navigation or reload, and a deleted room 404s for them on their next request.
+
 ## Backfill migration
 
 `2024_01_01_000017_backfill_room_roles.php` is a one-way data migration that gave every

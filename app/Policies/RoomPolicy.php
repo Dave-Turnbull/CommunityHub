@@ -32,4 +32,15 @@ class RoomPolicy
     {
         return PermissionChecker::can($user, Permission::CreateRoom, null);
     }
+
+    public function update(User $user, Room $room): bool
+    {
+        return PermissionChecker::can($user, Permission::ManageRoom, $room);
+    }
+
+    /** Owner only — deliberately not ManageRoom or global Administrator, since deletion is irreversible. */
+    public function delete(User $user, Room $room): bool
+    {
+        return $room->owner_id === $user->id;
+    }
 }

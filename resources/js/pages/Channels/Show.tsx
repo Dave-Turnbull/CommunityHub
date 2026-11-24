@@ -7,15 +7,20 @@ import { MemberList } from '@/components/layout/MemberList'
 import { ChannelPermissionsPanel } from '@/components/layout/ChannelPermissionsPanel'
 import { CreateChannelPanel } from '@/components/layout/CreateChannelPanel'
 import { InvitePanel } from '@/components/layout/InvitePanel'
+import { RoomSettingsPanel } from '@/components/layout/RoomSettingsPanel'
 import { RoomRolesPanel } from '@/components/roles/RoomRolesPanel'
 import { useChannelFocus } from '@/hooks/useChannelFocus'
 import { useChannels, useUI } from '@/stores'
 import { channelTypeDescriptor, isTextCapableChannelType } from '@/services/channelTypes'
 import type { ChannelPageProps, MainView } from '@/types'
 
+const VIEW_ICONS = { roles: '🛡', 'create-channel': '+', invite: '✉', 'room-settings': '⚙' }
+const VIEW_LABELS = { roles: 'Roles', 'create-channel': 'Create channel', invite: 'Invite people', 'room-settings': 'Room settings' }
+
 export default function ChannelShow({
     auth, rooms, room, channel: initialChannel, members, messages: initial, highlight_message_id, creatable_channel_types,
-    can_manage_roles, can_manage_channels, can_manage_channel_visibility, can_manage_members, can_ban_members, recentCustomStatuses,
+    can_manage_roles, can_manage_channels, can_manage_channel_visibility, can_manage_members, can_ban_members, can_manage_room, can_delete_room,
+    recentCustomStatuses,
 }: ChannelPageProps) {
     const [channel, setChannel] = useState(initialChannel)
     const [mainView, setMainView] = useState<MainView>({ type: 'channel' })
@@ -77,6 +82,7 @@ export default function ChannelShow({
                         onSelectRoles={() => setMainView({ type: 'roles' })}
                         onSelectCreateChannel={() => setMainView({ type: 'create-channel' })}
                         onSelectInvite={() => setMainView({ type: 'invite' })}
+                        onSelectRoomSettings={() => setMainView({ type: 'room-settings' })}
                     />
 
                     <main className="flex-1 flex flex-col bg-primary min-w-0">
@@ -131,10 +137,10 @@ export default function ChannelShow({
                         ) : (
                             <header className="h-12 px-4 flex items-center gap-3 border-b border-third flex-shrink-0">
                                 <span className="font-bold text-lg">
-                                    {mainView.type === 'roles' ? '🛡' : mainView.type === 'create-channel' ? '+' : '✉'}
+                                    {VIEW_ICONS[mainView.type]}
                                 </span>
                                 <span className="font-semibold text-text-primary">
-                                    {mainView.type === 'roles' ? 'Roles' : mainView.type === 'create-channel' ? 'Create channel' : 'Invite people'}
+                                    {VIEW_LABELS[mainView.type]}
                                 </span>
 
                                 <button
@@ -174,6 +180,14 @@ export default function ChannelShow({
                             />
                         )}
                         {mainView.type === 'invite' && <InvitePanel room={room} onClose={showChannel} />}
+                        {mainView.type === 'room-settings' && (
+                            <RoomSettingsPanel
+                                room={room}
+                                currentUserId={auth.user.id}
+                                canManageRoom={can_manage_room}
+                                canDeleteRoom={can_delete_room}
+                            />
+                        )}
                     </main>
 
                     {memberListOpen && (
