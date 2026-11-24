@@ -83,6 +83,11 @@ docker compose exec vite npx tsc --noEmit     # typecheck the frontend
 
 App: http://localhost:8000 · Vite: :5173 · Reverb: :8080 · Postgres: :5432 · Redis: :6379
 
+Bare `docker compose` here targets the dev `docker-compose.yml` only because `.env` sets
+`COMPOSE_FILE=docker-compose.yml`; without it Compose prefers the production `compose.yaml`
+and fails on `DOMAIN` (trap #54). A fresh clone has no `.env` yet — `cp .env.example .env`
+before the first `up`.
+
 DB boots **empty by design**. Seed only when asked. Seeded logins:
 `dave@example.com` / `password`, `bove@example.com` / `password`, `peve@example.com` / `password`.
 
@@ -795,7 +800,7 @@ of proving a change works and needs nothing installed:
 
 ## Traps already hit — do NOT reintroduce
 
-Full write-ups (52 of them) live in [docs/traps.md](docs/traps.md), grouped by
+Full write-ups (53 of them) live in [docs/traps.md](docs/traps.md), grouped by
 subsystem, with the original numbering preserved for old references. The
 short version, by group — read the full entry before touching adjacent code:
 
@@ -808,7 +813,9 @@ short version, by group — read the full entry before touching adjacent code:
   `client_max_body_size` (1 MB) silently 413-ing uploads php.ini/Laravel would
   otherwise allow, and `app_storage` needing to be mounted into `nginx` too
   (not just `app`/`worker`/`reverb`) or every uploaded file 404s — which looks
-  exactly like a broken `<img>`/`<video>` frontend bug, not an infra one.
+  exactly like a broken `<img>`/`<video>` frontend bug, not an infra one. Also: a bare
+  `docker compose` resolves to the production `compose.yaml` (failing on `DOMAIN`)
+  unless `.env` sets `COMPOSE_FILE=docker-compose.yml`.
 - **Model/table naming** — `CustomEmoji`'s pluralizer collision,
   `user_notifications` vs. Laravel's reserved `notifications` shape,
   `UserOAuthIdentity` → `user_oauth_identities` (the pluralizer mangles "OAuth" into
@@ -1100,7 +1107,10 @@ mechanism this app doesn't have yet) and deserves its own explicit go-ahead.
 
 ## Deploying behind a reverse proxy
 
-Two separate compose files, not one file for both jobs:
+Two separate compose files, not one file for both jobs. Both sit in the repo root and
+Compose prefers `compose.yaml`, so dev relies on `COMPOSE_FILE=docker-compose.yml` in
+`.env`/`.env.example`; a production git checkout has no `.env`, so it gets `compose.yaml`
+(see trap #54):
 
 - **`docker-compose.yml`** — local dev. Bind-mounts the repo (`.:/var/www/html`)
   into `app`/`nginx`/`reverb`/`worker`, runs a `vite` dev-server container for
@@ -1204,4 +1214,7 @@ from the R2 `AWS_*` vars — see trap #19) + `MAIL_FROM_ADDRESS`/`MAIL_FROM_NAME
 `coturn` docker-compose service's `command:` args, via compose's own `.env`
 substitution, separate from Laravel's dotenv reading the same file) +
 `TURN_PUBLIC_HOST` (the browser-facing value, `localhost` in dev, read by PHP to
-build the ICE servers JSON response — **no** `VITE_TURN_*` pair exists, see trap #31).
+build the ICE servers JSON response — **no** `VITE_TURN_*` pair exists, see trap #31),
+`COMPOSE_FILE` (`docker-compose.yml` in `.env`/`.env.example` — read by Docker Compose
+itself, not Laravel; makes bare `docker compose` use the dev file instead of the
+production `compose.yaml`, see trap #54).
