@@ -628,9 +628,10 @@ routes/
   console.php
 tests/
   Feature/                    one folder per feature area (Auth, Rooms, Channels,
-                               Messages, Conversations, Reactions, Uploads, Settings,
-                               Broadcasting, Invites, Notifications, Voice, Roles) — routes
-                               through the real HTTP kernel
+                               Messages, Comments, Voting, Conversations, Reactions,
+                               Uploads, Settings, Broadcasting, Invites, Notifications,
+                               Voice, Roles, RateLimiting, ReadMarkers, Security,
+                               UserStatus) — routes through the real HTTP kernel
   Unit/Models/                pure model logic (reactionSummary, hasMember, sharesRoomWith,
                                Role::effectiveModerationRank, ...)
   Unit/Support/               ChannelFocus cache-logic tests — no HTTP, no RefreshDatabase;
