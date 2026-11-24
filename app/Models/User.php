@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Mail\PasswordResetMail;
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\HasApiTokens;
 
 // Always implements MustVerifyEmail — the interface/trait are inert on their
@@ -34,6 +36,11 @@ class User extends Authenticatable implements MustVerifyEmailContract
             'email_verified_at' => 'datetime',
             'password'          => 'hashed',
         ];
+    }
+
+    public function sendPasswordResetNotification($token): void
+    {
+        Mail::to($this->email)->send(new PasswordResetMail($this, $token));
     }
 
     public function rooms(): BelongsToMany

@@ -52,7 +52,7 @@ encode the actual dependency graph between subsystems.
   accounts are joined to automatically.
 - [auth-and-sso.md](auth-and-sso.md) — password login, the optional Authentik/OAuth
   login method (account linking vs. provisioning, the "auto sign-on" behavior), and
-  why linking never trusts an IdP email claim alone.
+  why linking never trusts an IdP email claim alone, and password reset/change.
 - [attachments.md](attachments.md) — upload storage (the private `local` disk, not
   `public`), why `Attachment::url` is a computed route rather than a direct storage
   link, `AttachmentPolicy`/`MessagePolicy` (an attachment is exactly as visible as its

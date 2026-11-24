@@ -136,7 +136,10 @@ app/
                                redirect/callback/showLinkAccount/linkAccount — the
                                optional OAuth login method, gated per-request by
                                config('services.authentik.enabled'), see
-                               docs/auth-and-sso.md
+                               docs/auth-and-sso.md; PasswordResetController is
+                               showForgot/sendLink/showReset/reset — the guest
+                               forgot/reset-password flow, see docs/auth-and-sso.md's
+                               "Password reset and change"
     Web/Concerns/              AcceptsPendingRoomInvite — the pending-room-invite
                                completion step shared by AuthController and
                                AuthentikController (both can be the last step of a
@@ -196,7 +199,7 @@ app/
                                rather than baked into route registration —
                                always on the authenticated route group in
                                routes/web.php; see config/verification.php
-  Mail/                       Mailable classes (RoomInviteMail, ServerInviteMail),
+  Mail/                       Mailable classes (RoomInviteMail, ServerInviteMail, PasswordResetMail),
                                ShouldQueue — sent via the `worker` container, Mailpit
                                catches them in dev
   Models/                     all UUID-keyed (HasUuids); Notification is the exception to
@@ -333,7 +336,8 @@ resources/
     app.tsx                   Inertia bootstrap + QueryClientProvider; also owns the
                                one global presence subscription (see trap #38) —
                                keyed off router's 'navigate' event, not any page
-    pages/                    one file per Inertia page (Auth, Channels, DM, Rooms,
+    pages/                    one file per Inertia page (Auth — Login, Register,
+                               ForgotPassword, ResetPassword, ..., Channels, DM, Rooms,
                                Settings, Invite — the invite-accept landing page).
                                Room role management has no page of its own — it's
                                RoomRolesPanel.tsx, one of Channels/Show's inline
@@ -540,7 +544,9 @@ routes/
                                reachable regardless of the flag. /auth/authentik/
                                redirect|callback and /auth/link-account are always
                                registered too — see docs/auth-and-sso.md for why
-                               that gate lives in the controller, not here
+                               that gate lives in the controller, not here.
+                               /forgot-password and /reset-password are guest-only
+                               (PUT /settings/password is the logged-in change form)
   api.php                     /api/* under auth (session), axios targets, including
                                /settings/roles (global role list/store/reorder, self-
                                fetched by Settings' Roles tab), /rooms/{room}/
