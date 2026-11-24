@@ -8,6 +8,7 @@ import { VoteControl } from '@/components/messages/VoteControl'
 import { fetchChannelMessages, fetchComments, fetchTopPosts } from '@/services/api'
 import type { TopSortPeriod } from '@/services/api'
 import type { Channel, Message, PaginatedMessages, User, VoteSummary } from '@/types'
+import { MessageContent } from '@/components/chat/MessageContent'
 
 interface Props {
     channel: Channel
@@ -211,7 +212,9 @@ function PostDetail({
                         <span className="text-[11px] text-text-muted">{fullTime(post.created_at)}</span>
                     </div>
                     {post.title && <h2 className="text-lg font-semibold text-text-primary mb-1">{post.title}</h2>}
-                    <p className="text-text-primary leading-relaxed whitespace-pre-wrap break-words">{post.content}</p>
+                    <div className="text-text-primary leading-relaxed whitespace-pre-wrap break-words">
+                        <MessageContent content={post.content ?? ''} />
+                    </div>
                     {!!post.attachments?.length && <MessageAttachments attachments={post.attachments} />}
                 </div>
             </div>

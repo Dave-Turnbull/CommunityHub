@@ -46,6 +46,9 @@ encode the actual dependency graph between subsystems.
   endpoint, the trimmed client-side message window and its jump-to-present
   affordance, the contiguous-run message cache and its driver seam, and the
   optimistic edit/reaction/delete path.
+- [message-formatting.md](message-formatting.md) — the render-only link and inline
+  formatting syntax for message bodies, how ambiguous cases resolve, and the
+  safety model.
 - [conversations-and-invites.md](conversations-and-invites.md) — message scoping,
   conversation creation/deduplication, group participants, room invites, the
   three independently-toggleable server signup paths, and the optional default room

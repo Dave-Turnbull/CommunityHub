@@ -346,6 +346,11 @@ resources/
                                paging direction + element-anchored scroll
                                preservation, plus the `scrollTo` prop that scrolls to
                                and briefly flashes a "go to message" landing target),
+                               MessageContent (renders a message/comment/forum-post
+                               body's links + fixed inline formatting from
+                               `services/messageFormat.ts` tokens — render-only, never
+                               `dangerouslySetInnerHTML`; previews stay plain text — see
+                               docs/message-formatting.md),
                                MessageRow (its reply-context block is a button that
                                jumps to the replied-to message, rendering
                                ReplyPreviewContent for what it's replying to; its
@@ -512,6 +517,8 @@ resources/
                                history behind a swappable async driver) and
                                messageActions.ts (the optimistic reaction/edit/delete
                                path) — see docs/messages-and-pagination.md,
+                               messageFormat.ts (pure linear-time tokenizer for link/
+                               inline-format rendering — see docs/message-formatting.md),
                                audioLevel.ts (dBFS level-meter math shared by the
                                AudioSettings mic test and voice activation — see
                                docs/voice.md), clientId.ts (localStorage-persisted
