@@ -72,6 +72,29 @@ describe('CommentThread', () => {
         expect(screen.getByText('comment-c1')).toBeInTheDocument()
     })
 
+    it('renders links and formatting in a comment but leaves a tombstone as plain placeholder', () => {
+        render(
+            <CommentThread
+                parentId="post-1"
+                parentDepth={0}
+                initial={page([
+                    comment('c1', 1, { content: '**bold** https://example.com/y' }),
+                    comment('c2', 1, { content: 'https://gone.example', is_tombstoned: true } as any),
+                ])}
+                broadcastScope={{ id: 'chan-1', type: 'channel' }}
+                currentUserId="user-1"
+                canComment
+            />
+        )
+
+        const links = screen.getAllByRole('link')
+        expect(links).toHaveLength(1)
+        expect(links[0]).toHaveAttribute('href', 'https://example.com/y')
+        expect(links[0]).toHaveAttribute('rel', 'noopener noreferrer')
+        expect(screen.getByText('bold').tagName).toBe('STRONG')
+        expect(screen.getByText('[deleted]')).toBeInTheDocument()
+    })
+
     it('shows a reply composer at the top level when maxDepth allows one more level', () => {
         render(
             <CommentThread

@@ -5,6 +5,7 @@ import { VoteControl } from '@/components/messages/VoteControl'
 import { useChat } from '@/hooks/useChat'
 import { useMessages } from '@/stores'
 import type { Message, PaginatedMessages, VoteSummary } from '@/types'
+import { MessageContent } from '@/components/chat/MessageContent'
 
 interface BroadcastScope {
     id: string
@@ -145,9 +146,11 @@ function CommentRow({
                         </span>
                         <VoteControl message={comment} onChange={onVoteChange} />
                     </div>
-                    <p className="text-sm text-text-secondary leading-relaxed break-words whitespace-pre-wrap">
-                        {comment.is_tombstoned ? <em className="text-text-muted">[deleted]</em> : comment.content}
-                    </p>
+                    <div className="text-sm text-text-secondary leading-relaxed break-words whitespace-pre-wrap">
+                        {comment.is_tombstoned
+                            ? <em className="text-text-muted">[deleted]</em>
+                            : <MessageContent content={comment.content ?? ''} />}
+                    </div>
                     {canNestFurther && (
                         <button
                             type="button"

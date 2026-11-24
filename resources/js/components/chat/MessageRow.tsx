@@ -8,6 +8,7 @@ import { MessageAttachments } from '@/components/chat/MessageAttachments'
 import { ReplyPreviewContent } from '@/components/chat/ReplyPreviewContent'
 import { removeMessage, saveEdit, toggleReaction } from '@/services/messageActions'
 import type { Message, PaginatedMessages, User } from '@/types'
+import { MessageContent } from '@/components/chat/MessageContent'
 
 interface Props {
     message: Message
@@ -149,12 +150,12 @@ export function MessageRow({
                             </p>
                         </div>
                     ) : (
-                        <p className="text-text-primary leading-relaxed break-words whitespace-pre-wrap">
-                            {message.content}
+                        <div className="text-text-primary leading-relaxed break-words whitespace-pre-wrap">
+                            <MessageContent content={message.content ?? ''} />
                             {message.is_edited && (
                                 <span className="text-[10px] text-text-muted ml-1">(edited)</span>
                             )}
-                        </p>
+                        </div>
                     )}
 
                     {!!message.attachments?.length && (

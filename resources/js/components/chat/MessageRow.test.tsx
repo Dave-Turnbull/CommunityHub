@@ -70,6 +70,29 @@ describe('MessageRow', () => {
         expect(screen.getByText('Hello world')).toBeInTheDocument()
     })
 
+    it('renders links and formatting in the message body', () => {
+        const message = { ...baseMessage, content: '**hi** https://example.com/x and javascript:alert(1)' }
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
+
+        const links = screen.getAllByRole('link')
+        expect(links).toHaveLength(1)
+        expect(links[0]).toHaveAttribute('href', 'https://example.com/x')
+        expect(links[0]).toHaveAttribute('target', '_blank')
+        expect(links[0]).toHaveAttribute('rel', 'noopener noreferrer')
+        expect(screen.getByText('hi').tagName).toBe('STRONG')
+    })
+
+    it('edits the raw source text, not the rendered formatting', async () => {
+        const message = { ...baseMessage, author_id: viewer.id, content: '**hi** https://example.com' }
+        seedStore(message)
+        render(<MessageRow message={message} scopeId="chan-1" grouped={false} currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
+
+        await userEvent.click(screen.getByRole('button', { name: '⋯' }))
+        await userEvent.click(within(await screen.findByRole('menu')).getByText('Edit'))
+
+        expect(await screen.findByRole('textbox')).toHaveValue('**hi** https://example.com')
+    })
+
     it('hides the author header when grouped with the previous message', () => {
         render(<MessageRow message={baseMessage} scopeId="chan-1" grouped currentUser={viewer} onReply={vi.fn()} onJumpToMessage={vi.fn()} />)
 
