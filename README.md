@@ -26,7 +26,9 @@ option to start a voice call.
 Each room has its own roles, each with a colour, a rank, and a set of
 permissions (manage channels, manage roles, invite members, and more). Members
 can hold multiple roles at once. A role can only be edited by someone holding a
-higher-ranked role.
+higher-ranked role. Moderators can kick or ban members from a room, and server
+administrators can define instance-wide roles and manage signup options from
+Settings.
 
 **Voice chat**
 
@@ -90,8 +92,7 @@ Planned, not yet built:
   without a redeploy
 - **Mentions** (`@user`) with per-channel notification overrides
 - **Room-level notification defaults** set by room owners
-- **Instance-wide administration** — global roles and a proper admin surface
-- **More moderation tools** — kicks, bans, and message management
+- **Message moderation** — letting moderators delete or manage other members' messages
 
 ## Installation
 
@@ -101,6 +102,7 @@ Node, or Postgres.
 ```bash
 git clone https://github.com/Dave-Turnbull/CommunityHub.git
 cd CommunityHub
+cp .env.example .env
 docker compose up -d --build
 ```
 

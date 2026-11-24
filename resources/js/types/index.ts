@@ -182,9 +182,6 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
     // Roles tab).
     send_direct_messages: 'Send Direct Messages',
     create_room: 'Create Rooms',
-    // Declared but inert on the backend (no closed-registration mechanism
-    // exists yet) — still shown here since a role's stored permission set
-    // can reference it, same as manage_room/manage_messages/manage_emojis.
     invite_server: 'Invite to Server',
 }
 
@@ -215,7 +212,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
     react: 'Add or remove an emoji reaction on a message.',
     send_direct_messages: 'Start and send direct messages to other users. An instance-wide permission — granting it to a room role has no effect.',
     create_room: 'Create new rooms. An instance-wide permission — granting it to a room role has no effect.',
-    invite_server: 'Not enforced anywhere yet — reserved for a future closed-registration feature where new accounts require an invite. An instance-wide permission.',
+    invite_server: 'Create server invites — links that let someone register an account, optionally limited to one email address. An instance-wide permission — granting it to a room role has no effect.',
 }
 
 export interface RolePermission {

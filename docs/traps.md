@@ -178,6 +178,21 @@ old references/commit messages still resolve.
     (`X-Powered-By: PHP` means Laravel's catch-all, i.e. nginx never found the file on
     disk) before suspecting the application code.
 
+53. **(#54) A bare `docker compose ...` resolves to the production file, not the dev one.**
+    Both `compose.yaml` (production) and `docker-compose.yml` (dev) sit in the repo
+    root, and Compose prefers `compose.yaml` when both exist. Every plain `docker compose
+    up`/`exec`/`logs` therefore loads the production file, prints "Found multiple config
+    files with supported names", and fails immediately with `required variable DOMAIN is
+    missing a value` (then the same for `REVERB_APP_KEY` and the other variables that file
+    deliberately leaves without defaults). `COMPOSE_FILE=docker-compose.yml` in the
+    project `.env` (and `.env.example`, which `docker/app/entrypoint.sh` copies to `.env`
+    on first boot) makes Compose pick the dev file; a production checkout has no `.env`,
+    so it still gets `compose.yaml`. A working copy whose `.env` predates that line needs
+    it added by hand, or `-f docker-compose.yml` on every command. A brand-new clone has
+    no `.env` at all until the first container boots, so its very first `docker compose up`
+    hits this trap before the entrypoint can create one — copy `.env.example` to `.env`
+    first, or pass `-f docker-compose.yml` for that one command.
+
 ### Model/table naming
 
 18. **(#3) Model table names.** Laravel's pluralizer treats "Emoji" as already plural.
