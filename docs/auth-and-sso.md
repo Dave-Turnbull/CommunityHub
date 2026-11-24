@@ -22,6 +22,53 @@ the same rejection. Either way the response is the same generic "these credentia
 not match our records" — nothing about the failure ever reveals whether an account
 exists or how it authenticates.
 
+## Password reset and change
+
+### Reset (guest)
+
+Built on Laravel's password broker (`Password` facade, `config/auth.php`'s
+`passwords.users`: `password_reset_tokens` table, 60-minute expiry, 60-second per-email
+resend throttle). All four routes are in `routes/web.php`'s `guest` group, handled by
+`Web\PasswordResetController`:
+
+- `GET /forgot-password` — `Auth/ForgotPassword` (`password.request`)
+- `POST /forgot-password` — `throttle:5,1`; sends the link
+- `GET /reset-password/{token}` — `Auth/ResetPassword` (`password.reset`, the name the
+  broker's URL generation relies on); the email arrives as `?email=`
+- `POST /reset-password` — `throttle:5,1`; performs the reset
+
+`POST /forgot-password` flashes the same success message whether or not the email matches
+an account and whether or not the broker throttled the resend, so it can't be used to
+enumerate accounts. Only a malformed email fails validation. `POST /reset-password`
+likewise returns one generic `email` error ("invalid or has expired") for a bad token,
+an expired/used token, and an unknown email.
+
+`User::sendPasswordResetNotification()` is overridden to queue `App\Mail\PasswordResetMail`
+(`resources/views/emails/password-reset.blade.php`) rather than send Laravel's default
+notification. The password rules match registration (`min:8`, `confirmed`). A successful
+reset updates the password, rotates `remember_token`, and redirects to `/login` with a
+flash success message — it does not log the user in. The flow is independent of the
+signup-path toggles and of `config('verification.enabled')`.
+
+An OAuth-provisioned account (`users.password` is `null`, see "Data model" above) uses
+this same flow to set its first password; nothing in `AuthController::login()` blocks it
+afterward, since the `password !== null` check passes once a password exists.
+
+### Change (logged in)
+
+`PUT /settings/password` (`SettingsController::updatePassword`, `throttle:5,1`, in the
+authenticated group) requires the `current_password` rule plus the same new-password
+rules as above, and is surfaced by the Password section of Settings' Profile tab
+(`components/settings/PasswordSettings.tsx`). `SettingsController::show` computes
+`has_password` (`password !== null`); when false the section shows a note pointing at the
+"Forgot password?" email flow instead of a form, and the endpoint itself refuses the
+request — a logged-in session can never set a first password without the email round
+trip. The password hash is never sent to the client.
+
+A change rotates `remember_token`, so remember-me cookies on other devices stop working,
+but it does not end other live sessions: Laravel's `AuthenticateSession` middleware
+(which `Auth::logoutOtherDevices()` depends on) is not wired in `bootstrap/app.php`.
+
 ## Authentik/OAuth
 
 Built on `laravel/socialite` + the community `socialiteproviders/authentik` package
