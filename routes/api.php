@@ -69,6 +69,7 @@ Route::middleware('auth')->group(function () {
 
     // Room membership — kick/ban, gated by RoomMemberPolicy (see docs/roles-and-permissions.md).
     Route::delete('/rooms/{room}/members/{user}',    [RoomMemberController::class, 'destroy']);
+    Route::get('/rooms/{room}/bans',                 [RoomMemberController::class, 'bans']);
     Route::post('/rooms/{room}/bans/{user}',         [RoomMemberController::class, 'ban']);
     Route::delete('/rooms/{room}/bans/{user}',       [RoomMemberController::class, 'unban']);
 

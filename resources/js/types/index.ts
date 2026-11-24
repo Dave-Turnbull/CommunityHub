@@ -361,6 +361,13 @@ export interface Message {
     reply_to?: Message
 }
 
+export interface RoomBan {
+    id: string
+    user: Pick<User, 'id' | 'username' | 'display_name' | 'avatar_url'>
+    banned_by: Pick<User, 'id' | 'username' | 'display_name'> | null
+    banned_at: string
+}
+
 export interface RoomInvite {
     id: string
     room_id: string
