@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { forwardRef } from 'react'
 import type { ReactNode } from 'react'
@@ -7,7 +7,7 @@ import { MemberList } from '@/components/layout/MemberList'
 import { usePresence } from '@/stores'
 import * as api from '@/services/api'
 import type { PresenceEntry } from '@/stores'
-import type { RoomMember, User } from '@/types'
+import type { RoomBan, RoomMember, User } from '@/types'
 
 vi.mock('@inertiajs/react', () => ({
     Link: forwardRef<HTMLAnchorElement, { href: string; className?: string; children: ReactNode }>(
@@ -22,6 +22,8 @@ vi.mock('@/services/api', async () => {
         ...actual,
         kickRoomMember: vi.fn(),
         banRoomMember: vi.fn(),
+        fetchRoomBans: vi.fn(),
+        unbanRoomMember: vi.fn(),
     }
 })
 
@@ -143,6 +145,98 @@ describe('MemberList', () => {
             await userEvent.click(screen.getByText('Confirm'))
 
             expect(api.kickRoomMember).toHaveBeenLastCalledWith('room-1', 'user-1', true)
+        })
+    })
+
+    describe('banned list', () => {
+        const makeBan = (id: string, name: string): RoomBan => ({
+            id: `ban-${id}`,
+            user: { id, username: name.toLowerCase(), display_name: name, avatar_url: null },
+            banned_by: null,
+            banned_at: '2026-01-01T00:00:00.000Z',
+        })
+
+        const renderBans = () =>
+            render(<MemberList members={[makeMember()]} roomId="room-1" currentUserId="someone-else" canBanMembers />)
+
+        it('is hidden without canBanMembers', () => {
+            render(<MemberList members={[makeMember()]} roomId="room-1" currentUserId="someone-else" canManageMembers />)
+
+            expect(screen.queryByText(/Banned/)).not.toBeInTheDocument()
+        })
+
+        it('is hidden without a roomId', () => {
+            render(<MemberList members={[makeMember()]} canBanMembers />)
+
+            expect(screen.queryByText(/Banned/)).not.toBeInTheDocument()
+        })
+
+        it('does not fetch until expanded, then renders the banned users', async () => {
+            vi.mocked(api.fetchRoomBans).mockResolvedValue([makeBan('u-2', 'Mallory'), makeBan('u-3', 'Trudy')])
+
+            renderBans()
+
+            expect(api.fetchRoomBans).not.toHaveBeenCalled()
+
+            await userEvent.click(screen.getByText(/Banned/))
+
+            expect(await screen.findByText('Mallory')).toBeInTheDocument()
+            expect(screen.getByText('Trudy')).toBeInTheDocument()
+            expect(screen.getByText(/Banned — 2/)).toBeInTheDocument()
+            expect(api.fetchRoomBans).toHaveBeenCalledWith('room-1')
+        })
+
+        it('shows the empty state', async () => {
+            vi.mocked(api.fetchRoomBans).mockResolvedValue([])
+
+            renderBans()
+            await userEvent.click(screen.getByText(/Banned/))
+
+            expect(await screen.findByText('No one is banned.')).toBeInTheDocument()
+        })
+
+        it('unbans through the API and removes the row', async () => {
+            vi.mocked(api.fetchRoomBans).mockResolvedValue([makeBan('u-2', 'Mallory'), makeBan('u-3', 'Trudy')])
+            vi.mocked(api.unbanRoomMember).mockResolvedValue(undefined)
+
+            renderBans()
+            await userEvent.click(screen.getByText(/Banned/))
+            await screen.findByText('Mallory')
+
+            await userEvent.click(screen.getAllByText('Unban')[0])
+
+            expect(api.unbanRoomMember).toHaveBeenCalledWith('room-1', 'u-2')
+            await waitFor(() => expect(screen.queryByText('Mallory')).not.toBeInTheDocument())
+            expect(screen.getByText('Trudy')).toBeInTheDocument()
+        })
+
+        it('keeps the row and shows an error when unbanning fails', async () => {
+            vi.mocked(api.fetchRoomBans).mockResolvedValue([makeBan('u-2', 'Mallory')])
+            vi.mocked(api.unbanRoomMember).mockRejectedValue(new Error('boom'))
+
+            renderBans()
+            await userEvent.click(screen.getByText(/Banned/))
+            await screen.findByText('Mallory')
+
+            await userEvent.click(screen.getByText('Unban'))
+
+            expect(await screen.findByText(/Unbanning Mallory failed/)).toBeInTheDocument()
+            expect(screen.getByText('Mallory')).toBeInTheDocument()
+        })
+
+        it('refetches an expanded list after a successful ban from the member dropdown', async () => {
+            vi.mocked(api.fetchRoomBans).mockResolvedValueOnce([]).mockResolvedValueOnce([makeBan('user-1', 'Alice')])
+            vi.mocked(api.banRoomMember).mockResolvedValue(undefined)
+
+            renderBans()
+            await userEvent.click(screen.getByText(/Banned/))
+            await screen.findByText('No one is banned.')
+
+            await userEvent.click(screen.getByTitle('Member actions'))
+            await userEvent.click(await screen.findByText('Ban'))
+
+            await waitFor(() => expect(api.fetchRoomBans).toHaveBeenCalledTimes(2))
+            expect(await screen.findByText(/Banned — 1/)).toBeInTheDocument()
         })
     })
 })

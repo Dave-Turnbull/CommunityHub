@@ -13,6 +13,7 @@ import type {
     ReactionSummary,
     RecentCustomStatus,
     Role,
+    RoomBan,
     RoomInvite,
     RoomMember,
     User,
@@ -355,6 +356,11 @@ export async function kickRoomMember(roomId: string, userId: string, confirmOwne
 
 export async function banRoomMember(roomId: string, userId: string, confirmOwnerTransfer = false): Promise<void> {
     await kickOrBan('post', `/api/rooms/${roomId}/bans/${userId}`, confirmOwnerTransfer)
+}
+
+export async function fetchRoomBans(roomId: string): Promise<RoomBan[]> {
+    const { data } = await axios.get(`/api/rooms/${roomId}/bans`)
+    return data
 }
 
 export async function unbanRoomMember(roomId: string, userId: string): Promise<void> {

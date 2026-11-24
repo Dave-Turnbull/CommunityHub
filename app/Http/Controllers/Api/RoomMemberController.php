@@ -44,6 +44,27 @@ class RoomMemberController extends Controller
         return response()->json(['banned' => true]);
     }
 
+    public function bans(Request $request, Room $room): JsonResponse
+    {
+        $bans = $this->memberships->bans($room, $request->user());
+
+        return response()->json($bans->map(fn ($ban) => [
+            'id' => $ban->id,
+            'user' => [
+                'id' => $ban->user->id,
+                'username' => $ban->user->username,
+                'display_name' => $ban->user->display_name,
+                'avatar_url' => $ban->user->avatar_url,
+            ],
+            'banned_by' => $ban->bannedBy ? [
+                'id' => $ban->bannedBy->id,
+                'username' => $ban->bannedBy->username,
+                'display_name' => $ban->bannedBy->display_name,
+            ] : null,
+            'banned_at' => $ban->created_at->toISOString(),
+        ])->values());
+    }
+
     public function unban(Request $request, Room $room, User $user): JsonResponse
     {
         $this->memberships->unban($room, $request->user(), $user);
