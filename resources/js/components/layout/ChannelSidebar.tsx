@@ -1,9 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { clsx } from 'clsx'
-import { Link } from '@inertiajs/react'
+import { Link, router } from '@inertiajs/react'
 import { UserPanel } from './UserPanel'
+import { ChannelRowMenu } from './ChannelRowMenu'
 import { channelTypeDescriptor, orderedTypesIn } from '@/services/channelTypes'
+import { deleteChannel, reorderChannels, updateChannel } from '@/services/api'
 import { subscribeRoomChannels } from '@/services/echo'
+import { describeApiError } from '@/services/errorMessages'
 import { useChannels } from '@/stores'
 import type { Channel, MainView, RecentCustomStatus, Room, User } from '@/types'
 
@@ -16,6 +19,7 @@ interface Props {
     recentCustomStatuses: RecentCustomStatus[]
     creatableChannelTypes?: string[]
     canManageRoles?: boolean
+    canManageChannels?: boolean
     onSelectRoles: () => void
     onSelectCreateChannel: () => void
     onSelectInvite: () => void
@@ -42,10 +46,19 @@ function DefaultChannelRow({ channel, active }: { channel: Channel; active: bool
 
 export function ChannelSidebar({
     room, channels, activeChannelId, activeView, currentUser, recentCustomStatuses,
-    creatableChannelTypes = [], canManageRoles, onSelectRoles, onSelectCreateChannel, onSelectInvite,
+    creatableChannelTypes = [], canManageRoles, canManageChannels, onSelectRoles, onSelectCreateChannel, onSelectInvite,
 }: Props) {
     const list = useChannels((s) => s.channels[room.id] ?? channels)
-    const { setChannels } = useChannels()
+    const { setChannels, updateChannel: storeUpdateChannel, removeChannel } = useChannels()
+    const [renamingId, setRenamingId] = useState<string | null>(null)
+    const [draft, setDraft] = useState('')
+    const [busy, setBusy] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const renameInput = useRef<HTMLInputElement>(null)
+
+    useEffect(() => {
+        if (renamingId) renameInput.current?.select()
+    }, [renamingId])
 
     // Re-seed from the page's fresh `channels` prop on every navigation to
     // this room, then let subscribeRoomChannels() keep it live from there.
@@ -54,6 +67,67 @@ export function ChannelSidebar({
     }, [room.id])
 
     useEffect(() => subscribeRoomChannels(room.id), [room.id])
+
+    const startRename = (c: Channel) => {
+        setError(null)
+        setDraft(c.name)
+        setRenamingId(c.id)
+    }
+
+    const cancelRename = () => {
+        if (!busy) setRenamingId(null)
+    }
+
+    const commitRename = async (c: Channel) => {
+        const name = draft.trim()
+        if (!name || name === c.name) {
+            setRenamingId(null)
+            return
+        }
+
+        setBusy(true)
+        try {
+            const updated = await updateChannel(c.id, { name })
+            storeUpdateChannel(room.id, { ...c, ...updated })
+            setRenamingId(null)
+        } catch (e) {
+            setError(describeApiError(e, 'Renaming the channel'))
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const move = async (c: Channel, direction: -1 | 1) => {
+        const group = list.filter((x) => x.type === c.type)
+        const neighbor = group[group.indexOf(c) + direction]
+        if (!neighbor) return
+
+        const reordered = [...list]
+        const a = reordered.indexOf(c)
+        const b = reordered.indexOf(neighbor)
+        ;[reordered[a], reordered[b]] = [reordered[b], reordered[a]]
+
+        setError(null)
+        try {
+            await reorderChannels(room.id, reordered.map((x) => x.id))
+            setChannels(room.id, reordered.map((x, position) => ({ ...x, position })))
+        } catch (e) {
+            setError(describeApiError(e, 'Reordering channels'))
+        }
+    }
+
+    const remove = async (c: Channel) => {
+        if (!window.confirm(`Delete #${c.name}? This permanently removes the channel and its messages.`)) return
+
+        setError(null)
+        try {
+            await deleteChannel(c.id)
+            removeChannel(room.id, c.id)
+            if (c.id === activeChannelId) router.visit(`/rooms/${room.id}`)
+        } catch (e) {
+            setError(describeApiError(e, 'Deleting the channel'))
+        }
+    }
 
     return (
         <div className="w-sidebar-channel bg-second border-r-panel border-panel-border flex flex-col flex-shrink-0">
@@ -106,6 +180,7 @@ export function ChannelSidebar({
             </div>
 
             <nav className="flex-1 min-h-0 overflow-y-auto p-2 select-none">
+                {error && <p className="px-2 mb-2 text-xs text-danger">{error}</p>}
                 {orderedTypesIn(list.map((c) => c.type)).map((type) => {
                     const group = list.filter((c) => c.type === type)
                     const descriptor = channelTypeDescriptor(type)
@@ -117,12 +192,50 @@ export function ChannelSidebar({
                                 {descriptor.label}
                             </p>
 
-                            {group.map((c) => {
+                            {group.map((c, index, arr) => {
                                 const active = activeView.type === 'channel' && c.id === activeChannelId
-                                return SidebarItem ? (
-                                    <SidebarItem key={c.id} channel={c} active={active} currentUser={currentUser} />
-                                ) : (
-                                    <DefaultChannelRow key={c.id} channel={c} active={active} />
+
+                                if (renamingId === c.id) {
+                                    return (
+                                        <input
+                                            key={c.id}
+                                            ref={renameInput}
+                                            autoFocus
+                                            value={draft}
+                                            maxLength={100}
+                                            disabled={busy}
+                                            aria-label="Channel name"
+                                            onChange={(e) => setDraft(e.target.value)}
+                                            onBlur={cancelRename}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') void commitRename(c)
+                                                if (e.key === 'Escape') cancelRename()
+                                            }}
+                                            className="w-full px-2 py-1.5 rounded bg-primary text-text-primary border border-sixth outline-none focus:border-accent-primary"
+                                        />
+                                    )
+                                }
+
+                                return (
+                                    <div key={c.id} className="group flex items-start gap-1">
+                                        <div className="flex-1 min-w-0">
+                                            {SidebarItem ? (
+                                                <SidebarItem channel={c} active={active} currentUser={currentUser} />
+                                            ) : (
+                                                <DefaultChannelRow channel={c} active={active} />
+                                            )}
+                                        </div>
+                                        {canManageChannels && (
+                                            <ChannelRowMenu
+                                                canMoveUp={index > 0}
+                                                canMoveDown={index < arr.length - 1}
+                                                onRename={() => startRename(c)}
+                                                onMoveUp={() => void move(c, -1)}
+                                                onMoveDown={() => void move(c, 1)}
+                                                onDelete={() => void remove(c)}
+                                            />
+                                        )}
+                                    </div>
                                 )
                             })}
                         </div>
