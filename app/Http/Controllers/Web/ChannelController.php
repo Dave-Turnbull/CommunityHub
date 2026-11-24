@@ -57,6 +57,7 @@ class ChannelController extends Controller
             'highlight_message_id'             => $highlightMessageId,
             'creatable_channel_types'          => app(ChannelPolicy::class)->creatableTypeKeys($user, $room),
             'can_manage_roles'                 => Gate::allows('create', [Role::class, $room]),
+            'can_manage_channels'              => Gate::allows('manage', $channel),
             'can_manage_channel_visibility'    => Gate::allows('manageVisibility', $channel),
             // Whether the viewer holds ManageMembers/BanMembers at all — not
             // per-target eligibility, which needs a specific target user and
