@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useChannels, useMessages, useNotifications, usePresence } from '@/stores'
+import { useChannels, useMessages, useNotifications, usePresence, useTyping } from '@/stores'
 
 const listeners: Record<string, (event: unknown) => void> = {}
 const hereCallbacks: ((users: unknown[]) => void)[] = []
@@ -61,6 +61,7 @@ describe('echo service', () => {
         usePresence.setState({ statuses: {} })
         useNotifications.setState({ notifications: [] })
         useChannels.setState({ channels: {} })
+        useTyping.setState({ expiries: {} })
         for (const key of Object.keys(listeners)) delete listeners[key]
         for (const key of Object.keys(whisperListeners)) delete whisperListeners[key]
         hereCallbacks.length = 0
@@ -261,5 +262,67 @@ describe('echo service', () => {
 
         expect(channel.stopListeningForWhisper).toHaveBeenCalledWith('voice-join', expect.any(Function))
         expect(echoInstance.leave).not.toHaveBeenCalledWith('App.Models.User.user-1')
+    })
+
+    it('listens for the typing whisper on the existing subscription instead of opening another', async () => {
+        const { subscribe } = await import('@/services/echo')
+        subscribe('chan-1', 'channel')
+
+        expect(echoInstance.join).toHaveBeenCalledTimes(1)
+        expect(channel.listenForWhisper).toHaveBeenCalledWith('typing', expect.any(Function))
+    })
+
+    it('records a typing whisper against the subscribed scope', async () => {
+        const { subscribe } = await import('@/services/echo')
+        subscribe('conv-1', 'conversation')
+
+        whisperListeners['typing']({ user_id: 'user-2' })
+
+        expect(Object.keys(useTyping.getState().expiries['conv-1'])).toEqual(['user-2'])
+    })
+
+    it('ignores a typing whisper without a string user_id', async () => {
+        const { subscribe } = await import('@/services/echo')
+        subscribe('chan-1', 'channel')
+
+        whisperListeners['typing']({})
+        whisperListeners['typing']({ user_id: 42 })
+        whisperListeners['typing'](null)
+
+        expect(useTyping.getState().expiries['chan-1']).toBeUndefined()
+    })
+
+    it('clears a sender\'s typing entry when their message arrives in that scope', async () => {
+        const { subscribe } = await import('@/services/echo')
+        subscribe('chan-1', 'channel')
+        whisperListeners['typing']({ user_id: 'user-2' })
+
+        listeners['.MessageSent']({ message: { id: 'msg-1', author_id: 'user-2' } })
+
+        expect(useTyping.getState().expiries['chan-1']).toEqual({})
+    })
+
+    it('does not clear a typing entry for a comment arriving in a different (message) scope', async () => {
+        const { subscribe } = await import('@/services/echo')
+        subscribe('chan-1', 'channel')
+        whisperListeners['typing']({ user_id: 'user-2' })
+
+        listeners['.MessageSent']({
+            message: { id: 'c-1', author_id: 'user-2' }, scope_type: 'message', scope_id: 'msg-9',
+        })
+
+        expect(Object.keys(useTyping.getState().expiries['chan-1'])).toEqual(['user-2'])
+    })
+
+    it('sendTyping whispers only the sender id on the scope\'s own channel', async () => {
+        const { sendTyping } = await import('@/services/echo')
+
+        sendTyping('channel', 'chan-1', 'user-1')
+        sendTyping('conversation', 'conv-1', 'user-1')
+
+        expect(echoInstance.join).toHaveBeenCalledWith('channel.chan-1')
+        expect(echoInstance.private).toHaveBeenCalledWith('conversation.conv-1')
+        expect(channel.whisper).toHaveBeenCalledTimes(2)
+        expect(channel.whisper).toHaveBeenCalledWith('typing', { user_id: 'user-1' })
     })
 })

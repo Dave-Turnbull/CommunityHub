@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { MAX_WINDOW_MESSAGES, useChannels, useConnectionQuality, useMessages, useMicSensitivity, useNotifications, usePresence, useRemoteStreamVersion, useSpeaking, useUI, useVoice, useVoiceRoster, useVoiceVolume } from '@/stores'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MAX_WINDOW_MESSAGES, useChannels, useConnectionQuality, useMessages, useMicSensitivity, useNotifications, usePresence, useRemoteStreamVersion, TYPING_TTL_MS, useSpeaking, useTyping, useUI, useVoice, useVoiceRoster, useVoiceVolume } from '@/stores'
 import type { AppNotification, Channel, Message, PaginatedMessages, VoiceParticipant } from '@/types'
 
 const makeMessage = (overrides: Partial<Message> = {}): Message => ({
@@ -565,5 +565,64 @@ describe('useChannels', () => {
         useChannels.getState().removeChannel('room-1', 'chan-1')
 
         expect(useChannels.getState().channels['room-1']).toEqual([makeChannel({ id: 'chan-2' })])
+    })
+})
+
+describe('useTyping', () => {
+    beforeEach(() => {
+        vi.useFakeTimers()
+        useTyping.setState({ expiries: {} })
+    })
+
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    it('touch records an expiry TYPING_TTL_MS after now, per scope and user', () => {
+        useTyping.getState().touch('scope-1', 'user-2')
+
+        expect(useTyping.getState().expiries['scope-1']['user-2']).toBe(Date.now() + TYPING_TTL_MS)
+        expect(useTyping.getState().expiries['scope-2']).toBeUndefined()
+    })
+
+    it('touch again extends the expiry', () => {
+        useTyping.getState().touch('scope-1', 'user-2')
+        vi.advanceTimersByTime(3000)
+        useTyping.getState().touch('scope-1', 'user-2')
+
+        expect(useTyping.getState().expiries['scope-1']['user-2']).toBe(Date.now() + TYPING_TTL_MS)
+    })
+
+    it('prune drops only entries whose expiry has passed', () => {
+        useTyping.getState().touch('scope-1', 'user-2')
+        vi.advanceTimersByTime(3000)
+        useTyping.getState().touch('scope-1', 'user-3')
+        vi.advanceTimersByTime(2500)
+        useTyping.getState().prune()
+
+        expect(Object.keys(useTyping.getState().expiries['scope-1'])).toEqual(['user-3'])
+
+        vi.advanceTimersByTime(3000)
+        useTyping.getState().prune()
+
+        expect(useTyping.getState().expiries).toEqual({})
+    })
+
+    it('prune leaves state identity alone when nothing has expired', () => {
+        useTyping.getState().touch('scope-1', 'user-2')
+        const before = useTyping.getState().expiries
+
+        useTyping.getState().prune()
+
+        expect(useTyping.getState().expiries).toBe(before)
+    })
+
+    it('clear removes one user without touching the others', () => {
+        useTyping.getState().touch('scope-1', 'user-2')
+        useTyping.getState().touch('scope-1', 'user-3')
+
+        useTyping.getState().clear('scope-1', 'user-2')
+
+        expect(Object.keys(useTyping.getState().expiries['scope-1'])).toEqual(['user-3'])
     })
 })
