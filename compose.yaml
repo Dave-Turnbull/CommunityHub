@@ -25,17 +25,25 @@
 #     container's IP:N on the shared network at runtime, so it doesn't care
 #     about container names. Caddy handles the WebSocket upgrade for Reverb
 #     automatically; no extra directive needed.
-#   - Reverb needs a *second*, separate public host (`ws.$DOMAIN`) because
-#     the browser connects to it directly, not through nginx (see
-#     resources/js/services/echo.ts, and the REVERB_HOST vs. VITE_REVERB_HOST
-#     trap in CLAUDE.md). VITE_REVERB_PORT is 443 (through Caddy), while the
-#     internal REVERB_PORT stays 8080 (app/worker publish to Reverb directly
-#     over the `communityhub` network) — these are deliberately different
-#     values, not a typo.
+#   - Reverb shares nginx's public host (`chat.$DOMAIN`) rather than getting
+#     its own subdomain: the browser's WebSocket goes to
+#     `chat.$DOMAIN/app/{key}` (the Pusher protocol's fixed path — see
+#     resources/js/services/echo.ts) and the `reverb` service's labels add a
+#     `/app/*` route to that same Caddy site. Same-host is what lets a
+#     hostname-scoped auth layer in front of the app (Cloudflare Access here)
+#     cover the socket too — its session cookie is per-hostname, and a
+#     WebSocket handshake can't follow a login redirect, so a separate
+#     `ws.` host behind the same login never connects. `/app/*` is therefore
+#     reserved on this host; don't add a Laravel route under it. Only the
+#     browser-facing half moves: VITE_REVERB_PORT is 443 (through Caddy),
+#     while the internal REVERB_HOST/REVERB_PORT stay `reverb`/8080
+#     (app/worker publish to Reverb directly over the `communityhub`
+#     network, so its `/apps/*` HTTP API is never routed publicly) — these
+#     are deliberately different values, not a typo.
 #
 # Required env vars (no safe default — deploy fails loudly without them):
 #   APP_KEY, DB_PASSWORD, REVERB_APP_KEY, REVERB_APP_SECRET, TURN_SECRET, DOMAIN
-#   (the apex — chat.$DOMAIN / ws.$DOMAIN are derived from it)
+#   (the apex — chat.$DOMAIN is derived from it)
 # Commonly overridden:
 #   AUTHENTIK_ENABLED + its AUTHENTIK_* siblings, MAIL_*, AWS_*
 #   (only if FILESYSTEM_DISK=r2), TURN_PUBLIC_HOST (the directly-reachable
@@ -48,7 +56,7 @@
 # about where Reverb lives.
 x-vite-build-args: &vite-build-args
   VITE_REVERB_APP_KEY: "${REVERB_APP_KEY:?set REVERB_APP_KEY}"
-  VITE_REVERB_HOST: ws.${DOMAIN:?set DOMAIN}
+  VITE_REVERB_HOST: chat.${DOMAIN:?set DOMAIN}
   VITE_REVERB_PORT: "443"
   VITE_REVERB_SCHEME: https
 
@@ -89,9 +97,9 @@ x-laravel-env: &laravel-env
   REVERB_SCHEME: http
   REVERB_SCALING_ENABLED: "true"
 
-  # Browser-facing — through Caddy, on its own subdomain. See the notes above.
+  # Browser-facing — through Caddy, on the app's own host. See the notes above.
   VITE_REVERB_APP_KEY: "${REVERB_APP_KEY:?set REVERB_APP_KEY}"
-  VITE_REVERB_HOST: ws.${DOMAIN:?set DOMAIN}
+  VITE_REVERB_HOST: chat.${DOMAIN:?set DOMAIN}
   VITE_REVERB_PORT: "443"
   VITE_REVERB_SCHEME: https
 
@@ -102,7 +110,7 @@ x-laravel-env: &laravel-env
   # WebRTC media is raw UDP/TCP, so the browser must reach coturn's published
   # ports directly. That means a DNS-only (grey-cloud) record pointing at the
   # real public IP, which is why this is overridable instead of derived from
-  # ${DOMAIN} like chat./ws. are: the apex is proxied and must stay that way.
+  # ${DOMAIN} like chat. is: the apex is proxied and must stay that way.
   # Defaults to the apex only so the stack still boots unconfigured.
   TURN_PUBLIC_HOST: ${TURN_PUBLIC_HOST:-${DOMAIN:?set DOMAIN}}
 
@@ -248,9 +256,13 @@ services:
         condition: service_healthy
     networks: [communityhub, caddy]
     labels:
-      # Same reasoning as nginx's label above — the tunnel handles TLS.
-      caddy: http://ws.${DOMAIN:?set DOMAIN}
-      caddy.reverse_proxy: "{{upstreams 8080}}"
+      # Same site address as nginx's label above — caddy-docker-proxy merges
+      # both containers' labels into one site block, and the `handle` keeps
+      # this route distinct from nginx's catch-all reverse_proxy instead of
+      # pooling the two as upstreams of one.
+      caddy: http://chat.${DOMAIN:?set DOMAIN}
+      caddy.handle: /app/*
+      caddy.handle.0_reverse_proxy: "{{upstreams 8080}}"
 
   worker:
     build:
