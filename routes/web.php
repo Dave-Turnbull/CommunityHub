@@ -69,7 +69,7 @@ Route::middleware(['auth', EnsureEmailIsVerifiedIfRequired::class])->group(funct
 
     Route::get('/channels/{channel}',           [ChannelController::class, 'show']);
     Route::get('/conversations/{conversation}', [ConversationController::class, 'show']);
-    Route::get('/messages/{message}',           [MessageController::class, 'show']);
+    Route::get('/messages/{listedMessage}',     [MessageController::class, 'show']);
     Route::get('/attachments/{attachment}',     [AttachmentController::class, 'show'])->name('attachments.show');
 
     Route::get('/settings',   [SettingsController::class, 'show']);

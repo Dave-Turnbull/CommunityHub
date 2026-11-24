@@ -62,14 +62,14 @@ class MessageController extends Controller
 
     // ── Comments ──────────────────────────────────────────────────────────
 
-    public function indexComments(Request $request, Message $message): JsonResponse
+    public function indexComments(Request $request, Message $listedMessage): JsonResponse
     {
         if ($request->query('sort') === 'top') {
-            return response()->json($this->listTop($request, TextMessageService::for($message)));
+            return response()->json($this->listTop($request, TextMessageService::for($listedMessage)));
         }
 
         return response()->json(
-            TextMessageService::for($message)->list(
+            TextMessageService::for($listedMessage)->list(
                 $request->user(),
                 $request->query('before'),
                 $request->query('after'),
@@ -101,9 +101,9 @@ class MessageController extends Controller
 
     public function destroy(Request $request, Message $message): JsonResponse
     {
-        TextMessageService::destroyMessage($request->user(), $message);
+        $tombstone = TextMessageService::destroyMessage($request->user(), $message);
 
-        return response()->json(['deleted' => true]);
+        return response()->json(['deleted' => true, ...($tombstone?->toArray() ?? [])]);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { CommentThread } from '@/components/chat/CommentThread'
 import { useMessages } from '@/stores'
 import * as api from '@/services/api'
@@ -157,5 +157,66 @@ describe('CommentThread', () => {
         )
 
         expect(api.fetchComments).not.toHaveBeenCalled()
+    })
+
+    describe('tombstoned comments', () => {
+        const tombstone = (id: string, overrides: Partial<Message> = {}) =>
+            comment(id, 1, { content: null, is_tombstoned: true, comment_count: 2, ...overrides })
+
+        const renderThread = (messages: Message[], props: Record<string, unknown> = {}) =>
+            render(
+                <CommentThread
+                    parentId="post-1"
+                    parentDepth={0}
+                    initial={page(messages)}
+                    broadcastScope={{ id: 'chan-1', type: 'channel' }}
+                    currentUserId="user-1"
+                    canComment
+                    {...props}
+                />
+            )
+
+        it('shows the placeholder without a vote control, and keeps the replies toggle', () => {
+            renderThread([tombstone('c1')])
+
+            expect(screen.getByText('[deleted]')).toBeInTheDocument()
+            expect(screen.queryByLabelText('Upvote')).not.toBeInTheDocument()
+            expect(screen.getByText('2 replies')).toBeInTheDocument()
+        })
+
+        it('turns a live comment into the placeholder when its tombstone arrives, keeping the reply toggle', () => {
+            const live = comment('c1', 1, { comment_count: 2 })
+            renderThread([live])
+            expect(screen.getByText('comment-c1')).toBeInTheDocument()
+
+            act(() => {
+                useMessages.getState().update('post-1', { ...live, content: null, is_tombstoned: true })
+            })
+
+            expect(screen.queryByText('comment-c1')).not.toBeInTheDocument()
+            expect(screen.getByText('[deleted]')).toBeInTheDocument()
+            expect(screen.queryByLabelText('Upvote')).not.toBeInTheDocument()
+            expect(screen.getByText('2 replies')).toBeInTheDocument()
+        })
+
+        it('keeps the vote control on a live sibling', () => {
+            renderThread([tombstone('c1'), comment('c2', 1)])
+
+            expect(screen.getAllByLabelText('Upvote')).toHaveLength(1)
+        })
+
+        it('offers no reply toggle on a tombstone with nothing left beneath it', () => {
+            renderThread([tombstone('c1', { comment_count: 0 })])
+
+            expect(screen.getByText('[deleted]')).toBeInTheDocument()
+            expect(screen.queryByText('Reply')).not.toBeInTheDocument()
+        })
+
+        it('shows no composer under a tombstoned parent but still lets its live comments be replied to', () => {
+            renderThread([comment('c1', 1)], { parentTombstoned: true })
+
+            expect(screen.queryByPlaceholderText('Write a comment…')).not.toBeInTheDocument()
+            expect(screen.getByText('Reply')).toBeInTheDocument()
+        })
     })
 })

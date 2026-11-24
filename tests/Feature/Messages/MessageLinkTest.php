@@ -188,7 +188,7 @@ class MessageLinkTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_a_comment_whose_root_is_tombstoned_has_nothing_to_link_to(): void
+    public function test_a_comment_whose_root_is_tombstoned_links_to_the_tombstoned_root(): void
     {
         $room = Room::factory()->create();
         $channel = Channel::factory()->for($room)->create();
@@ -201,6 +201,36 @@ class MessageLinkTest extends TestCase
 
         $this->actingAs($user)
             ->get("/messages/{$comment->id}")
+            ->assertRedirect("/channels/{$channel->id}?message={$root->id}");
+    }
+
+    public function test_a_tombstoned_message_links_to_its_own_scope(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $user = User::factory()->create();
+        RoomMember::factory()->for($room)->for($user)->create();
+        $root = Message::factory()->for($channel)->create();
+        $this->commentOn($root);
+        $root->update(['is_tombstoned' => true]);
+        $root->delete();
+
+        $this->actingAs($user)
+            ->get("/messages/{$root->id}")
+            ->assertRedirect("/channels/{$channel->id}?message={$root->id}");
+    }
+
+    public function test_a_plainly_deleted_message_has_nothing_to_link_to(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $user = User::factory()->create();
+        RoomMember::factory()->for($room)->for($user)->create();
+        $message = Message::factory()->for($channel)->create();
+        $message->delete();
+
+        $this->actingAs($user)
+            ->get("/messages/{$message->id}")
             ->assertNotFound();
     }
 

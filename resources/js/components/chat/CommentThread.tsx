@@ -6,6 +6,7 @@ import { useChat } from '@/hooks/useChat'
 import { useMessages } from '@/stores'
 import type { Message, PaginatedMessages, VoteSummary } from '@/types'
 import { MessageContent } from '@/components/chat/MessageContent'
+import { DeletedPlaceholder } from '@/components/chat/DeletedPlaceholder'
 
 interface BroadcastScope {
     id: string
@@ -30,6 +31,12 @@ interface CommentThreadProps {
      * see docs/comments-and-voting.md.
      */
     maxDepth?: number | null
+    /**
+     * The parent is a `[deleted]` placeholder: its comments stay readable and
+     * repliable, but nothing may be added directly under it, so this thread
+     * shows no composer.
+     */
+    parentTombstoned?: boolean
 }
 
 /**
@@ -41,7 +48,7 @@ interface CommentThreadProps {
  * docs/comments-and-voting.md.
  */
 export function CommentThread({
-    parentId, parentDepth, initial, broadcastScope, currentUserId, canComment, maxDepth = null,
+    parentId, parentDepth, initial, broadcastScope, currentUserId, canComment, maxDepth = null, parentTombstoned = false,
 }: CommentThreadProps) {
     const { messages, hasOlder, loadOlder, commitSent } = useChat({
         scopeId: parentId,
@@ -50,7 +57,7 @@ export function CommentThread({
         broadcastScope,
     })
 
-    const canReplyHere = canComment && (maxDepth === null || parentDepth < maxDepth)
+    const canReplyHere = canComment && !parentTombstoned && (maxDepth === null || parentDepth < maxDepth)
 
     return (
         <div className="flex flex-col gap-3 pl-4 border-l-2 border-panel-border">
@@ -144,14 +151,14 @@ function CommentRow({
                         <span className="text-sm font-medium text-text-primary">
                             {comment.author?.display_name}
                         </span>
-                        <VoteControl message={comment} onChange={onVoteChange} />
+                        {!comment.is_tombstoned && <VoteControl message={comment} onChange={onVoteChange} />}
                     </div>
                     <div className="text-sm text-text-secondary leading-relaxed break-words whitespace-pre-wrap">
                         {comment.is_tombstoned
-                            ? <em className="text-text-muted">[deleted]</em>
+                            ? <DeletedPlaceholder />
                             : <MessageContent content={comment.content ?? ''} />}
                     </div>
-                    {canNestFurther && (
+                    {canNestFurther && !(comment.is_tombstoned && !comment.comment_count) && (
                         <button
                             type="button"
                             onClick={expand}
@@ -173,6 +180,7 @@ function CommentRow({
                     currentUserId={currentUserId}
                     canComment={canComment}
                     maxDepth={maxDepth}
+                    parentTombstoned={comment.is_tombstoned}
                 />
             )}
         </div>

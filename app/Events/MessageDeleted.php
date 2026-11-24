@@ -2,6 +2,8 @@
 
 namespace App\Events;
 
+use App\Models\Channel;
+use App\Models\Conversation;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -17,10 +19,25 @@ class MessageDeleted implements ShouldBroadcast
         public string $messageId,
         public string $scopeType,
         public string $scopeId,
+        public Channel|Conversation|null $root = null,
     ) {}
 
+    /**
+     * A comment (scopeType 'message') rides its root's channel.{id}/
+     * conversation.{id}, same as MessageSent — `$root` is that entity,
+     * captured by the caller since the deleted row can no longer resolve it
+     * on the queue.
+     */
     public function broadcastOn(): array
     {
+        if ($this->scopeType === 'message') {
+            return [
+                $this->root instanceof Channel
+                    ? new PresenceChannel("channel.{$this->root->id}")
+                    : new PrivateChannel("conversation.{$this->root->id}"),
+            ];
+        }
+
         return [
             $this->scopeType === 'channel'
                 ? new PresenceChannel("channel.{$this->scopeId}")
@@ -32,6 +49,10 @@ class MessageDeleted implements ShouldBroadcast
 
     public function broadcastWith(): array
     {
-        return ['message_id' => $this->messageId];
+        return [
+            'message_id' => $this->messageId,
+            'scope_type' => $this->scopeType,
+            'scope_id'   => $this->scopeId,
+        ];
     }
 }

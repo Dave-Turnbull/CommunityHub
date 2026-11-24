@@ -9,6 +9,7 @@ import { fetchChannelMessages, fetchComments, fetchTopPosts } from '@/services/a
 import type { TopSortPeriod } from '@/services/api'
 import type { Channel, Message, PaginatedMessages, User, VoteSummary } from '@/types'
 import { MessageContent } from '@/components/chat/MessageContent'
+import { DeletedPlaceholder } from '@/components/chat/DeletedPlaceholder'
 
 interface Props {
     channel: Channel
@@ -147,7 +148,9 @@ export function ForumChannelContent({ channel, currentUser }: Props) {
                                    border-panel border-panel-border transition-colors text-left"
                     >
                         <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
-                            <VoteControl message={post} onChange={(next) => onPostVoteChange(post.id, next)} />
+                            {!post.is_tombstoned && (
+                                <VoteControl message={post} onChange={(next) => onPostVoteChange(post.id, next)} />
+                            )}
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
@@ -155,7 +158,9 @@ export function ForumChannelContent({ channel, currentUser }: Props) {
                                 <span className="text-xs font-medium text-text-secondary">{post.author?.display_name}</span>
                                 <span className="text-[11px] text-text-muted">{fullTime(post.created_at)}</span>
                             </div>
-                            {post.title ? (
+                            {post.is_tombstoned ? (
+                                <p><DeletedPlaceholder /></p>
+                            ) : post.title ? (
                                 <p className="font-semibold text-text-primary">{post.title}</p>
                             ) : (
                                 <p className="text-text-primary line-clamp-2">{post.content}</p>
@@ -204,18 +209,24 @@ function PostDetail({
             </div>
 
             <div className="flex items-start gap-4 px-6 py-4 border-b border-panel-border">
-                <VoteControl message={post} onChange={onVoteChange} />
+                {!post.is_tombstoned && <VoteControl message={post} onChange={onVoteChange} />}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                         <Avatar user={post.author!} size="sm" />
                         <span className="text-sm font-medium text-text-secondary">{post.author?.display_name}</span>
                         <span className="text-[11px] text-text-muted">{fullTime(post.created_at)}</span>
                     </div>
-                    {post.title && <h2 className="text-lg font-semibold text-text-primary mb-1">{post.title}</h2>}
-                    <div className="text-text-primary leading-relaxed whitespace-pre-wrap break-words">
-                        <MessageContent content={post.content ?? ''} />
-                    </div>
-                    {!!post.attachments?.length && <MessageAttachments attachments={post.attachments} />}
+                    {post.is_tombstoned ? (
+                        <p className="leading-relaxed"><DeletedPlaceholder /></p>
+                    ) : (
+                        <>
+                            {post.title && <h2 className="text-lg font-semibold text-text-primary mb-1">{post.title}</h2>}
+                            <div className="text-text-primary leading-relaxed whitespace-pre-wrap break-words">
+                                <MessageContent content={post.content ?? ''} />
+                            </div>
+                            {!!post.attachments?.length && <MessageAttachments attachments={post.attachments} />}
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -228,6 +239,7 @@ function PostDetail({
                         broadcastScope={{ id: channel.id, type: 'channel' }}
                         currentUserId={currentUser.id}
                         canComment
+                        parentTombstoned={post.is_tombstoned}
                     />
                 )}
             </div>
