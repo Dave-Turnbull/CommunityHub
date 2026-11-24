@@ -405,6 +405,9 @@ resources/
                                message" scrolls/flashes) — see docs/
                                messages-and-pagination.md's "Jumping to a message"
                                and docs/capabilities-and-channel-types.md;
+                               TypingIndicator (the fixed-height "X is typing…" line above
+                               the composer — see docs/messages-and-pagination.md's "Typing
+                               indicators");
                                ForumChannelContent (the `forum` channel type's post
                                list + detail view) — see docs/comments-and-voting.md
       layout/                 RoomRail, ChannelSidebar (the "🛡 Roles"/"+ Add
@@ -528,7 +531,8 @@ resources/
     services/                 api.ts (axios — the only place a component may call axios
                                directly), channelTypes.tsx (frontend channel-type
                                registry — see docs/capabilities-and-channel-types.md),
-                               echo.ts (Reverb subscriptions), voicePresence.ts,
+                               echo.ts (Reverb subscriptions; `typing` whisper via
+                               `sendTyping`/`subscribe`'s listener), voicePresence.ts,
                                webrtc.ts, voiceCallGuard.ts, voiceActivation.ts,
                                connectionQuality.ts (getStats()-based per-peer quality
                                polling, no signaling involved — see docs/voice.md),
@@ -547,6 +551,8 @@ resources/
                                docs/theming.md)
     stores/                   Zustand: useMessages (windowed + trimmed, see docs/
                                messages-and-pagination.md), usePresence, useUI, useNotifications,
+                               useTyping (per-scope typing expiries — see docs/
+                               messages-and-pagination.md),
                                useChannels (see docs/capabilities-and-channel-types.md),
                                useVoice, useVoiceRoster, useSpeaking, useVoiceVolume,
                                useRemoteStreamVersion, useConnectionQuality, useMicSensitivity
