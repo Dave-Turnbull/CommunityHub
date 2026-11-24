@@ -44,6 +44,9 @@ export interface Room {
     icon_url: string | null
     owner_id: string
     invite_code: string
+    // True when any channel in the room the viewer can see has unread messages
+    // — shared `rooms` prop only (HandleInertiaRequests). See docs/unread-counts.md.
+    has_unread?: boolean
     channels?: Channel[]
     custom_emojis?: CustomEmoji[]
     // Present on ChannelPageProps.room (Web\ChannelController::show) — backs
@@ -182,9 +185,6 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
     // Roles tab).
     send_direct_messages: 'Send Direct Messages',
     create_room: 'Create Rooms',
-    // Declared but inert on the backend (no closed-registration mechanism
-    // exists yet) — still shown here since a role's stored permission set
-    // can reference it, same as manage_room/manage_messages/manage_emojis.
     invite_server: 'Invite to Server',
 }
 
@@ -215,7 +215,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
     react: 'Add or remove an emoji reaction on a message.',
     send_direct_messages: 'Start and send direct messages to other users. An instance-wide permission — granting it to a room role has no effect.',
     create_room: 'Create new rooms. An instance-wide permission — granting it to a room role has no effect.',
-    invite_server: 'Not enforced anywhere yet — reserved for a future closed-registration feature where new accounts require an invite. An instance-wide permission.',
+    invite_server: 'Create server invites — links that let someone register an account, optionally limited to one email address. An instance-wide permission — granting it to a room role has no effect.',
 }
 
 export interface RolePermission {
@@ -300,6 +300,10 @@ export interface Channel {
     position: number
     voice_mode: VoiceConnectionMode
     settings: Record<string, unknown> | null
+    // Top-level messages from others since the viewer last read this channel,
+    // as of the page load — see docs/unread-counts.md. Only on the
+    // `room.channels` list (Web\ChannelController::show), not every Channel payload.
+    unread_count?: number
     // Roles that may see this channel — empty/absent means visible to every
     // room member (opt-in restriction, see Permission.SeeAllChannels/
     // ManageChannelVisibility). Only present when the backend eager-loads it
@@ -359,6 +363,13 @@ export interface Message {
     reactions?: ReactionSummary[]
     votes?: VoteSummary
     reply_to?: Message
+}
+
+export interface RoomBan {
+    id: string
+    user: Pick<User, 'id' | 'username' | 'display_name' | 'avatar_url'>
+    banned_by: Pick<User, 'id' | 'username' | 'display_name'> | null
+    banned_at: string
 }
 
 export interface RoomInvite {
@@ -579,6 +590,10 @@ export interface ChannelPageProps extends SharedProps {
     creatable_channel_types: string[]
     // Gate::allows('create', [Role::class, $room]) — drives ChannelSidebar's "Roles" button.
     can_manage_roles: boolean
+    // Gate::allows('manage', $channel) — ChannelPolicy::manage, the same ability
+    // behind rename/delete/reorder. Not derivable from creatable_channel_types
+    // (a per-category create grant lacks it). Gates ChannelSidebar's row menu.
+    can_manage_channels: boolean
     // Gate::allows('manageVisibility', $channel) — separate from
     // creatable_channel_types, see Permission.ManageChannelVisibility.
     can_manage_channel_visibility: boolean
@@ -587,6 +602,10 @@ export interface ChannelPageProps extends SharedProps {
     // server-side when a kick/ban is actually attempted).
     can_manage_members: boolean
     can_ban_members: boolean
+    // Gate::allows('update'/'delete', $room) — RoomPolicy: ManageRoom, and owner-only.
+    // Each gates a section of RoomSettingsPanel.
+    can_manage_room: boolean
+    can_delete_room: boolean
 }
 
 export interface DMPageProps extends SharedProps {
@@ -597,7 +616,7 @@ export interface DMPageProps extends SharedProps {
 }
 
 // Which panel Channels/Show's <main> is currently showing — 'channel' is the
-// normal channel content; the other three are ChannelSidebar-triggered panels
+// normal channel content; the others are ChannelSidebar-triggered panels
 // that render in place of it (see docs/capabilities-and-channel-types.md).
 // Not persisted across navigation: Inertia's default preserveState:false
 // remounts Channels/Show on every channel switch, resetting this for free.
@@ -606,3 +625,4 @@ export type MainView =
     | { type: 'roles' }
     | { type: 'create-channel' }
     | { type: 'invite' }
+    | { type: 'room-settings' }

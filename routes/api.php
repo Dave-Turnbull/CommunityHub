@@ -8,8 +8,10 @@ use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\NotificationPreferenceController;
 use App\Http\Controllers\Api\ReactionController;
+use App\Http\Controllers\Api\ReadMarkerController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\RoleRoomCeilingController;
+use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\RoomInviteController;
 use App\Http\Controllers\Api\RoomMemberController;
 use App\Http\Controllers\Api\ServerInviteController;
@@ -32,11 +34,21 @@ Route::middleware('auth')->group(function () {
     Route::post('/channels/{channel}/focus', [ChannelFocusController::class, 'focus']);
     Route::post('/channels/{channel}/blur',  [ChannelFocusController::class, 'blur']);
 
+    // Read markers — see App\Services\ReadMarkerService, docs/unread-counts.md
+    Route::post('/channels/{channel}/read',         [ReadMarkerController::class, 'channel']);
+    Route::post('/conversations/{conversation}/read', [ReadMarkerController::class, 'conversation']);
+
     // Channel CRUD — gated by ChannelPolicy (manage_channels permission), see PermissionChecker
     Route::post('/rooms/{room}/channels',           [ChannelController::class, 'store']);
     Route::patch('/channels/{channel}',              [ChannelController::class, 'update']);
     Route::delete('/channels/{channel}',             [ChannelController::class, 'destroy']);
     Route::patch('/rooms/{room}/channels/reorder',  [ChannelController::class, 'reorder']);
+
+    // Room settings — edit (ManageRoom) / delete (owner only), gated by RoomPolicy; leave is any member
+    // but the owner (RoomMembershipService::leave). See docs/roles-and-permissions.md's "Room settings".
+    Route::patch('/rooms/{room}',        [RoomController::class, 'update']);
+    Route::delete('/rooms/{room}',       [RoomController::class, 'destroy']);
+    Route::post('/rooms/{room}/leave',   [RoomController::class, 'leave']);
 
     // Roles — gated by RolePolicy (manage_roles permission + hierarchy, see PermissionChecker/Role::outranks)
     Route::get('/rooms/{room}/roles',                        [RoleController::class, 'index']);
@@ -71,6 +83,7 @@ Route::middleware('auth')->group(function () {
 
     // Room membership — kick/ban, gated by RoomMemberPolicy (see docs/roles-and-permissions.md).
     Route::delete('/rooms/{room}/members/{user}',    [RoomMemberController::class, 'destroy']);
+    Route::get('/rooms/{room}/bans',                 [RoomMemberController::class, 'bans']);
     Route::post('/rooms/{room}/bans/{user}',         [RoomMemberController::class, 'ban']);
     Route::delete('/rooms/{room}/bans/{user}',       [RoomMemberController::class, 'unban']);
 

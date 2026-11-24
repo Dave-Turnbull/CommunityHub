@@ -47,11 +47,7 @@ class ReactionController extends Controller
 
     private function authorizeAccess(Message $message, User $user): void
     {
-        $allowed = $message->channel_id
-            ? $message->channel->room->hasMember($user->id)
-            : $message->conversation->hasParticipant($user->id);
-
-        abort_unless($allowed, 403);
+        abort_unless($message->isVisibleTo($user), 403);
 
         // Previously no Permission::* check at all, only membership above —
         // mirrors TextMessageService::authorizeSend's Comment check exactly
@@ -70,9 +66,10 @@ class ReactionController extends Controller
     {
         $summary = $message->fresh()->reactionSummary($userId);
 
-        [$type, $id] = $message->channel_id
-            ? ['channel', $message->channel_id]
-            : ['conversation', $message->conversation_id];
+        $scopeEntity = $message->scopeEntity();
+        [$type, $id] = $scopeEntity instanceof Channel
+            ? ['channel', $scopeEntity->id]
+            : ['conversation', $scopeEntity->id];
 
         broadcast(new ReactionChanged($message->id, $summary, $type, $id))->toOthers();
 

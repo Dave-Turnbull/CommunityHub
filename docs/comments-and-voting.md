@@ -241,6 +241,11 @@ root's physical channel to subscribe on, since there is no `message.{id}` channe
 join. `CommentThread`/`ForumChannelContent`'s `PostDetail` are the two places that
 thread it through.
 
+Reactions on a comment (`POST`/`DELETE /api/messages/{comment}/reactions`) authorize
+through `Message::isVisibleTo()` and `Permission::React` against the root's scope, and
+`ReactionChanged` is broadcast with the root's `channel`/`conversation` scope (not
+`'message'`, unlike the events above), since its payload carries no `scope_type`.
+
 ## Frontend
 
 - `components/chat/MessageInput.tsx` is reused as-is for every composer in this

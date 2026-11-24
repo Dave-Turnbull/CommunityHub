@@ -83,6 +83,11 @@ docker compose exec vite npx tsc --noEmit     # typecheck the frontend
 
 App: http://localhost:8000 · Vite: :5173 · Reverb: :8080 · Postgres: :5432 · Redis: :6379
 
+Bare `docker compose` here targets the dev `docker-compose.yml` only because `.env` sets
+`COMPOSE_FILE=docker-compose.yml`; without it Compose prefers the production `compose.yaml`
+and fails on `DOMAIN` (trap #54). A fresh clone has no `.env` yet — `cp .env.example .env`
+before the first `up`.
+
 DB boots **empty by design**. Seed only when asked. Seeded logins:
 `dave@example.com` / `password`, `bove@example.com` / `password`, `peve@example.com` / `password`.
 
@@ -136,7 +141,10 @@ app/
                                redirect/callback/showLinkAccount/linkAccount — the
                                optional OAuth login method, gated per-request by
                                config('services.authentik.enabled'), see
-                               docs/auth-and-sso.md
+                               docs/auth-and-sso.md; PasswordResetController is
+                               showForgot/sendLink/showReset/reset — the guest
+                               forgot/reset-password flow, see docs/auth-and-sso.md's
+                               "Password reset and change"
     Web/Concerns/              AcceptsPendingRoomInvite — the pending-room-invite
                                completion step shared by AuthController and
                                AuthentikController (both can be the last step of a
@@ -144,7 +152,9 @@ app/
     Api/                      JSON controllers (axios targets), thin translators over
                                app/Services/ — see docs/service-layer.md.
                                ChannelFocusController is the focus/blur heartbeat
-                               endpoint (see docs/notifications.md); ConversationController
+                               endpoint (see docs/notifications.md); ReadMarkerController
+                               is channel/conversation mark-read (see docs/unread-counts.md);
+                               ConversationController
                                (distinct from Web\ConversationController) handles
                                candidates/resolve/store/addParticipants (see docs/
                                conversations-and-invites.md); VoiceIceServersController/
@@ -169,8 +179,14 @@ app/
                                by RolePolicy::manageCeiling (see docs/
                                roles-and-permissions.md's "Room permission ceilings");
                                RoomMemberController is
-                               destroy/ban/unban — kick/ban a room member (see docs/
+                               destroy/ban/bans/unban — kick/ban a room member, bans lists
+                               a room's bans (see docs/
                                roles-and-permissions.md's "Kick and ban");
+                               RoomController (distinct from Web\RoomController) is
+                               update/destroy/leave — rename/re-icon (ManageRoom), delete
+                               (owner only), leave (any non-owner member), see docs/
+                               roles-and-permissions.md's "Room settings: edit, leave,
+                               delete";
                                ThemePreferenceController is
                                show/update for the Appearance panel's preset + per-variable
                                overrides (see docs/theming.md); InstanceSettingsController
@@ -186,7 +202,8 @@ app/
                                ServerInvitePolicy/Permission::InviteServer
     Controller.php            empty abstract base — Laravel ships none by default, keep it
   Http/Middleware/
-    HandleInertiaRequests.php shares auth.user, rooms, conversations,
+    HandleInertiaRequests.php shares auth.user, rooms (with has_unread), conversations
+                               (with unread_count — docs/unread-counts.md),
                                recentCustomStatuses (see docs/status.md),
                                registrationPaths (see docs/conversations-and-
                                invites.md's "Server invites"), flash
@@ -196,7 +213,7 @@ app/
                                rather than baked into route registration —
                                always on the authenticated route group in
                                routes/web.php; see config/verification.php
-  Mail/                       Mailable classes (RoomInviteMail, ServerInviteMail),
+  Mail/                       Mailable classes (RoomInviteMail, ServerInviteMail, PasswordResetMail),
                                ShouldQueue — sent via the `worker` container, Mailpit
                                catches them in dev
   Models/                     all UUID-keyed (HasUuids); Notification is the exception to
@@ -210,7 +227,9 @@ app/
                                only enforced when EnsureEmailIsVerifiedIfRequired's runtime
                                config check is on, see config/verification.php.
                                NotificationPreference/VoiceDevicePreference — see docs/
-                               notifications.md and docs/voice.md; Role/RolePermission/
+                               notifications.md and docs/voice.md; ReadMarker (per-user
+                               last-read time per channel/conversation) — see docs/
+                               unread-counts.md; Role/RolePermission/
                                RoleAssignment, ChannelRoleVisibility, RoomBan,
                                RoleRoomPermissionCeiling/RoleRoomChannelCategoryCeiling
                                (a global role's room-permission ceiling),
@@ -236,7 +255,9 @@ app/
                                auth-and-sso.md
   Policies/                   authorization seams beyond simple membership checks —
                                see docs/roles-and-permissions.md and docs/
-                               conversations-and-invites.md. RoomMemberPolicy backs
+                               conversations-and-invites.md. RoomPolicy::update/delete
+                               gate room edit (ManageRoom) and delete (owner only), see
+                               docs/roles-and-permissions.md; RoomMemberPolicy backs
                                RoomMember (Laravel's convention-based auto-discovery
                                maps the RoomMember model to it) — kick/ban, a different
                                hierarchy comparison than RolePolicy's, see docs/
@@ -273,9 +294,11 @@ app/
                                Not the same thing as Support/Capabilities' Feature — a
                                Feature declares what a capability *is*, a Service is
                                where the operation actually lives and gets authorized.
-                               RoomMembershipService is kick/ban + the owner-transfer
+                               RoomMembershipService is kick/ban/leave + the owner-transfer
                                flow when the target is a room's Owner (see docs/
-                               roles-and-permissions.md); VoteService — see docs/
+                               roles-and-permissions.md); RoomService is room edit/delete
+                               (delete also clears attachment files and room-keyed
+                               notifications the DB can't cascade); VoteService — see docs/
                                comments-and-voting.md; DefaultRoomService — every default-room
                                enrolment path (account creation, email verification, the
                                bulk job) plus the post-signup landing path, see docs/
@@ -284,7 +307,9 @@ app/
                                token validation for account-creation invites, see docs/
                                conversations-and-invites.md's "Server invites";
                                AuthentikLoginService — OAuth identity resolution
-                               (linked/linkable/provision), see docs/auth-and-sso.md
+                               (linked/linkable/provision), see docs/auth-and-sso.md;
+                               ReadMarkerService — mark-read + set-based unread counts
+                               (conversations, channels, rooms), see docs/unread-counts.md
   Support/                    ChannelFocus (see docs/notifications.md); Permission/
                                PermissionChecker/PermissionCeiling (the last is the
                                grant-time "can only grant what you hold" primitive, room
@@ -336,7 +361,8 @@ resources/
     app.tsx                   Inertia bootstrap + QueryClientProvider; also owns the
                                one global presence subscription (see trap #38) —
                                keyed off router's 'navigate' event, not any page
-    pages/                    one file per Inertia page (Auth, Channels, DM, Rooms,
+    pages/                    one file per Inertia page (Auth — Login, Register,
+                               ForgotPassword, ResetPassword, ..., Channels, DM, Rooms,
                                Settings, Invite — the invite-accept landing page).
                                Room role management has no page of its own — it's
                                RoomRolesPanel.tsx, one of Channels/Show's inline
@@ -400,16 +426,23 @@ resources/
                                indicators");
                                ForumChannelContent (the `forum` channel type's post
                                list + detail view) — see docs/comments-and-voting.md
-      layout/                 RoomRail, ChannelSidebar (the "🛡 Roles"/"+ Add
+      layout/                 RoomRail (unread dot from a room's `has_unread`), ChannelSidebar
+                               (per-row unread badge from `unread_count` — see docs/
+                               unread-counts.md; the "🛡 Roles"/"+ Add
                                channel"/invite-people affordances don't open modals —
                                they call back up to Channels/Show, which swaps its
                                `mainView` state and renders the matching panel in place
                                of the channel content, showing that affordance as
                                "active" the same way an active channel row is — see
-                               docs/capabilities-and-channel-types.md), DMSidebar,
+                               docs/capabilities-and-channel-types.md; when
+                               `canManageChannels`, every channel row of any type is
+                               wrapped with ChannelRowMenu — rename/move/delete, see that
+                               doc's "Renaming, reordering, and deleting"), DMSidebar (unread_count badge),
                                MemberList (renders a per-member kick/ban dropdown when
                                roomId + canManageMembers/canBanMembers are passed, e.g.
-                               from Channels/Show — see docs/roles-and-permissions.md),
+                               from Channels/Show, plus, when canBanMembers, a collapsible
+                               self-fetching "Banned" section with per-row Unban — see
+                               docs/roles-and-permissions.md),
                                ChannelPermissionsPanel (visibility — who sees this
                                channel — and, filtered to what the channel's type
                                actually supports, per-role curated permission overrides,
@@ -426,7 +459,10 @@ resources/
                                UserStatusPopover (the popup itself: status switcher,
                                custom status color+text+save, recent statuses,
                                Settings/Logout — see docs/status.md), InvitePanel,
-                               CreateChannelPanel — the latter two render inline in
+                               CreateChannelPanel, RoomSettingsPanel (name/icon edit,
+                               leave, delete — each section gated by can_manage_room/
+                               can_delete_room/ownership, opened by ChannelSidebar's ⚙
+                               button, shown to every member) — these render inline in
                                Channels/Show's main pane (see `mainView` above), not as
                                centered modals
       roles/                  RoleCard — one role's permission checklist + member
@@ -511,7 +547,9 @@ resources/
     hooks/                    useChat (one scope's message window: loadOlder/
                                loadNewer/jumpToPresent/commitSent — see docs/
                                messages-and-pagination.md), useAutoScroll, useNotifications,
-                               useChannelFocus (see docs/notifications.md),
+                               useChannelFocus (see docs/notifications.md), useMarkRead
+                               (best-effort mark-read while a page is open — see docs/
+                               unread-counts.md),
                                useVoiceChannel (see docs/voice.md)
     services/                 api.ts (axios — the only place a component may call axios
                                directly), channelTypes.tsx (frontend channel-type
@@ -557,11 +595,15 @@ routes/
                                reachable regardless of the flag. /auth/authentik/
                                redirect|callback and /auth/link-account are always
                                registered too — see docs/auth-and-sso.md for why
-                               that gate lives in the controller, not here
+                               that gate lives in the controller, not here.
+                               /forgot-password and /reset-password are guest-only
+                               (PUT /settings/password is the logged-in change form)
   api.php                     /api/* under auth (session), axios targets, including
                                /settings/roles (global role list/store/reorder, self-
                                fetched by Settings' Roles tab), /rooms/{room}/
                                members|bans (kick/ban — see docs/roles-and-permissions.md),
+                               PATCH/DELETE /rooms/{room} + POST /rooms/{room}/leave (room
+                               settings — same doc),
                                /settings/instance (signup-path toggles, self-fetched by
                                Settings' Server tab; plus /settings/instance/rooms and
                                /settings/instance/default-room for the default room) and /server-invites (list/create/revoke —
@@ -761,8 +803,11 @@ assuming something is undocumented.
 **Backend — PHPUnit, no Pest.** `phpunit.xml` points every test run at an
 in-memory SQLite DB (`DB_CONNECTION=sqlite`, `DB_DATABASE=:memory:`) with
 `BROADCAST_CONNECTION=null`, `QUEUE_CONNECTION=sync`, `SESSION_DRIVER=array`,
-`CACHE_STORE=file` — the suite never touches the dev Postgres/Redis data and
-needs nothing running beyond the `app` container.
+`CACHE_STORE=array` — the suite never touches the dev Postgres/Redis data and
+needs nothing running beyond the `app` container. The cache store is in-memory on
+purpose: route throttles (`/register` is 3/min) count in the cache, so a store that
+outlives the process makes back-to-back or concurrent suite runs trip rate limits in
+unrelated tests.
 - Every domain model has a matching factory in `database/factories/` and uses
   `HasFactory`. Add both together for any new model.
 - Feature tests use `RefreshDatabase` and go through the real HTTP kernel
@@ -823,7 +868,7 @@ of proving a change works and needs nothing installed:
 
 ## Traps already hit — do NOT reintroduce
 
-Full write-ups (52 of them) live in [docs/traps.md](docs/traps.md), grouped by
+Full write-ups (53 of them) live in [docs/traps.md](docs/traps.md), grouped by
 subsystem, with the original numbering preserved for old references. The
 short version, by group — read the full entry before touching adjacent code:
 
@@ -836,7 +881,9 @@ short version, by group — read the full entry before touching adjacent code:
   `client_max_body_size` (1 MB) silently 413-ing uploads php.ini/Laravel would
   otherwise allow, and `app_storage` needing to be mounted into `nginx` too
   (not just `app`/`worker`/`reverb`) or every uploaded file 404s — which looks
-  exactly like a broken `<img>`/`<video>` frontend bug, not an infra one.
+  exactly like a broken `<img>`/`<video>` frontend bug, not an infra one. Also: a bare
+  `docker compose` resolves to the production `compose.yaml` (failing on `DOMAIN`)
+  unless `.env` sets `COMPOSE_FILE=docker-compose.yml`.
 - **Model/table naming** — `CustomEmoji`'s pluralizer collision,
   `user_notifications` vs. Laravel's reserved `notifications` shape,
   `UserOAuthIdentity` → `user_oauth_identities` (the pluralizer mangles "OAuth" into
@@ -1128,7 +1175,10 @@ mechanism this app doesn't have yet) and deserves its own explicit go-ahead.
 
 ## Deploying behind a reverse proxy
 
-Two separate compose files, not one file for both jobs:
+Two separate compose files, not one file for both jobs. Both sit in the repo root and
+Compose prefers `compose.yaml`, so dev relies on `COMPOSE_FILE=docker-compose.yml` in
+`.env`/`.env.example`; a production git checkout has no `.env`, so it gets `compose.yaml`
+(see trap #54):
 
 - **`docker-compose.yml`** — local dev. Bind-mounts the repo (`.:/var/www/html`)
   into `app`/`nginx`/`reverb`/`worker`, runs a `vite` dev-server container for
@@ -1236,4 +1286,7 @@ from the R2 `AWS_*` vars — see trap #19) + `MAIL_FROM_ADDRESS`/`MAIL_FROM_NAME
 `coturn` docker-compose service's `command:` args, via compose's own `.env`
 substitution, separate from Laravel's dotenv reading the same file) +
 `TURN_PUBLIC_HOST` (the browser-facing value, `localhost` in dev, read by PHP to
-build the ICE servers JSON response — **no** `VITE_TURN_*` pair exists, see trap #31).
+build the ICE servers JSON response — **no** `VITE_TURN_*` pair exists, see trap #31),
+`COMPOSE_FILE` (`docker-compose.yml` in `.env`/`.env.example` — read by Docker Compose
+itself, not Laravel; makes bare `docker compose` use the dev file instead of the
+production `compose.yaml`, see trap #54).

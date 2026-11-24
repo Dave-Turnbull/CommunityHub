@@ -9,10 +9,11 @@ use App\Models\RoomBan;
 use App\Models\RoomMember;
 use App\Models\User;
 use App\Policies\RoomMemberPolicy;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * Kick/ban a room member, per the service-layer convention (docs/
+ * Kick/ban/leave a room member, per the service-layer convention (docs/
  * service-layer.md): authorization first (RoomMemberPolicy, via Gate), then
  * the operation. Both actions share the same "removing the room's Owner"
  * consequence — see removeMembership()'s owner-transfer handling.
@@ -40,11 +41,36 @@ class RoomMembershipService
         );
     }
 
+    /**
+     * Removes exactly what a kick removes (membership + this room's role
+     * assignments) and nothing else — no ban, so the user can rejoin via the
+     * invite link/code. A room's Owner can't leave: ownership has no
+     * standalone transfer path, so the room has to be deleted instead.
+     */
+    public function leave(Room $room, User $user): void
+    {
+        abort_unless($room->hasMember($user->id), 403, 'You are not a member of this room.');
+        abort_if($room->owner_id === $user->id, 422, 'Transfer ownership or delete the room first.');
+
+        $this->detach($room, $user);
+    }
+
     public function unban(Room $room, User $actor, User $target): void
     {
         Gate::authorize('ban', [RoomMember::class, $room, $target]);
 
         RoomBan::where('room_id', $room->id)->where('user_id', $target->id)->delete();
+    }
+
+    /** @return Collection<int, RoomBan> */
+    public function bans(Room $room, User $actor): Collection
+    {
+        Gate::authorize('viewBans', [RoomMember::class, $room]);
+
+        return RoomBan::where('room_id', $room->id)
+            ->with(['user:id,username,display_name,avatar_url', 'bannedBy:id,username,display_name'])
+            ->latest()
+            ->get();
     }
 
     /**
@@ -74,7 +100,12 @@ class RoomMembershipService
             RoleAssignment::firstOrCreate(['role_id' => $ownerRole->id, 'user_id' => $actor->id]);
         }
 
-        RoleAssignment::whereIn('role_id', $room->roles()->pluck('id'))->where('user_id', $target->id)->delete();
-        RoomMember::where('room_id', $room->id)->where('user_id', $target->id)->delete();
+        $this->detach($room, $target);
+    }
+
+    private function detach(Room $room, User $user): void
+    {
+        RoleAssignment::whereIn('role_id', $room->roles()->pluck('id'))->where('user_id', $user->id)->delete();
+        RoomMember::where('room_id', $room->id)->where('user_id', $user->id)->delete();
     }
 }

@@ -17,8 +17,12 @@ vi.mock('@inertiajs/react', () => ({
             data,
             setData: (key: string, value: unknown) => setDataState((d) => ({ ...d, [key]: value })),
             patch: vi.fn(),
+            put: vi.fn(),
+            reset: vi.fn(),
             processing: false,
             isDirty: true,
+            recentlySuccessful: false,
+            errors: {},
         }
     },
 }))
@@ -45,8 +49,8 @@ const user: User = {
 }
 
 const props = (
-    overrides: { can_manage_global_roles?: boolean; can_manage_instance_settings?: boolean } = {}
-): SharedProps & { user: User; can_manage_global_roles: boolean; can_manage_instance_settings: boolean } => ({
+    overrides: { can_manage_global_roles?: boolean; can_manage_instance_settings?: boolean; has_password?: boolean } = {}
+): SharedProps & { user: User; can_manage_global_roles: boolean; can_manage_instance_settings: boolean; has_password: boolean } => ({
     appName: 'CommunityHub',
     maxUploadSizeBytes: 100 * 1024 * 1024,
     auth: { user },
@@ -59,6 +63,7 @@ const props = (
     user,
     can_manage_global_roles: false,
     can_manage_instance_settings: false,
+    has_password: true,
     ...overrides,
 })
 
@@ -111,5 +116,18 @@ describe('Settings/Index', () => {
         render(<SettingsIndex {...props({ can_manage_instance_settings: true })} />)
 
         expect(screen.getByRole('tab', { name: 'Server' })).toBeInTheDocument()
+    })
+
+    it('renders the Password section in the Profile tab', () => {
+        render(<SettingsIndex {...props()} />)
+
+        expect(screen.getByLabelText('Current password')).toBeInTheDocument()
+    })
+
+    it('shows the forgot-password note instead of a form when the account has no password', () => {
+        render(<SettingsIndex {...props({ has_password: false })} />)
+
+        expect(screen.queryByLabelText('Current password')).not.toBeInTheDocument()
+        expect(screen.getByText(/Forgot password\?/)).toBeInTheDocument()
     })
 })

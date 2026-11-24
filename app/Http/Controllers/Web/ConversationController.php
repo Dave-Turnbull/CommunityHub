@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
+use App\Services\ReadMarkerService;
 use App\Services\TextMessageService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -17,13 +18,15 @@ class ConversationController extends Controller
         return Inertia::render('DM/Index');
     }
 
-    public function show(Request $request, Conversation $conversation): Response
+    public function show(Request $request, Conversation $conversation, ReadMarkerService $readMarkers): Response
     {
         $user = $request->user();
 
         abort_unless($conversation->hasParticipant($user->id), 403);
 
         $conversation->load('participants.user:id,username,display_name,avatar_url,status');
+
+        $readMarkers->markConversationRead($conversation, $user);
 
         // A "go to message" direct link redirects here with ?message= — see
         // ChannelController::show for the matching Channel-side comment.

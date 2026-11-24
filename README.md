@@ -26,7 +26,9 @@ option to start a voice call.
 Each room has its own roles, each with a colour, a rank, and a set of
 permissions (manage channels, manage roles, invite members, and more). Members
 can hold multiple roles at once. A role can only be edited by someone holding a
-higher-ranked role.
+higher-ranked role. Moderators can kick or ban members from a room, and server
+administrators can define instance-wide roles and manage signup options from
+Settings.
 
 **Voice chat**
 
@@ -90,8 +92,7 @@ Planned, not yet built:
   without a redeploy
 - **Mentions** (`@user`) with per-channel notification overrides
 - **Room-level notification defaults** set by room owners
-- **Instance-wide administration** — global roles and a proper admin surface
-- **More moderation tools** — kicks, bans, and message management
+- **Message moderation** — letting moderators delete or manage other members' messages
 
 ## Installation
 
@@ -101,6 +102,7 @@ Node, or Postgres.
 ```bash
 git clone https://github.com/Dave-Turnbull/CommunityHub.git
 cd CommunityHub
+cp .env.example .env
 docker compose up -d --build
 ```
 
@@ -136,7 +138,7 @@ Settings live in `.env`. The ones most worth knowing:
 | Variable | What it does |
 |---|---|
 | `APP_NAME` | The display name shown throughout the app. Change it and the whole instance rebrands. |
-| `MAIL_MAILER` | Which mailer sends invites. Defaults to `mailpit`, which keeps everything local — read it at http://localhost:8025. Set to `smtp`, `ses`, or `log` for anything else. |
+| `MAIL_MAILER` | Which mailer sends invites and password-reset emails. Defaults to `mailpit`, which keeps everything local — read it at http://localhost:8025. Set to `smtp`, `ses`, or `log` for anything else. |
 | `FILESYSTEM_DISK` | Where uploads go. `public` (local disk) by default; `r2` stores them in Cloudflare R2 via the `AWS_*` variables. |
 | `TURN_*` | Credentials and public host for the bundled TURN relay used by voice. |
 

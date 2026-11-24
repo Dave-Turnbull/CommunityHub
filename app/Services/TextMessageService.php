@@ -328,7 +328,7 @@ class TextMessageService
         $message->delete();
     }
 
-    private static function deleteAttachments(Message $message): void
+    public static function deleteAttachments(Message $message): void
     {
         // The message itself only soft-deletes (kept for reply-context/audit
         // purposes — see Message's SoftDeletes), but there's no reason to hang

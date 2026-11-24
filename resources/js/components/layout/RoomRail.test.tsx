@@ -59,4 +59,28 @@ describe('RoomRail', () => {
 
         expect(await screen.findByText('1')).toBeInTheDocument()
     })
+    it('shows an unread dot on a room with unread messages and not on others', async () => {
+        vi.mocked(api.fetchNotifications).mockResolvedValue([])
+        const withUnread: Room[] = [
+            { ...rooms[0], has_unread: true },
+            { id: 'room-2', name: 'Quiet', icon_url: null, owner_id: 'user-1', invite_code: 'def456', has_unread: false },
+        ]
+
+        render(<RoomRail rooms={withUnread} currentUserId="user-1" />)
+
+        await screen.findByText('C')
+        const dots = screen.getAllByLabelText('Unread messages')
+        expect(dots).toHaveLength(1)
+        expect(screen.getByText('C').closest('a')).toContainElement(dots[0])
+        expect(screen.getByText('Q').closest('a')).not.toContainElement(dots[0])
+    })
+
+    it('shows no unread dot when has_unread is absent', async () => {
+        vi.mocked(api.fetchNotifications).mockResolvedValue([])
+
+        render(<RoomRail rooms={rooms} currentUserId="user-1" />)
+
+        await screen.findByText('C')
+        expect(screen.queryByLabelText('Unread messages')).not.toBeInTheDocument()
+    })
 })

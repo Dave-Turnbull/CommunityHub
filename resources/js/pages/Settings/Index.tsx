@@ -7,6 +7,7 @@ import { AudioSettings } from '@/components/settings/AudioSettings'
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
 import { GlobalRolesSettings } from '@/components/settings/GlobalRolesSettings'
 import { RegistrationSettings } from '@/components/settings/RegistrationSettings'
+import { PasswordSettings } from '@/components/settings/PasswordSettings'
 import type { SharedProps, User } from '@/types'
 
 interface Props extends SharedProps {
@@ -18,9 +19,10 @@ interface Props extends SharedProps {
     // Gate::allows('manage', InstanceSetting::class) — gates the Server tab
     // (signup-path toggles). See InstanceSettingPolicy.
     can_manage_instance_settings: boolean
+    has_password: boolean
 }
 
-export default function SettingsIndex({ user, can_manage_global_roles, can_manage_instance_settings }: Props) {
+export default function SettingsIndex({ user, can_manage_global_roles, can_manage_instance_settings, has_password }: Props) {
     const { data, setData, patch, processing, isDirty } = useForm({
         display_name: user.display_name,
         bio:          user.bio ?? '',
@@ -118,6 +120,8 @@ export default function SettingsIndex({ user, can_manage_global_roles, can_manag
                                                 {processing ? 'Saving…' : 'Save Changes'}
                                             </button>
                                         </div>
+
+                                        <PasswordSettings hasPassword={has_password} />
                                     </>
                                 ),
                             },

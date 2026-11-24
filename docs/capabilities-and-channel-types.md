@@ -231,9 +231,9 @@ literals), but both paths seed `settings` from the type's `defaultSettings()`.
 
 ### Creation path, file by file
 
-1. `Web\ChannelController::show` computes `can_manage_channels` (`Gate::allows('create',
-   [Channel::class, $room])`) and passes it as an Inertia prop.
-2. `ChannelSidebar` only renders the "+" button when that prop is true (a UI
+1. `Web\ChannelController::show` computes `creatable_channel_types`
+   (`ChannelPolicy::creatableTypeKeys()`) and passes it as an Inertia prop.
+2. `ChannelSidebar` only renders the "+" button when that list is non-empty (a UI
    convenience — the same `Gate::authorize` re-runs server-side regardless). Clicking it
    calls back up to `Channels/Show`, which swaps its `mainView` state to render
    `CreateChannelPanel` in the main pane, in place of the channel content, and shows the
@@ -246,6 +246,33 @@ literals), but both paths seed `settings` from the type's `defaultSettings()`.
    `addChannel()` on the shared `useChannels` Zustand store, then switches `mainView`
    back to the channel) — no Inertia reload involved.
 6. Every other room member's tab picks up the change from the broadcast (below).
+
+### Renaming, reordering, and deleting
+
+With `canManageChannels` (the `can_manage_channels` Inertia prop, `Gate::allows('manage',
+$channel)` — `ChannelPolicy::manage`, the same ability `update`/`destroy`/`reorder`
+authorize against), `ChannelSidebar` wraps every channel row — the default link row and
+any type's `SidebarItem` alike — in a hover-revealed `ChannelRowMenu` (`⋯`, built on
+`ui/DropdownMenu`). It is deliberately a separate prop from `creatable_channel_types`: a
+per-category create grant can make that list non-empty without conferring `manage`.
+
+- **Rename** swaps the row for an inline input (Enter saves, Escape or blur cancels) and
+  calls `updateChannel`; the response replaces the channel in `useChannels`.
+- **Move up / Move down** swap the channel with its neighbor *within its type group* (the
+  sidebar groups by type) in the store's full channel list, send that whole id list to
+  `reorderChannels`, and on success write the list back to the store with `position`
+  renumbered. The menu omits Move up on a group's first channel and Move down on its last.
+  The reorder endpoint does not broadcast, so other clients see the new order only on
+  their next page load.
+- **Delete** asks `window.confirm`, calls `deleteChannel`, removes the channel from the
+  store, and — when it was the channel being viewed — `router.visit`s `/rooms/{id}`, which
+  redirects to the room's first visible text channel (or `/` when none remains; the
+  backend permits deleting a room's last channel).
+
+Failures surface as a single error line, cleared by the next action, at the top of the channel
+list (`describeApiError`). The acting client updates `useChannels` itself from each HTTP
+response because the Channel* broadcasts use `->toOthers()`. `Channels/Show` reads the
+viewed channel's name from the store so a rename updates its header too.
 
 ### Inline panels
 
@@ -284,9 +311,8 @@ still broadcasts to every room member's sidebar store (see
 
 `Api\ChannelController::store`/`update`/`destroy` each dispatch
 `ChannelCreated`/`ChannelUpdated`/`ChannelDeleted` (`app/Events/`) with `->toOthers()`.
-`ChannelUpdated`/`ChannelDeleted` broadcast even though no frontend UI currently
-triggers channel `update`/`destroy` — the backend endpoints are real and policy-gated,
-so the realtime propagation exists regardless of whether an edit/delete UI exists yet.
+`ChannelUpdated`/`ChannelDeleted` are triggered by the sidebar row menu (see "Renaming,
+reordering, and deleting").
 
 Frontend: `services/echo.ts`'s `subscribeRoomChannels(roomId)` joins `room.{roomId}` and
 dispatches all three events into `useChannels` (`stores/index.ts`, keyed by `roomId`,
