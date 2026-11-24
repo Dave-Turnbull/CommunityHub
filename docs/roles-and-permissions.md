@@ -59,10 +59,11 @@ see `docs/comments-and-voting.md`), `Vote` (`VoteService`), `SendMessages`
 ordinary posting previously had no `Permission::*` check at all, only membership +
 capability), `React` (`ReactionController` — closed the same class of gap), `CreateRoom`
 (`RoomPolicy::create`/`Web\RoomController` — room creation previously had no gate at
-all). `ManageRoom`/`ManageMessages`/`ManageEmojis`/`InviteServer` are declared for
-schema stability but are currently inert — `InviteServer` specifically has nothing to
-enforce until closed registration exists (see `CLAUDE.md`'s `## Planned work`);
-registration is fully open today.
+all), `InviteServer` (`ServerInvitePolicy`/`ServerInviteService` — creating, listing and
+revoking account-creation invites, see
+[conversations-and-invites.md](conversations-and-invites.md)'s "Server invites").
+`ManageRoom`/`ManageMessages`/`ManageEmojis` are declared for schema stability but are
+currently inert — nothing checks them.
 
 `InviteMembers` was split out of `ManageMembers` (which now means "kick" only) so a
 [room permission ceiling](#room-permission-ceilings) can grant invite rights without
