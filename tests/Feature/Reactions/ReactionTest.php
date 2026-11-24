@@ -174,4 +174,137 @@ class ReactionTest extends TestCase
 
         $response->assertOk();
     }
+
+    private function commentOn(Message $parent): Message
+    {
+        return Message::factory()->create([
+            'channel_id'        => null,
+            'parent_message_id' => $parent->id,
+            'root_message_id'   => $parent->parent_message_id ? $parent->root_message_id : $parent->id,
+            'depth'             => $parent->depth + 1,
+        ]);
+    }
+
+    public function test_a_member_can_react_to_and_unreact_from_a_comment(): void
+    {
+        Event::fake([ReactionChanged::class]);
+
+        $post = Message::factory()->create();
+        $comment = $this->commentOn($post);
+        $user = $this->member($post->channel->room);
+
+        $response = $this->actingAs($user)
+            ->postJson("/api/messages/{$comment->id}/reactions", ['emoji' => '👍']);
+
+        $response->assertOk();
+        $this->assertSame('👍', $response->json('0.emoji'));
+        $this->assertSame(1, $response->json('0.count'));
+        $this->assertTrue($response->json('0.reacted'));
+        $this->assertDatabaseHas('reactions', ['message_id' => $comment->id, 'user_id' => $user->id]);
+        $this->assertDatabaseMissing('reactions', ['message_id' => $post->id]);
+
+        Event::assertDispatched(
+            ReactionChanged::class,
+            fn (ReactionChanged $e) => $e->messageId === $comment->id
+                && $e->scopeType === 'channel'
+                && $e->scopeId === $post->channel_id
+        );
+
+        $this->actingAs($user)
+            ->deleteJson("/api/messages/{$comment->id}/reactions/" . urlencode('👍'))
+            ->assertOk()
+            ->assertJson([]);
+        $this->assertDatabaseCount('reactions', 0);
+    }
+
+    public function test_a_member_can_react_to_a_nested_comment(): void
+    {
+        $post = Message::factory()->create();
+        $nested = $this->commentOn($this->commentOn($post));
+        $user = $this->member($post->channel->room);
+
+        $this->actingAs($user)
+            ->postJson("/api/messages/{$nested->id}/reactions", ['emoji' => '🎉'])
+            ->assertOk()
+            ->assertJsonPath('0.emoji', '🎉');
+    }
+
+    public function test_a_participant_can_react_to_a_comment_in_a_conversation(): void
+    {
+        Event::fake([ReactionChanged::class]);
+
+        $post = Message::factory()->inConversation()->create();
+        $comment = $this->commentOn($post);
+        $user = $this->participant($post->conversation);
+
+        $this->actingAs($user)
+            ->postJson("/api/messages/{$comment->id}/reactions", ['emoji' => '👍'])
+            ->assertOk();
+
+        Event::assertDispatched(
+            ReactionChanged::class,
+            fn (ReactionChanged $e) => $e->scopeType === 'conversation' && $e->scopeId === $post->conversation_id
+        );
+    }
+
+    public function test_a_non_member_of_the_roots_room_cannot_react_to_or_unreact_from_a_comment(): void
+    {
+        $comment = $this->commentOn(Message::factory()->create());
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->postJson("/api/messages/{$comment->id}/reactions", ['emoji' => '👍'])
+            ->assertForbidden();
+        $this->actingAs($user)
+            ->deleteJson("/api/messages/{$comment->id}/reactions/" . urlencode('👍'))
+            ->assertForbidden();
+    }
+
+    public function test_a_member_without_the_react_permission_cannot_react_to_a_comment(): void
+    {
+        $post = Message::factory()->create();
+        $comment = $this->commentOn($post);
+        $room = $post->channel->room;
+        $user = $this->member($room);
+
+        \App\Models\RoleAssignment::where('user_id', $user->id)
+            ->whereHas('role', fn ($q) => $q->whereNull('room_id'))
+            ->delete();
+        $room->roles()->where('is_default', true)->firstOrFail()
+            ->rolePermissions()->where('permission', 'react')->delete();
+
+        $this->actingAs($user)
+            ->postJson("/api/messages/{$comment->id}/reactions", ['emoji' => '👍'])
+            ->assertForbidden();
+        $this->assertDatabaseCount('reactions', 0);
+    }
+
+    public function test_a_member_who_cannot_see_a_role_restricted_channel_cannot_react_in_it(): void
+    {
+        $post = Message::factory()->create();
+        $comment = $this->commentOn($post);
+        $room = $post->channel->room;
+        $user = $this->member($room);
+
+        $allowedRole = \App\Models\Role::factory()->for($room)->create();
+        \App\Models\ChannelRoleVisibility::create([
+            'channel_id' => $post->channel_id,
+            'role_id'    => $allowedRole->id,
+        ]);
+
+        foreach ([$post, $comment] as $message) {
+            $this->actingAs($user)
+                ->postJson("/api/messages/{$message->id}/reactions", ['emoji' => '👍'])
+                ->assertForbidden();
+            $this->actingAs($user)
+                ->deleteJson("/api/messages/{$message->id}/reactions/" . urlencode('👍'))
+                ->assertForbidden();
+        }
+
+        \App\Models\RoleAssignment::factory()->for($allowedRole)->for($user)->create();
+
+        $this->actingAs($user)
+            ->postJson("/api/messages/{$comment->id}/reactions", ['emoji' => '👍'])
+            ->assertOk();
+    }
 }
