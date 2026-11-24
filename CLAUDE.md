@@ -169,7 +169,8 @@ app/
                                by RolePolicy::manageCeiling (see docs/
                                roles-and-permissions.md's "Room permission ceilings");
                                RoomMemberController is
-                               destroy/ban/unban — kick/ban a room member (see docs/
+                               destroy/ban/bans/unban — kick/ban a room member, bans lists
+                               a room's bans (see docs/
                                roles-and-permissions.md's "Kick and ban");
                                ThemePreferenceController is
                                show/update for the Appearance panel's preset + per-variable
@@ -401,7 +402,9 @@ resources/
                                doc's "Renaming, reordering, and deleting"), DMSidebar,
                                MemberList (renders a per-member kick/ban dropdown when
                                roomId + canManageMembers/canBanMembers are passed, e.g.
-                               from Channels/Show — see docs/roles-and-permissions.md),
+                               from Channels/Show, plus, when canBanMembers, a collapsible
+                               self-fetching "Banned" section with per-row Unban — see
+                               docs/roles-and-permissions.md),
                                ChannelPermissionsPanel (visibility — who sees this
                                channel — and, filtered to what the channel's type
                                actually supports, per-role curated permission overrides,
