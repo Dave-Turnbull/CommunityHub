@@ -111,6 +111,35 @@ describe('echo service', () => {
         expect(useMessages.getState().messages['chan-1']).toEqual([])
     })
 
+    it('routes a comment MessageDeleted into its parent message scope, not the channel', async () => {
+        const { subscribe } = await import('@/services/echo')
+        const pageOf = (id: string) => ({
+            data: [{ id } as never], has_older: false, older_cursor: null, has_newer: false, newer_cursor: null,
+        })
+        useMessages.getState().setWindow('chan-1', pageOf('c-1'))
+        useMessages.getState().setWindow('post-1', pageOf('c-1'))
+        subscribe('chan-1', 'channel')
+
+        listeners['.MessageDeleted']({ message_id: 'c-1', scope_type: 'message', scope_id: 'post-1' })
+
+        expect(useMessages.getState().messages['post-1']).toEqual([])
+        expect(useMessages.getState().messages['chan-1']).toHaveLength(1)
+    })
+
+    it('swaps a comment for its tombstone on MessageUpdated', async () => {
+        const { subscribe } = await import('@/services/echo')
+        useMessages.getState().setWindow('post-1', {
+            data: [{ id: 'c-1', content: 'bye' } as never],
+            has_older: false, older_cursor: null, has_newer: false, newer_cursor: null,
+        })
+        subscribe('chan-1', 'channel')
+
+        const tombstone = { id: 'c-1', content: null, is_tombstoned: true }
+        listeners['.MessageUpdated']({ message: tombstone, scope_type: 'message', scope_id: 'post-1' })
+
+        expect(useMessages.getState().messages['post-1']).toEqual([tombstone])
+    })
+
     it('returns a cleanup function that leaves the channel', async () => {
         const { subscribe } = await import('@/services/echo')
 

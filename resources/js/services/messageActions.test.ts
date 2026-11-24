@@ -167,12 +167,35 @@ describe('messageActions', () => {
             const target = message('2')
             useMessages.getState().setWindow('chan-1', page([message('1'), target, message('3')]))
             await seedRun('chan-1', page([message('1'), target, message('3')]))
-            vi.mocked(api.deleteMessage).mockResolvedValue(undefined)
+            vi.mocked(api.deleteMessage).mockResolvedValue(null)
 
             await removeMessage('chan-1', target)
 
             expect(useMessages.getState().messages['chan-1'].map((m) => m.id)).toEqual(['1', '3'])
             expect((await readOlder('chan-1', '3', 5))?.data.map((m) => m.id)).toEqual(['1'])
+        })
+
+        it('swaps in the returned tombstone at the same position, store and cache', async () => {
+            const target = message('2')
+            const tombstone = { ...target, content: null, is_tombstoned: true, comment_count: 3 }
+            useMessages.getState().setWindow('chan-1', page([message('1'), target, message('3')]))
+            await seedRun('chan-1', page([message('1'), target, message('3')]))
+            vi.mocked(api.deleteMessage).mockResolvedValue(tombstone)
+
+            await removeMessage('chan-1', target)
+
+            expect(useMessages.getState().messages['chan-1']).toEqual([message('1'), tombstone, message('3')])
+            expect((await readOlder('chan-1', '3', 5))?.data).toEqual([message('1'), tombstone])
+        })
+
+        it('removes the row while the delete is still in flight', async () => {
+            const target = message('2')
+            useMessages.getState().setWindow('chan-1', page([message('1'), target]))
+            vi.mocked(api.deleteMessage).mockReturnValue(new Promise(() => {}))
+
+            removeMessage('chan-1', target).catch(() => {})
+
+            expect(useMessages.getState().messages['chan-1'].map((m) => m.id)).toEqual(['1'])
         })
 
         it('puts a rejected delete back in its original position', async () => {

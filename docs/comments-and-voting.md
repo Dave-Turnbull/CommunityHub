@@ -39,7 +39,8 @@ aggregate, not a text operation.
   message itself and any future `ChannelType` gets it for free.
 
 `Message::children()`/`parent()`(as `parentMessage()`)/`root()` are the three
-relations; `Message::scopeEntity(): Channel|Conversation|null` walks to `root` first
+relations (`root()` resolves a soft-deleted root, so a tombstoned post stays the scope
+its comments inherit); `Message::scopeEntity(): Channel|Conversation|null` walks to `root` first
 for a comment, then returns whichever of `channel`/`conversation` is set —
 `hasCapability()`, `isVisibleTo()`, `commentsEnabled()`, and `maxCommentDepth()` all
 delegate through it. `Message::logicalScope(): [scopeType, scopeId]`
@@ -52,9 +53,9 @@ delegate through it. `Message::logicalScope(): [scopeType, scopeId]`
 windowing, same cache. `GET`/`POST /api/messages/{message}/comments` are the routes;
 `Api\MessageController::indexComments`/`storeComment` are thin translators over the
 same service, same shape as the channel/conversation endpoints. Every message in a
-list also carries `comment_count` (`withCount('children as comment_count')` on the
-shared `hydratedQuery()`/`hydrate()` — a single indexed-column subquery, cheap even
-for a channel that never uses it) — the frontend's "💬 N comments" affordance reads
+list also carries `comment_count` (a `withCount` over `children` restricted to
+`listed()` rows, on the shared `hydratedQuery()`/`hydrate()` — a single indexed-column
+subquery, cheap even for a channel that never uses it) — the frontend's "💬 N comments" affordance reads
 it without a separate fetch.
 
 ## Nesting limit: `max_comment_depth`
@@ -139,13 +140,63 @@ separate collapse/expand toggle in the list itself).
 
 ## Deletion: tombstone by default, cascade opt-in
 
-Deleting a message with live children either **tombstones** it (soft-delete +
-`is_tombstoned = true`, children stay attached and readable — the `[deleted]`
-placeholder is a frontend rendering decision, `CommentThread` checks the flag) or, if
-the channel's `cascade_delete_comments` setting is `true`, cascades the soft-delete
-through every descendant (`TextMessageService::cascadeDelete`, recursive). A childless
-message keeps the plain soft-delete behavior unchanged. `cascade_delete_comments`
-defaults to `false` (tombstone) in `ForumChannelType::defaultSettings()`.
+Deleting a message that has comments either **tombstones** it or, if the channel's
+`cascade_delete_comments` setting is `true`, cascades the soft-delete through every
+descendant (`TextMessageService::cascadeDelete`, recursive). `cascade_delete_comments`
+defaults to `false` (tombstone) in `ForumChannelType::defaultSettings()`. A message with
+no comments is plainly soft-deleted and disappears. "Has comments" counts tombstoned
+comments too, so a message whose only comment is itself a tombstone is tombstoned rather
+than deleted — the live replies beneath that comment must not be orphaned.
+
+A **tombstone** is a message that is soft-deleted *and* has `is_tombstoned = true`. It
+stays in place as a `[deleted]` placeholder and everything beneath it keeps working:
+
+- **Listed.** `Message::scopeListed` is the one definition of "shown in a list": not
+  trashed, *or* `is_tombstoned`. It is applied to the channel/conversation message
+  window (all three cursor modes and the page-load seed), the forum post list including
+  the `top` sort, a message's comment list, `comment_count`, and the has-comments check
+  above. It is never a bare `withTrashed()` — a plain delete, and every descendant
+  removed by a cascade, stays excluded. Cascading past an existing tombstone clears its
+  flag so it stops being listed.
+- **Blanked in one place.** `Message::toArray()` withholds a tombstone's content:
+  `content`, `title`, `reply_to_id`/`reply_to` are null, `attachments` and `reactions`
+  are empty, `votes` is `{score: 0, mine: null}` (and a top-sort `vote_score` is 0).
+  Id, author, timestamps, `is_tombstoned`, `parent_message_id`, `depth` and
+  `comment_count` are kept. Every JSON response and broadcast payload serializes a
+  message through it, so no list path can leak. Attachments are also really deleted when
+  the message is deleted (see [attachments.md](attachments.md)).
+- **Comments keep working.** `root()` includes trashed rows, so `scopeEntity()`,
+  `isVisibleTo()`, `hasCapability()`, `commentsEnabled()` and `MessagePolicy::view`
+  resolve the same channel/conversation for a comment under a tombstone as under a live
+  root. Listing a tombstone's comments, listing a tombstoned comment's replies, and
+  replying to, voting on, editing and deleting a live comment beneath one all behave as
+  they would under a live root.
+- **Inert itself.** A tombstone cannot be edited, voted on, reacted to, replied to
+  directly, or deleted again: those routes bind `{message}`, which excludes soft-deleted
+  rows, so they answer `404`. Replying to a live descendant is unaffected.
+- **Reachable where needed.** `GET /api/messages/{listedMessage}/comments` and the
+  direct link `GET /messages/{listedMessage}` bind through `Route::bind('listedMessage')`
+  (`AppServiceProvider`), which resolves a tombstone as well as a live row. A link to a
+  tombstone or to a comment under one redirects to the root's scope like any other.
+- **Response and realtime.** `DELETE /api/messages/{message}` answers `{deleted: true}`
+  for a plain or cascade delete, and for a tombstoning delete answers `{deleted: true}`
+  merged with the blanked message (`is_tombstoned: true`) — the same payload broadcast
+  to everyone else as `MessageUpdated`, so other clients swap the row for the
+  placeholder in place. A plain or cascade delete broadcasts `MessageDeleted`. For a
+  comment, both events ride the root's `channel.{id}`/`conversation.{id}` and carry
+  `scope_type: 'message'`/`scope_id` (the parent), which `echo.ts` uses to apply them to
+  that thread's slice of the store. On the deleting client,
+  `services/messageActions.ts`'s `removeMessage` removes the row optimistically, then
+  re-inserts the returned tombstone (store and message cache) or keeps it removed.
+- **Lifetime.** A tombstone is never cleaned up: once its last descendant is deleted it
+  is still listed as `[deleted]`.
+
+Frontend: `MessageRow`, `ForumChannelContent` (post list row and post detail) and
+`CommentThread` render `DeletedPlaceholder` (muted italic `[deleted]`) in place of the
+body/title for an `is_tombstoned` message, and hide its edit/delete/react/vote/reply
+controls. Its comments toggle and thread stay; `CommentThread`'s `parentTombstoned` prop
+suppresses only that thread's own composer (the new comment would land directly under
+the tombstone), not the reply affordance on the live comments listed in it.
 
 ## Sorting: score+timeframe is a distinct, offset-paginated contract
 
@@ -225,8 +276,8 @@ thread it through.
   existing "go to message" direct-link resolver — see
   [messages-and-pagination.md](messages-and-pagination.md); a comment is never in a
   channel/conversation window, so that endpoint redirects a comment link to the comment's
-  *root* message in the root's scope — the link lands on the post, it does not open the
-  comment popout or scroll to the comment itself).
+  *root* message in the root's scope, a tombstoned root included — the link lands on the
+  post, it does not open the comment popout or scroll to the comment itself).
 
 ## The `message_and_comment` channel type
 
@@ -268,13 +319,16 @@ enforcement check plus a mute-this-message affordance in the UI.
 
 ## Testing
 
-`tests/Feature/Comments/` (nesting, gating, tombstone/cascade deletion, visibility,
-notifications, top-sort, `max_comment_depth` enforcement, `title`) and
+`tests/Feature/Comments/` (nesting, gating, cascade deletion, visibility,
+notifications, top-sort, `max_comment_depth` enforcement, `title`; `TombstoneTest` covers
+the whole tombstone contract above, as an ordinary room member) and
 `tests/Feature/Voting/` (cast/change/remove, score aggregation, capability/permission
 gating) — see those directories for the concrete scenarios. Frontend:
 `useChat.test.ts` covers the `'message'` scope path, `MessageInput.test.tsx` covers
 the `'message'` scopeType branch and `showTitleField`, `CommentThread.test.tsx`
-covers the `maxDepth` gating, `VoteControl.test.tsx` covers the
+covers the `maxDepth` gating and tombstoned comments, `MessageRow.test.tsx`/
+`ForumChannelContent.test.tsx` cover the tombstone placeholder at their render sites,
+`VoteControl.test.tsx` covers the
 optimistic/reconcile/restore cycle, `NotificationFeed.test.tsx` covers the
 `comment_reply` case.
 

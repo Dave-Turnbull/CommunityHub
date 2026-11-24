@@ -48,6 +48,13 @@ in. A *soft-deleted* message still works as a cursor (`Message::withTrashed()`),
 because a cursor is whichever message sits at the edge of the client's window and
 that message may since have been deleted.
 
+A window contains every row `Message::scopeListed` admits: live messages plus
+*tombstones* (a deleted message that still has comments, kept as a blanked placeholder
+— see [comments-and-voting.md](comments-and-voting.md)'s "Deletion"). A tombstone keeps
+its original `created_at` and id, so it takes part in all three cursor modes and in
+`has_older`/`has_newer` exactly like a live row; plainly deleted messages are never in
+a window.
+
 Every page reports both of its edges:
 
 ```json
@@ -163,9 +170,10 @@ messages fetched independently on each side (`pageAround()`). Unlike
 before/after there's no single edge to walk away from, so both sides are
 filled separately; `describeWindow()`'s `has_older`/`has_newer` EXISTS checks
 are unchanged, since they only ever look at the resulting window's first/last
-row. A target that doesn't resolve (wrong id, or soft-deleted — `pageAround`
+row. A target that doesn't resolve (wrong id, or plainly soft-deleted — `pageAround`
 deliberately does *not* use `withTrashed()`, since the point is to display an
-actual message, not just resolve a position) is a `422`, the same "unknown
+actual message, not just resolve a position; a tombstone does resolve, see below)
+is a `422`, the same "unknown
 cursor" contract before/after already have.
 
 **Direct links.** `Web\MessageController::show` (`GET /messages/{message}`) is
@@ -176,17 +184,17 @@ would (`Channel::isVisibleTo()` + room membership, or
 `?message={id}`. `ChannelController::show`/`ConversationController::show` read
 that query param and pass it as `around` to `TextMessageService::list()`
 instead of fetching the tail, plus forward it as the `highlight_message_id`
-Inertia prop. A soft-deleted message 404s at the route-model-binding step,
-before any of this runs — nothing to link to.
+Inertia prop. The route binds `{listedMessage}`, which resolves live messages and
+tombstones (both are in the window); a plainly deleted message 404s at the
+route-model-binding step, before any of this runs — nothing to link to.
 
 A comment (`parent_message_id` set, see
 [comments-and-voting.md](comments-and-voting.md)) has no channel/conversation of
 its own and is never in a window, so its link resolves through `root_message_id`
 and redirects to the *root* message's scope with `?message={root id}`; nested
 comments share one root. Authorization is `MessagePolicy::view` on the requested
-comment. If the root is tombstoned or deleted it is in no window either, so the
-link 404s — after a `view` check on the root's scope, so a non-member still gets
-403 rather than learning the thread exists.
+comment. A tombstoned root is still in its window, so a comment under one redirects to
+it like any other; a non-member gets 403 either way.
 
 **On the frontend**, `useChat`'s `jumpToMessage(id)` is the network half: a
 no-op if `id` is already in the current window (the common case for a reply —
@@ -274,10 +282,12 @@ put the previous state back and rethrow.
 | --- | --- | --- | --- |
 | `toggleReaction` | `predictReactions` (count ±1, `reacted` flipped, pill added/dropped) | the summary both reaction endpoints return | previous summary |
 | `saveEdit` | `{ content, is_edited: true }` | the updated message | the previous message |
-| `removeMessage` | `remove` | — | `insert` (see below) |
+| `removeMessage` | `remove` | the tombstone `deleteMessage` returns, `insert`ed back in place and patched into the cache — or nothing, for a real delete | `insert` (see below) |
 
 `removeMessage`'s rollback is why the store has `insert` alongside `add`: a message
-that was deleted mid-window has to go back *where it was*, and `add` appends. Both
+that was deleted mid-window has to go back *where it was*, and `add` appends. The same
+`insert` places a returned tombstone (a deleted message that still has comments, see
+[comments-and-voting.md](comments-and-voting.md)'s "Deletion") at its original position. Both
 `addReaction` and `removeReaction` in `services/api.ts` return
 `ReactionSummary[]` — the reconcile step depends on it, and the response body was
 previously discarded.
@@ -339,7 +349,7 @@ docker compose exec app php artisan db:seed --class=DemoConversationSeeder --for
 | `tests/Feature/Messages/MessageWindowTest.php` | the `after` direction, both window flags, one-direction-only, unknown/deleted cursors |
 | `tests/Feature/Messages/ChannelMessageTest.php` | backwards paging, membership |
 | `tests/Feature/Messages/MessageAroundCursorTest.php` | the `around` cursor's two-sided window, unknown/deleted targets, one-cursor-only, channel + conversation |
-| `tests/Feature/Messages/MessageLinkTest.php` | `Web\MessageController::show`'s permission checks and redirect shape, deleted-message 404, the receiving page's `highlight_message_id`/windowed seed |
+| `tests/Feature/Messages/MessageLinkTest.php` | `Web\MessageController::show`'s permission checks and redirect shape, plainly-deleted-message 404, tombstone links, the receiving page's `highlight_message_id`/windowed seed |
 | `stores/index.test.ts` | trimming from each end, the cursors it records, `add`'s gap rule, `insert` ordering |
 | `stores/index.test.ts` (`useTyping`), `services/echo.test.ts`, `components/chat/TypingIndicator.test.tsx`, `TextChannelContent.test.tsx`, `MessageInput.test.tsx` | typing expiry/clear/prune, the whisper listener and sender, the three display strings, name resolution, the 3 s send throttle |
 | `hooks/useChat.test.ts` | both directions, cache hits, `jumpToPresent`, `commitSent` while detached, `jumpToMessage` (in-window no-op vs. fetch) |

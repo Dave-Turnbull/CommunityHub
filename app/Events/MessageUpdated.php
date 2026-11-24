@@ -3,6 +3,7 @@
 namespace App\Events;
 
 use App\Models\Message;
+use App\Models\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -20,8 +21,19 @@ class MessageUpdated implements ShouldBroadcast
         public string $scopeId,
     ) {}
 
+    /** A comment (scopeType 'message') rides its root's channel.{id}/conversation.{id}, same as MessageSent. */
     public function broadcastOn(): array
     {
+        if ($this->scopeType === 'message') {
+            $root = $this->message->scopeEntity();
+
+            return [
+                $root instanceof Channel
+                    ? new PresenceChannel("channel.{$root->id}")
+                    : new PrivateChannel("conversation.{$root->id}"),
+            ];
+        }
+
         return [
             $this->scopeType === 'channel'
                 ? new PresenceChannel("channel.{$this->scopeId}")
@@ -33,6 +45,10 @@ class MessageUpdated implements ShouldBroadcast
 
     public function broadcastWith(): array
     {
-        return ['message' => $this->message->toArray()];
+        return [
+            'message'    => $this->message->toArray(),
+            'scope_type' => $this->scopeType,
+            'scope_id'   => $this->scopeId,
+        ];
     }
 }
