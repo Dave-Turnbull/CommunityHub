@@ -179,6 +179,15 @@ instead of fetching the tail, plus forward it as the `highlight_message_id`
 Inertia prop. A soft-deleted message 404s at the route-model-binding step,
 before any of this runs — nothing to link to.
 
+A comment (`parent_message_id` set, see
+[comments-and-voting.md](comments-and-voting.md)) has no channel/conversation of
+its own and is never in a window, so its link resolves through `root_message_id`
+and redirects to the *root* message's scope with `?message={root id}`; nested
+comments share one root. Authorization is `MessagePolicy::view` on the requested
+comment. If the root is tombstoned or deleted it is in no window either, so the
+link 404s — after a `view` check on the root's scope, so a non-member still gets
+403 rather than learning the thread exists.
+
 **On the frontend**, `useChat`'s `jumpToMessage(id)` is the network half: a
 no-op if `id` is already in the current window (the common case for a reply —
 same scope, usually already loaded), otherwise a `fetchPage({ around: id })`
