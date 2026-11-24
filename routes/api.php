@@ -26,7 +26,7 @@ Route::middleware('auth')->group(function () {
 
     // Messages
     Route::get('/channels/{channel}/messages',  [MessageController::class, 'indexChannel']);
-    Route::post('/channels/{channel}/messages', [MessageController::class, 'storeChannel']);
+    Route::post('/channels/{channel}/messages', [MessageController::class, 'storeChannel'])->middleware('throttle:messages');
 
     // Channel focus — see App\Support\ChannelFocus
     Route::post('/channels/{channel}/focus', [ChannelFocusController::class, 'focus']);
@@ -65,7 +65,9 @@ Route::middleware('auth')->group(function () {
 
     // Server invites — account-creation invites, distinct from room invites
     // above. Gated by ServerInvitePolicy (Permission::InviteServer).
-    Route::post('/server-invites', [ServerInviteController::class, 'store']);
+    Route::get('/server-invites', [ServerInviteController::class, 'index']);
+    Route::post('/server-invites', [ServerInviteController::class, 'store'])->middleware('throttle:invites');
+    Route::delete('/server-invites/{serverInvite}', [ServerInviteController::class, 'destroy']);
 
     // Room membership — kick/ban, gated by RoomMemberPolicy (see docs/roles-and-permissions.md).
     Route::delete('/rooms/{room}/members/{user}',    [RoomMemberController::class, 'destroy']);
@@ -73,37 +75,37 @@ Route::middleware('auth')->group(function () {
     Route::delete('/rooms/{room}/bans/{user}',       [RoomMemberController::class, 'unban']);
 
     Route::get('/conversations/{conversation}/messages',  [MessageController::class, 'indexConversation']);
-    Route::post('/conversations/{conversation}/messages', [MessageController::class, 'storeConversation']);
+    Route::post('/conversations/{conversation}/messages', [MessageController::class, 'storeConversation'])->middleware('throttle:messages');
 
-    Route::patch('/messages/{message}',  [MessageController::class, 'update']);
+    Route::patch('/messages/{message}',  [MessageController::class, 'update'])->middleware('throttle:messages');
     Route::delete('/messages/{message}', [MessageController::class, 'destroy']);
 
     // Comments — a message's own children, see docs/comments-and-voting.md.
     Route::get('/messages/{message}/comments',  [MessageController::class, 'indexComments']);
-    Route::post('/messages/{message}/comments', [MessageController::class, 'storeComment']);
+    Route::post('/messages/{message}/comments', [MessageController::class, 'storeComment'])->middleware('throttle:messages');
 
     // Conversations — creation is deferred to the first message send, see
     // ConversationController::store. These literal-segment routes must stay
     // registered before any future GET /conversations/{conversation} route.
     Route::get('/conversations/candidates', [ConversationController::class, 'candidates']);
     Route::get('/conversations/resolve',    [ConversationController::class, 'resolve']);
-    Route::post('/conversations',           [ConversationController::class, 'store']);
-    Route::post('/conversations/{conversation}/participants', [ConversationController::class, 'addParticipants']);
+    Route::post('/conversations',           [ConversationController::class, 'store'])->middleware('throttle:conversations');
+    Route::post('/conversations/{conversation}/participants', [ConversationController::class, 'addParticipants'])->middleware('throttle:conversations');
 
     // Reactions
-    Route::post('/messages/{message}/reactions',           [ReactionController::class, 'store']);
-    Route::delete('/messages/{message}/reactions/{emoji}', [ReactionController::class, 'destroy']);
+    Route::post('/messages/{message}/reactions',           [ReactionController::class, 'store'])->middleware('throttle:reactions');
+    Route::delete('/messages/{message}/reactions/{emoji}', [ReactionController::class, 'destroy'])->middleware('throttle:reactions');
 
     // Votes — see docs/comments-and-voting.md
-    Route::post('/messages/{message}/votes',   [VoteController::class, 'store']);
-    Route::delete('/messages/{message}/votes', [VoteController::class, 'destroy']);
+    Route::post('/messages/{message}/votes',   [VoteController::class, 'store'])->middleware('throttle:reactions');
+    Route::delete('/messages/{message}/votes', [VoteController::class, 'destroy'])->middleware('throttle:reactions');
 
     // Uploads
-    Route::post('/upload', [UploadController::class, 'store']);
+    Route::post('/upload', [UploadController::class, 'store'])->middleware('throttle:uploads');
 
     // Room invites
     Route::get('/rooms/{room}/invites',  [RoomInviteController::class, 'index']);
-    Route::post('/rooms/{room}/invites', [RoomInviteController::class, 'store']);
+    Route::post('/rooms/{room}/invites', [RoomInviteController::class, 'store'])->middleware('throttle:invites');
     Route::delete('/invites/{invite}',   [RoomInviteController::class, 'destroy']);
 
     // Notifications

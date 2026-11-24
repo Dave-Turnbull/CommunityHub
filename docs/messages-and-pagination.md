@@ -179,6 +179,15 @@ instead of fetching the tail, plus forward it as the `highlight_message_id`
 Inertia prop. A soft-deleted message 404s at the route-model-binding step,
 before any of this runs — nothing to link to.
 
+A comment (`parent_message_id` set, see
+[comments-and-voting.md](comments-and-voting.md)) has no channel/conversation of
+its own and is never in a window, so its link resolves through `root_message_id`
+and redirects to the *root* message's scope with `?message={root id}`; nested
+comments share one root. Authorization is `MessagePolicy::view` on the requested
+comment. If the root is tombstoned or deleted it is in no window either, so the
+link 404s — after a `view` check on the root's scope, so a non-member still gets
+403 rather than learning the thread exists.
+
 **On the frontend**, `useChat`'s `jumpToMessage(id)` is the network half: a
 no-op if `id` is already in the current window (the common case for a reply —
 same scope, usually already loaded), otherwise a `fetchPage({ around: id })`
@@ -276,6 +285,41 @@ previously discarded.
 `MessageRow` is a thin caller: it closes the edit box on submit rather than on the
 server's answer, and reopens it with the draft intact if `saveEdit` rejects.
 
+## Typing indicators
+
+A line above the composer shows who is currently typing in a channel or
+conversation. It is transient client state end to end: a Reverb client event, a
+Zustand store and a component — no endpoint, no `ShouldBroadcast` event, no table.
+
+- **Transport.** `services/echo.ts`'s `sendTyping(scopeType, scopeId, userId)`
+  whispers `typing` with the payload `{ user_id }` on the scope's existing channel
+  (`channel.{id}` presence, `conversation.{id}` private). `subscribe()` registers the
+  matching `listenForWhisper('typing', …)` on the channel it already holds, so there
+  is no second subscription to tear down — `e.leave(name)` removes it with the rest.
+  Client events work because `config/reverb.php`'s app does not set
+  `accept_client_events_from`, which Reverb's `ConfigApplicationProvider` defaults to
+  `all`; only connections subscribed to the channel (i.e. already authorized for it)
+  receive the whisper.
+- **Names are never taken from the payload.** A whisper is client-authored, so
+  `TextChannelContent` resolves the name from data the page already holds: the
+  room's `members` page prop (nickname, else display name) for a channel, the
+  `conversation.participants` page prop for a conversation. A user id that resolves
+  to nothing, or is the current user, is not shown.
+- **State.** `useTyping` maps `scopeId → userId → expiry`. Each whisper sets the
+  expiry `TYPING_TTL_MS` (5 s) ahead; there is no "stopped typing" event. A
+  `.MessageSent` from that user in that scope (not a comment's scope) clears the
+  entry at once. `TypingIndicator` owns the one interval that calls `prune()`.
+- **Sending.** `MessageInput` calls its optional `onTyping` when the text changes to
+  a non-blank value, and never for a `scopeType: 'message'` composer.
+  `TextChannelContent` throttles the resulting whisper to one per 3 s per scope, and
+  sends nothing when `canPost` is false, since no composer renders.
+- **Layout.** The indicator always renders a fixed `h-5` line, empty when nobody is
+  typing, directly above the composer and outside `MessageList`, so it appearing or
+  disappearing changes neither the list's height nor its scroll anchoring.
+- **Spoofing.** Reverb relays an `all`-mode client event unchanged, so a connected
+  client could whisper another member's id; the worst outcome is a false "X is
+  typing…" for up to 5 s.
+
 ## Demo data
 
 `DemoConversationSeeder` writes a multi-week backlog into one text channel —
@@ -297,6 +341,7 @@ docker compose exec app php artisan db:seed --class=DemoConversationSeeder --for
 | `tests/Feature/Messages/MessageAroundCursorTest.php` | the `around` cursor's two-sided window, unknown/deleted targets, one-cursor-only, channel + conversation |
 | `tests/Feature/Messages/MessageLinkTest.php` | `Web\MessageController::show`'s permission checks and redirect shape, deleted-message 404, the receiving page's `highlight_message_id`/windowed seed |
 | `stores/index.test.ts` | trimming from each end, the cursors it records, `add`'s gap rule, `insert` ordering |
+| `stores/index.test.ts` (`useTyping`), `services/echo.test.ts`, `components/chat/TypingIndicator.test.tsx`, `TextChannelContent.test.tsx`, `MessageInput.test.tsx` | typing expiry/clear/prune, the whisper listener and sender, the three display strings, name resolution, the 3 s send throttle |
 | `hooks/useChat.test.ts` | both directions, cache hits, `jumpToPresent`, `commitSent` while detached, `jumpToMessage` (in-window no-op vs. fetch) |
 | `services/messageCache.test.ts` | whole-page-or-nothing, contiguity refusals, live/patch/drop behaviour |
 | `services/messageActions.test.ts` | prediction, reconcile, rollback, cache write-through |

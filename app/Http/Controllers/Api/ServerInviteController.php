@@ -13,13 +13,19 @@ use Illuminate\Support\Facades\Mail;
 
 class ServerInviteController extends Controller
 {
+    /** Outstanding invites only — see ServerInviteService::outstanding(). */
+    public function index(Request $request, ServerInviteService $service): JsonResponse
+    {
+        Gate::authorize('viewAny', ServerInvite::class);
+
+        return response()->json($service->outstanding($request->user()));
+    }
+
     /**
      * Create a server invite and, when an email was given, send it.
      * `email` is optional — an open, shareable link vs. one scoped to a
      * single address (see ServerInvite::$fillable, ServerInviteService::
-     * validateToken). No index/destroy yet — a list/revoke UI is a
-     * fast-follow, not blocking this signup-path being real (see
-     * CLAUDE.md's "Planned work").
+     * validateToken).
      */
     public function store(Request $request, ServerInviteService $service): JsonResponse
     {
@@ -39,5 +45,14 @@ class ServerInviteController extends Controller
             'invite'  => $invite,
             'url'     => url("/register?invite={$invite->token}"),
         ], 201);
+    }
+
+    public function destroy(Request $request, ServerInvite $serverInvite, ServerInviteService $service): JsonResponse
+    {
+        Gate::authorize('delete', $serverInvite);
+
+        $service->revoke($request->user(), $serverInvite);
+
+        return response()->json(['message' => 'Invite revoked.']);
     }
 }
