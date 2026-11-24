@@ -370,6 +370,14 @@ export interface RoomInvite {
     created_at: string
 }
 
+export interface ServerInvite {
+    id: string
+    email: string | null
+    invited_by: Pick<User, 'id' | 'username' | 'display_name' | 'avatar_url'>
+    expires_at: string
+    created_at: string
+}
+
 export interface CustomEmoji {
     id: string
     room_id: string

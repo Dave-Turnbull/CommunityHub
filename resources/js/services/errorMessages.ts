@@ -18,6 +18,9 @@ export function describeApiError(error: unknown, subject: string): string {
             const firstFieldError = data?.errors ? Object.values(data.errors)[0]?.[0] : undefined
             return firstFieldError ?? data?.message ?? `${subject} was rejected by the server.`
         }
+        if (status === 429) {
+            return `You're doing that too fast. Wait a moment and try again.`
+        }
         if (status === 403) {
             return `You don't have permission to do that.`
         }

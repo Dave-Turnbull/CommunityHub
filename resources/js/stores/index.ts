@@ -288,6 +288,54 @@ export const useUI = create<UIStore>((set) => ({
     toggleMemberList: () => set((s) => ({ memberListOpen: !s.memberListOpen })),
 }))
 
+// ── Typing ───────────────────────────────────────────────────────────────
+// scopeId → userId → expiry timestamp (ms). Fed by echo.ts's `typing` whisper
+// listener; there is no "stopped typing" event, an entry simply lapses
+// TYPING_TTL_MS after the user's last whisper (or is cleared when their
+// message arrives). Pruning is driven by TypingIndicator's interval.
+
+export const TYPING_TTL_MS = 5000
+
+interface TypingStore {
+    expiries: Record<string, Record<string, number>>
+    touch: (scope: string, userId: string) => void
+    clear: (scope: string, userId: string) => void
+    prune: (now?: number) => void
+}
+
+export const useTyping = create<TypingStore>((set) => ({
+    expiries: {},
+
+    touch: (scope, userId) =>
+        set((s) => ({
+            expiries: {
+                ...s.expiries,
+                [scope]: { ...s.expiries[scope], [userId]: Date.now() + TYPING_TTL_MS },
+            },
+        })),
+
+    clear: (scope, userId) =>
+        set((s) => {
+            const current = s.expiries[scope]
+            if (!current || !(userId in current)) return s
+            const { [userId]: _removed, ...rest } = current
+            return { expiries: { ...s.expiries, [scope]: rest } }
+        }),
+
+    prune: (now = Date.now()) =>
+        set((s) => {
+            let changed = false
+            const expiries: Record<string, Record<string, number>> = {}
+            for (const [scope, users] of Object.entries(s.expiries)) {
+                const live = Object.entries(users).filter(([, at]) => at > now)
+                if (live.length !== Object.keys(users).length) changed = true
+                if (live.length) expiries[scope] = Object.fromEntries(live)
+                else changed = true
+            }
+            return changed ? { expiries } : s
+        }),
+}))
+
 // ── Notifications ────────────────────────────────────────────────────────
 
 interface NotificationStore {

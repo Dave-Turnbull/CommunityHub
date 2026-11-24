@@ -124,6 +124,99 @@ class MessageLinkTest extends TestCase
             ->assertNotFound();
     }
 
+    private function commentOn(Message $parent, array $attributes = []): Message
+    {
+        return Message::factory()->create([
+            'channel_id'        => null,
+            'parent_message_id' => $parent->id,
+            'root_message_id'   => $parent->parent_message_id ? $parent->root_message_id : $parent->id,
+            'depth'             => $parent->depth + 1,
+            ...$attributes,
+        ]);
+    }
+
+    public function test_a_comment_link_lands_on_its_root_message_in_the_roots_channel(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $user = User::factory()->create();
+        RoomMember::factory()->for($room)->for($user)->create();
+        $root = Message::factory()->for($channel)->create();
+        $comment = $this->commentOn($root);
+
+        $this->actingAs($user)
+            ->get("/messages/{$comment->id}")
+            ->assertRedirect("/channels/{$channel->id}?message={$root->id}");
+    }
+
+    public function test_a_nested_comment_link_resolves_to_the_same_root(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $user = User::factory()->create();
+        RoomMember::factory()->for($room)->for($user)->create();
+        $root = Message::factory()->for($channel)->create();
+        $nested = $this->commentOn($this->commentOn($this->commentOn($root)));
+
+        $this->actingAs($user)
+            ->get("/messages/{$nested->id}")
+            ->assertRedirect("/channels/{$channel->id}?message={$root->id}");
+    }
+
+    public function test_a_non_member_cannot_resolve_a_comment_link(): void
+    {
+        $channel = Channel::factory()->create();
+        $comment = $this->commentOn(Message::factory()->for($channel)->create());
+
+        $this->actingAs(User::factory()->create())
+            ->get("/messages/{$comment->id}")
+            ->assertForbidden();
+    }
+
+    public function test_a_comment_in_a_channel_hidden_from_the_user_is_forbidden(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $restrictedRole = Role::factory()->for($room)->create();
+        ChannelRoleVisibility::create(['channel_id' => $channel->id, 'role_id' => $restrictedRole->id]);
+        $user = User::factory()->create();
+        RoomMember::factory()->for($room)->for($user)->create();
+        $comment = $this->commentOn(Message::factory()->for($channel)->create());
+
+        $this->actingAs($user)
+            ->get("/messages/{$comment->id}")
+            ->assertForbidden();
+    }
+
+    public function test_a_comment_whose_root_is_tombstoned_has_nothing_to_link_to(): void
+    {
+        $room = Room::factory()->create();
+        $channel = Channel::factory()->for($room)->create();
+        $user = User::factory()->create();
+        RoomMember::factory()->for($room)->for($user)->create();
+        $root = Message::factory()->for($channel)->create();
+        $comment = $this->commentOn($root);
+        $root->update(['is_tombstoned' => true]);
+        $root->delete();
+
+        $this->actingAs($user)
+            ->get("/messages/{$comment->id}")
+            ->assertNotFound();
+    }
+
+    public function test_a_tombstoned_root_does_not_reveal_itself_to_a_non_member(): void
+    {
+        $channel = Channel::factory()->create();
+        $root = Message::factory()->for($channel)->create();
+        $comment = $this->commentOn($root);
+        $root->update(['is_tombstoned' => true]);
+        $root->delete();
+
+        $this->actingAs(User::factory()->create())
+            ->get("/messages/{$comment->id}")
+            ->assertForbidden();
+    }
+
     public function test_following_the_link_seeds_the_channel_page_with_a_window_around_the_message(): void
     {
         $room = Room::factory()->create();

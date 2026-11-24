@@ -237,4 +237,47 @@ describe('MessageInput', () => {
         expect(screen.getByText('Author Name')).toBeInTheDocument()
         expect(screen.getByAltText('vacation.png')).toBeInTheDocument()
     })
+
+    describe('onTyping', () => {
+        const renderTyping = (scopeType: 'channel' | 'conversation' | 'message', onTyping = vi.fn()) => {
+            render(
+                <MessageInput
+                    scopeId="scope-1"
+                    scopeType={scopeType}
+                    placeholder="Say something"
+                    replyTo={null}
+                    onClearReply={vi.fn()}
+                    onTyping={onTyping}
+                />
+            )
+            return { onTyping, box: screen.getByPlaceholderText('Say something') }
+        }
+
+        it('fires on every change to a non-empty value', async () => {
+            const { onTyping, box } = renderTyping('channel')
+
+            await userEvent.type(box, 'hey')
+
+            expect(onTyping).toHaveBeenCalledTimes(3)
+        })
+
+        it('does not fire when the text becomes empty or is only whitespace', async () => {
+            const { onTyping, box } = renderTyping('conversation')
+
+            await userEvent.type(box, '  ')
+            await userEvent.type(box, 'a')
+            onTyping.mockClear()
+            await userEvent.clear(box)
+
+            expect(onTyping).not.toHaveBeenCalled()
+        })
+
+        it('never fires for a comment/forum (message-scope) composer', async () => {
+            const { onTyping, box } = renderTyping('message')
+
+            await userEvent.type(box, 'hello')
+
+            expect(onTyping).not.toHaveBeenCalled()
+        })
+    })
 })

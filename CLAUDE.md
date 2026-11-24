@@ -181,9 +181,9 @@ app/
                                Settings' self-fetching "Server" tab, gated by
                                InstanceSettingPolicy (see docs/conversations-and-
                                invites.md's "Server invites"); ServerInviteController is
-                               store only — creates an account-creation invite, gated by
-                               ServerInvitePolicy/Permission::InviteServer (no list/revoke
-                               UI yet)
+                               index/store/destroy — list outstanding, create, and revoke
+                               account-creation invites, all gated by
+                               ServerInvitePolicy/Permission::InviteServer
     Controller.php            empty abstract base — Laravel ships none by default, keep it
   Http/Middleware/
     HandleInertiaRequests.php shares auth.user, rooms, conversations,
@@ -265,7 +265,10 @@ app/
     AppServiceProvider.php    wires Socialite's 'authentik' driver
                                (Event::listen(SocialiteWasCalled::class, ...)) — see
                                docs/auth-and-sso.md; registration is unconditional,
-                               reachability is gated per-request elsewhere
+                               reachability is gated per-request elsewhere; also
+                               registers the named per-user API rate limiters
+                               (`messages`/`uploads`/`reactions`/`invites`/
+                               `conversations`, limits in config/rate_limits.php)
   Services/                   {Operation}Service classes — see docs/service-layer.md.
                                Not the same thing as Support/Capabilities' Feature — a
                                Feature declares what a capability *is*, a Service is
@@ -392,6 +395,9 @@ resources/
                                message" scrolls/flashes) — see docs/
                                messages-and-pagination.md's "Jumping to a message"
                                and docs/capabilities-and-channel-types.md;
+                               TypingIndicator (the fixed-height "X is typing…" line above
+                               the composer — see docs/messages-and-pagination.md's "Typing
+                               indicators");
                                ForumChannelContent (the `forum` channel type's post
                                list + detail view) — see docs/comments-and-voting.md
       layout/                 RoomRail, ChannelSidebar (the "🛡 Roles"/"+ Add
@@ -466,8 +472,9 @@ resources/
                                RegistrationSettings — the "Server" tab: the three signup-
                                path toggles, the default-room picker (explicit Save/Clear,
                                PUT /api/settings/instance/default-room) + a "generate
-                               server invite" affordance, self-fetching (GET/PATCH
-                               /api/settings/instance), only
+                               server invite" affordance + the outstanding-invites list with
+                               per-row Revoke, self-fetching (GET/PATCH
+                               /api/settings/instance, GET /api/server-invites), only
                                rendered when can_manage_instance_settings is true (see
                                docs/conversations-and-invites.md's "Server invites")
       voice/                  VoiceChannelPanel, VoiceBar — a channel/conversation's
@@ -509,7 +516,8 @@ resources/
     services/                 api.ts (axios — the only place a component may call axios
                                directly), channelTypes.tsx (frontend channel-type
                                registry — see docs/capabilities-and-channel-types.md),
-                               echo.ts (Reverb subscriptions), voicePresence.ts,
+                               echo.ts (Reverb subscriptions; `typing` whisper via
+                               `sendTyping`/`subscribe`'s listener), voicePresence.ts,
                                webrtc.ts, voiceCallGuard.ts, voiceActivation.ts,
                                connectionQuality.ts (getStats()-based per-peer quality
                                polling, no signaling involved — see docs/voice.md),
@@ -528,6 +536,8 @@ resources/
                                docs/theming.md)
     stores/                   Zustand: useMessages (windowed + trimmed, see docs/
                                messages-and-pagination.md), usePresence, useUI, useNotifications,
+                               useTyping (per-scope typing expiries — see docs/
+                               messages-and-pagination.md),
                                useChannels (see docs/capabilities-and-channel-types.md),
                                useVoice, useVoiceRoster, useSpeaking, useVoiceVolume,
                                useRemoteStreamVersion, useConnectionQuality, useMicSensitivity
@@ -554,8 +564,11 @@ routes/
                                members|bans (kick/ban — see docs/roles-and-permissions.md),
                                /settings/instance (signup-path toggles, self-fetched by
                                Settings' Server tab; plus /settings/instance/rooms and
-                               /settings/instance/default-room for the default room) and /server-invites (create only —
-                               see docs/conversations-and-invites.md's "Server invites")
+                               /settings/instance/default-room for the default room) and /server-invites (list/create/revoke —
+                               see docs/conversations-and-invites.md's "Server invites");
+                               write-heavy POST/PATCH routes carry `->middleware('throttle:<name>')`
+                               (see the rate-limit Conventions bullet) — GETs, focus/blur,
+                               voice, notifications and settings/role CRUD are unthrottled
   channels.php                broadcast auth: channel.{id} presence (now also checks
                                Channel::isVisibleTo() — see docs/
                                roles-and-permissions.md's "Channel visibility"),
@@ -665,6 +678,14 @@ assuming something is undocumented.
   a decode error, or a "compressed" result that isn't actually smaller all fall back to
   the original file untouched, so a browser quirk never blocks the upload. Video has no
   client-side compression yet — only images.
+- **Write-heavy `/api/*` routes are rate-limited per user through named limiters**, not a
+  global `throttle:api`. `AppServiceProvider::boot()` registers `messages` (send, comment,
+  edit), `uploads`, `reactions` (reactions + votes), `invites` (room + server) and
+  `conversations` (create + add participants), each keyed by user id (IP if guest) with
+  its per-minute limit read lazily from `config/rate_limits.php`; a new write route opts in
+  with `->middleware('throttle:<name>')` in `routes/api.php`. A throttled request is a
+  standard 429 + `Retry-After`, which `describeApiError()` turns into the composer's
+  "too fast" message. Don't throttle GETs (history paging bursts) or heartbeats.
 - **The upload size limit is one config value, not three independent hardcoded ones.**
   `config/uploads.php`'s `max_size_kb` (`UPLOAD_MAX_SIZE_KB` env var, default 100 MB) is
   the actual, user-facing limit — `UploadController` validates against it, and it's
@@ -1187,7 +1208,11 @@ the real upload size limit; raising it also means raising `docker/nginx/default.
 see the Conventions bullet above),
 `UPLOAD_ALLOWED_MIMES` (default `jpeg,png,gif,webp,mp4,webm,mov,mp3,wav,ogg,pdf,txt,zip`
 — `config/uploads.php`'s `allowed_mimes`; deliberately excludes `svg`/`html`/`htm`, see
-`UploadController`'s doc-comment for why), `CORS_ALLOWED_ORIGINS` (comma-separated,
+`UploadController`'s doc-comment for why),
+`RATE_LIMIT_MESSAGES_PER_MINUTE`/`RATE_LIMIT_UPLOADS_PER_MINUTE`/
+`RATE_LIMIT_REACTIONS_PER_MINUTE`/`RATE_LIMIT_INVITES_PER_MINUTE`/
+`RATE_LIMIT_CONVERSATIONS_PER_MINUTE` (per-user API write ceilings, defaults 60/30/120/20/20 —
+`config/rate_limits.php`), `CORS_ALLOWED_ORIGINS` (comma-separated,
 empty by default — `config/cors.php` always allows `APP_URL` itself; this adds any
 additional origin, e.g. a future separate mobile app, that also needs credentialed
 access to `api/*`/`sanctum/csrf-cookie`/`broadcasting/auth`),

@@ -15,6 +15,7 @@ import type {
     Role,
     RoomInvite,
     RoomMember,
+    ServerInvite,
     User,
     UserStatus,
     VoiceDevicePreference,
@@ -324,6 +325,15 @@ export async function updateDefaultRoom(roomId: string | null, enrollExisting: b
 export async function createServerInvite(email?: string): Promise<{ url: string }> {
     const { data } = await axios.post('/api/server-invites', { email: email || undefined })
     return data
+}
+
+export async function fetchServerInvites(): Promise<ServerInvite[]> {
+    const { data } = await axios.get('/api/server-invites')
+    return data
+}
+
+export async function revokeServerInvite(id: string): Promise<void> {
+    await axios.delete(`/api/server-invites/${id}`)
 }
 
 // ── Room membership (kick/ban) ──────────────────────────────────────────

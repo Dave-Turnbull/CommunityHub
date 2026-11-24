@@ -33,6 +33,12 @@ describe('describeApiError', () => {
         expect(describeApiError(axiosErrorWith(403), 'Your message')).toBe("You don't have permission to do that.")
     })
 
+    it('describes a 429 as a rate limit', () => {
+        expect(describeApiError(axiosErrorWith(429), 'Your message')).toBe(
+            "You're doing that too fast. Wait a moment and try again.",
+        )
+    })
+
     it('describes a network error (no response) distinctly', () => {
         const error = new AxiosError('Network Error')
         expect(describeApiError(error, 'Your message')).toBe("Couldn't reach the server. Check your connection and try again.")
