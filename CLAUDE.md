@@ -395,7 +395,10 @@ resources/
                                `mainView` state and renders the matching panel in place
                                of the channel content, showing that affordance as
                                "active" the same way an active channel row is — see
-                               docs/capabilities-and-channel-types.md), DMSidebar,
+                               docs/capabilities-and-channel-types.md; when
+                               `canManageChannels`, every channel row of any type is
+                               wrapped with ChannelRowMenu — rename/move/delete, see that
+                               doc's "Renaming, reordering, and deleting"), DMSidebar,
                                MemberList (renders a per-member kick/ban dropdown when
                                roomId + canManageMembers/canBanMembers are passed, e.g.
                                from Channels/Show — see docs/roles-and-permissions.md),

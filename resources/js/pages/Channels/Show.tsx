@@ -15,7 +15,7 @@ import type { ChannelPageProps, MainView } from '@/types'
 
 export default function ChannelShow({
     auth, rooms, room, channel: initialChannel, members, messages: initial, highlight_message_id, creatable_channel_types,
-    can_manage_roles, can_manage_channel_visibility, can_manage_members, can_ban_members, recentCustomStatuses,
+    can_manage_roles, can_manage_channels, can_manage_channel_visibility, can_manage_members, can_ban_members, recentCustomStatuses,
 }: ChannelPageProps) {
     const [channel, setChannel] = useState(initialChannel)
     const [mainView, setMainView] = useState<MainView>({ type: 'channel' })
@@ -28,6 +28,7 @@ export default function ChannelShow({
 
     const { memberListOpen, toggleMemberList } = useUI()
     const { addChannel } = useChannels()
+    const channelName = useChannels((s) => s.channels[room.id]?.find((c) => c.id === channel.id)?.name ?? channel.name)
 
     useChannelFocus(isTextCapable ? channel.id : null)
 
@@ -57,7 +58,7 @@ export default function ChannelShow({
 
     return (
         <>
-            <Head title={mainView.type === 'channel' ? `${descriptor.icon} ${channel.name}` : channel.name} />
+            <Head title={mainView.type === 'channel' ? `${descriptor.icon} ${channelName}` : channelName} />
 
             <div className="flex flex-col h-screen">
                 <RoomRail rooms={rooms} currentUserId={auth.user.id} activeRoomId={room.id} />
@@ -72,6 +73,7 @@ export default function ChannelShow({
                         recentCustomStatuses={recentCustomStatuses}
                         creatableChannelTypes={creatable_channel_types}
                         canManageRoles={can_manage_roles}
+                        canManageChannels={can_manage_channels}
                         onSelectRoles={() => setMainView({ type: 'roles' })}
                         onSelectCreateChannel={() => setMainView({ type: 'create-channel' })}
                         onSelectInvite={() => setMainView({ type: 'invite' })}
@@ -82,7 +84,7 @@ export default function ChannelShow({
                             <div ref={headerRef} className="relative border-b border-third flex-shrink-0">
                                 <header className="h-12 px-4 flex items-center gap-3">
                                     <span className="text-text-muted font-bold text-lg">{descriptor.icon}</span>
-                                    <span className="font-semibold text-text-primary">{channel.name}</span>
+                                    <span className="font-semibold text-text-primary">{channelName}</span>
 
                                     {channel.topic && (
                                         <>
@@ -138,7 +140,7 @@ export default function ChannelShow({
                                 <button
                                     onClick={showChannel}
                                     className="ml-auto p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-fifth"
-                                    title={`Back to ${channel.name}`}
+                                    title={`Back to ${channelName}`}
                                 >
                                     ✕
                                 </button>
