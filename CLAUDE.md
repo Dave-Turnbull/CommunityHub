@@ -664,6 +664,7 @@ assuming something is undocumented.
   already under 300 KB. Fails open at every step — no canvas/`createImageBitmap` support,
   a decode error, or a "compressed" result that isn't actually smaller all fall back to
   the original file untouched, so a browser quirk never blocks the upload. Video has no
+  client-side compression yet — only images.
 - **Write-heavy `/api/*` routes are rate-limited per user through named limiters**, not a
   global `throttle:api`. `AppServiceProvider::boot()` registers `messages` (send, comment,
   edit), `uploads`, `reactions` (reactions + votes), `invites` (room + server) and
@@ -672,7 +673,6 @@ assuming something is undocumented.
   with `->middleware('throttle:<name>')` in `routes/api.php`. A throttled request is a
   standard 429 + `Retry-After`, which `describeApiError()` turns into the composer's
   "too fast" message. Don't throttle GETs (history paging bursts) or heartbeats.
-  client-side compression yet — only images.
 - **The upload size limit is one config value, not three independent hardcoded ones.**
   `config/uploads.php`'s `max_size_kb` (`UPLOAD_MAX_SIZE_KB` env var, default 100 MB) is
   the actual, user-facing limit — `UploadController` validates against it, and it's
