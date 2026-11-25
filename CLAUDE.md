@@ -524,7 +524,8 @@ resources/
       voice/                  VoiceChannelPanel, VoiceBar — a channel/conversation's
                                main-pane voice UI. Both render ParticipantVolumeControl
                                per remote participant (speaking-ring Avatar + volume
-                               Popover only — no audio). VoiceAudioHost, mounted once in
+                               Popover only — no audio). Both also ring the current user's
+                               own avatar from useVoiceChannel's `selfSpeaking`. VoiceAudioHost, mounted once in
                                app.tsx beside the Inertia <App>, renders the actual hidden
                                <audio> playback element (RemoteParticipantAudio) for every
                                remote participant of the active call, so playback never
@@ -539,7 +540,7 @@ resources/
                                double-clicking the name also joins, but never leaves, see
                                docs/voice.md) composes the VoiceParticipantList molecule
                                (who's in the call including the current user, muted or
-                               not) — kept separate because it's the "list of people/status
+                               not, each row's avatar ringed while its `speaking` flag is set) — kept separate because it's the "list of people/status
                                under a sidebar row" shape a future sidebar addition (a
                                music player's listener count, a per-channel elapsed-time
                                display) would also want, not something specific to voice

@@ -80,6 +80,7 @@ export function useVoiceChannel(
             .filter((p) => p.userId !== userId)
             .map((p) => ({ ...p, speaking: speaking[p.userId] ?? false, quality: quality[p.userId] ?? 'unknown' })),
         selfMuted,
+        selfSpeaking: speaking[userId] ?? false,
         deafened,
         connectionState,
         isActive: activeScopeId === scopeId,

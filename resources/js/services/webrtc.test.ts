@@ -644,6 +644,116 @@ describe('webrtc service', () => {
         })
     })
 
+    describe('self speaking state', () => {
+        // Calls recorded in join order: [0] is the send gate, [1] the fixed-threshold speaking detector.
+        async function join() {
+            const track = mockGetUserMedia()
+            const webrtc = await import('@/services/webrtc')
+            await webrtc.joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+            return { track, ...webrtc }
+        }
+        const gate = () => voiceActivationCalls[0]
+        const detector = () => voiceActivationCalls[1]
+        const selfSpeaking = () => useSpeaking.getState().speaking['me']
+
+        it('runs a second detector on the analysis clone with the fixed speaking threshold', async () => {
+            await join()
+
+            expect(voiceActivationCalls).toHaveLength(2)
+            expect(detector().stream).toBe(gate().stream)
+            expect(detector().getThreshold()).toEqual({ open: 0.15, close: 0.15 })
+        })
+
+        it('is not speaking until the detector reports a level above the threshold', async () => {
+            await join()
+
+            expect(selfSpeaking()).toBeFalsy()
+        })
+
+        it('is speaking when the detector is on, the gate is open and the user is unmuted', async () => {
+            await join()
+
+            detector().onGateChange(true)
+
+            expect(selfSpeaking()).toBe(true)
+        })
+
+        it('stops speaking when the detector level drops', async () => {
+            await join()
+            detector().onGateChange(true)
+
+            detector().onGateChange(false)
+
+            expect(selfSpeaking()).toBe(false)
+        })
+
+        it('is not speaking while the send gate is closed, even with real level', async () => {
+            await join()
+            detector().onGateChange(true)
+
+            gate().onGateChange(false)
+
+            expect(selfSpeaking()).toBe(false)
+        })
+
+        it('speaks again when the gate reopens while the level is still above the threshold', async () => {
+            await join()
+            detector().onGateChange(true)
+            gate().onGateChange(false)
+
+            gate().onGateChange(true)
+
+            expect(selfSpeaking()).toBe(true)
+        })
+
+        it('does not light up on an open gate alone, without real level (default always-open gate)', async () => {
+            await join()
+
+            gate().onGateChange(true)
+
+            expect(selfSpeaking()).toBeFalsy()
+        })
+
+        it('is not speaking while self-muted, even with level and an open gate', async () => {
+            const { setMuted } = await join()
+            detector().onGateChange(true)
+
+            setMuted(true)
+
+            expect(selfSpeaking()).toBe(false)
+        })
+
+        it('speaks again on unmute while level is above the threshold', async () => {
+            const { setMuted } = await join()
+            detector().onGateChange(true)
+            setMuted(true)
+
+            setMuted(false)
+
+            expect(selfSpeaking()).toBe(true)
+        })
+
+        it('ignores detector level reported while muted until unmuted', async () => {
+            const { setMuted } = await join()
+            setMuted(true)
+
+            detector().onGateChange(true)
+
+            expect(selfSpeaking()).toBeFalsy()
+        })
+
+        it('stops the detector and clears the self entry on leave', async () => {
+            const { leaveVoice } = await join()
+            detector().onGateChange(true)
+            voiceActivationStop.mockClear()
+
+            leaveVoice()
+
+            expect(voiceActivationStop).toHaveBeenCalledTimes(2)
+            expect(selfSpeaking()).toBe(false)
+        })
+    })
+
     describe('per-remote-participant speaking detection', () => {
         it('starts speaking detection for a remote track using the fixed speaking threshold', async () => {
             mockGetUserMedia()

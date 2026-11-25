@@ -168,6 +168,22 @@ describe('useVoiceChannel', () => {
         ])
     })
 
+    it('returns selfSpeaking from the current user\'s own useSpeaking entry', () => {
+        const { result } = renderHook(() => useVoiceChannel('channel', 'chan-1', currentUser, 'auto'))
+        expect(result.current.selfSpeaking).toBe(false)
+
+        act(() => useSpeaking.getState().setSpeaking('user-1', true))
+
+        expect(result.current.selfSpeaking).toBe(true)
+    })
+
+    it('does not treat another participant speaking as selfSpeaking', () => {
+        useSpeaking.getState().setSpeaking('user-2', true)
+        const { result } = renderHook(() => useVoiceChannel('channel', 'chan-1', currentUser, 'auto'))
+
+        expect(result.current.selfSpeaking).toBe(false)
+    })
+
     it('merges each participant\'s live connection quality from useConnectionQuality', () => {
         useVoiceRoster.getState().setRoster('channel.chan-1', [
             { userId: 'user-2', displayName: 'Bob', avatarUrl: null, muted: false },

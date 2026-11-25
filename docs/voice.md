@@ -220,10 +220,22 @@ merges `useSpeaking`'s live map onto each roster participant it returns
 type) deliberately does not gain a `speaking` field, since that would wrongly
 imply it's shared/serializable state. `VoiceChannelPanel`/`VoiceBar` render it
 as a `ring-2 ring-success` around the participant's `Avatar`.
-`VoiceParticipantList` (the sidebar's read-only roster row) does not show it —
-it's deliberately kept generic/non-voice-specific (see its own doc comment) and
-takes a plain `VoiceParticipant[]`, not the speaking-augmented shape
-`useVoiceChannel` produces.
+`VoiceParticipantList` (the sidebar's roster row) stays generic/non-voice-specific: its
+participants take an optional `speaking` flag that draws the same ring on the row's
+avatar, and `VoiceChannelSidebarItem` supplies it (remote participants carry it from
+`useVoiceChannel`; the current user's row gets `selfSpeaking`).
+
+**Self speaking.** The current user's own ring is computed the same way, from the
+analysis clone described under "Voice activation (send threshold)": `joinVoice()` starts a
+second `startVoiceActivation` on that clone with the same fixed `SPEAKING_THRESHOLD`
+pair used for remote streams. Self counts as speaking only when that detector is above
+the threshold **and** the send gate is open **and** the user is not self-muted, so the
+ring reflects what is actually being transmitted. The gate callback alone is not enough:
+the default threshold of 0 keeps the gate permanently open, so the detector is what
+makes the ring depend on real level. The result is published to `useSpeaking` under the
+user's own id, recomputed from the detector callback, the gate callback and `setMuted`;
+`leaveVoice()` stops the detector and zeroes the entry. `useVoiceChannel` returns it as
+`selfSpeaking`; `VoiceChannelPanel` and `VoiceBar` ring the user's own avatar with it.
 
 ## Remote audio playback and per-participant volume
 

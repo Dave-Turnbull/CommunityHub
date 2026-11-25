@@ -1,3 +1,4 @@
+import { clsx } from 'clsx'
 import { Avatar } from '@/components/ui/Avatar'
 import { ParticipantVolumeControl } from '@/components/voice/ParticipantVolumeControl'
 import { useVoiceChannel } from '@/hooks/useVoiceChannel'
@@ -14,7 +15,7 @@ interface Props {
  * renders, layered above MessageList/MessageInput without touching either.
  */
 export function VoiceBar({ conversation, currentUser }: Props) {
-    const { participants, selfMuted, deafened, connectionState, isActive, join, leave, toggleMute, toggleDeafen } =
+    const { participants, selfMuted, selfSpeaking, deafened, connectionState, isActive, join, leave, toggleMute, toggleDeafen } =
         useVoiceChannel('conversation', conversation.id, currentUser, conversation.voice_mode)
 
     return (
@@ -22,7 +23,7 @@ export function VoiceBar({ conversation, currentUser }: Props) {
             {isActive ? (
                 <>
                     <div className="flex -space-x-2">
-                        <Avatar user={currentUser} size="sm" />
+                        <Avatar user={currentUser} size="sm" className={clsx('rounded-full', selfSpeaking && 'ring-2 ring-success')} />
                         {participants.map((p) => (
                             <ParticipantVolumeControl key={p.userId} participant={p} size="sm" />
                         ))}

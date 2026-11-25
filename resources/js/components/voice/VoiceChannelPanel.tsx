@@ -1,3 +1,4 @@
+import { clsx } from 'clsx'
 import { Avatar } from '@/components/ui/Avatar'
 import { ParticipantVolumeControl } from '@/components/voice/ParticipantVolumeControl'
 import { useVoiceChannel } from '@/hooks/useVoiceChannel'
@@ -10,7 +11,7 @@ interface Props {
 
 /** A room voice channel's entire main-pane content — no text chat here, see MessageController's guard. */
 export function VoiceChannelPanel({ channel, currentUser }: Props) {
-    const { participants, selfMuted, deafened, connectionState, isActive, join, leave, toggleMute, toggleDeafen } =
+    const { participants, selfMuted, selfSpeaking, deafened, connectionState, isActive, join, leave, toggleMute, toggleDeafen } =
         useVoiceChannel('channel', channel.id, currentUser, channel.voice_mode)
 
     return (
@@ -18,7 +19,7 @@ export function VoiceChannelPanel({ channel, currentUser }: Props) {
             <div className="flex flex-wrap justify-center gap-6">
                 {isActive && (
                     <div className="flex flex-col items-center gap-2 w-20">
-                        <Avatar user={currentUser} size="lg" />
+                        <Avatar user={currentUser} size="lg" className={clsx('rounded-full', selfSpeaking && 'ring-2 ring-success')} />
                         <span className="text-sm text-text-secondary truncate max-w-full">
                             {currentUser.display_name} (you){selfMuted ? ' 🔇' : ''}
                         </span>
