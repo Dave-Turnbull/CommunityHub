@@ -3,6 +3,7 @@ import '../css/app.css'
 import { createRoot } from 'react-dom/client'
 import { createInertiaApp, router } from '@inertiajs/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { VoiceAudioHost } from '@/components/voice/VoiceAudioHost'
 import { subscribePresence } from '@/services/echo'
 import { fetchThemePreference } from '@/services/api'
 import { applyThemeValues, DEFAULT_PRESET, resolveThemeValues } from '@/services/theme'
@@ -89,6 +90,7 @@ createInertiaApp({
         createRoot(el).render(
             <QueryClientProvider client={queryClient}>
                 <App {...props} />
+                <VoiceAudioHost />
             </QueryClientProvider>
         )
     },

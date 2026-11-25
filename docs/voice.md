@@ -232,8 +232,20 @@ takes a plain `VoiceParticipant[]`, not the speaking-augmented shape
 but does not itself play it anywhere — something has to attach each
 `MediaStream` to a real `<audio>` element for the browser to actually output
 sound. `components/voice/RemoteParticipantAudio.tsx` is that element: one per
-remote participant, hidden, `autoPlay`, rendered by
-`components/voice/ParticipantVolumeControl.tsx`.
+remote participant, hidden, `autoPlay`, with an explicit `audio.play()` after
+each non-null `srcObject` assignment (its rejection under the browser's autoplay
+policy is swallowed) so playback does not rely on the attribute alone.
+
+**Playback is mounted at app level, not by any page.**
+`components/voice/VoiceAudioHost.tsx`, rendered once in `app.tsx` next to the
+Inertia `<App>`, reads `useVoice` (`scopeType`/`scopeId`/`selfParticipant`),
+resolves the active roster via `rosterKey`, and renders one
+`RemoteParticipantAudio` per roster entry other than the current user, with its
+volume from `useVoiceVolume` (default 1). It renders nothing while not in a
+call. Because it sits outside every page component, a call keeps playing when
+joined from the sidebar while on a text channel and across Inertia navigation;
+no call UI surface (`VoiceChannelPanel`, `VoiceBar`, the sidebar) renders audio
+itself, and none may — a second element per participant would double the audio.
 
 Since `remoteStreams` isn't a store, a mounted `RemoteParticipantAudio` has no
 built-in way to learn "the track for this userId just arrived" (peer
@@ -246,7 +258,8 @@ time). `stores/index.ts`'s `useRemoteStreamVersion` is a bare tick counter —
 crosses that boundary.
 
 `ParticipantVolumeControl` wraps a remote participant's `Avatar` (with the
-speaking ring from the section above) as a `Popover` trigger; opening it
+speaking ring from the section above) as a `Popover` trigger and renders no
+audio element of its own; opening it
 reveals a 0-100 volume slider backed by `stores/index.ts`'s `useVoiceVolume`
 (keyed by userId, default 1/100% when unset). This is purely local
 *playback* attenuation via `HTMLMediaElement.volume` (0.0-1.0, so it can only
@@ -254,19 +267,13 @@ turn someone down, not boost them above their actual sent volume) — it never
 touches what that participant sends, is never shared, and is not persisted
 across page reloads.
 
-**The `<audio>` element lives outside the `Popover`, not inside it** —
-Radix's `Popover.Content` unmounts from the DOM when closed, so an
-`<audio>` placed inside it would silently stop playing that person's audio
-the moment you closed the volume slider. If a future change touches
-`ParticipantVolumeControl`, keep `RemoteParticipantAudio` a sibling of the
-`Popover`, not a child of it.
-
 `components/sidebar/VoiceParticipantList.tsx` (the sidebar's read-only
 roster row) intentionally does not get a volume control or audio element —
 per its own doc comment it stays generic/non-voice-specific and takes a
 plain `VoiceParticipant[]`, and it's never the surface actually playing a
-call's audio (that's always `VoiceChannelPanel`/`VoiceBar`, both of which
-render `ParticipantVolumeControl` per remote participant).
+call's audio (that's always `VoiceAudioHost`; `VoiceChannelPanel`/`VoiceBar`
+render `ParticipantVolumeControl` per remote participant purely as the volume
+control).
 
 ## Deafen
 

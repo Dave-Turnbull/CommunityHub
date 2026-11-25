@@ -85,4 +85,44 @@ describe('RemoteParticipantAudio', () => {
         expect(audio).toHaveClass('hidden')
         expect(audio).toHaveAttribute('autoplay')
     })
+
+    describe('play()', () => {
+        let play: ReturnType<typeof vi.fn<() => Promise<void>>>
+
+        beforeEach(() => {
+            play = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+            vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(play)
+        })
+
+        afterEach(() => {
+            vi.restoreAllMocks()
+        })
+
+        it('calls play() once a stream is attached', () => {
+            vi.mocked(webrtc.getRemoteStream).mockReturnValue({} as MediaStream)
+
+            render(<RemoteParticipantAudio userId="peer-1" volume={1} />)
+
+            expect(play).toHaveBeenCalledTimes(1)
+        })
+
+        it('does not call play() while there is no stream yet', () => {
+            vi.mocked(webrtc.getRemoteStream).mockReturnValue(undefined)
+
+            render(<RemoteParticipantAudio userId="peer-1" volume={1} />)
+
+            expect(play).not.toHaveBeenCalled()
+        })
+
+        it('attaches a catch handler to play() so an autoplay-policy rejection is swallowed', () => {
+            const rejection = Promise.reject(new DOMException('blocked', 'NotAllowedError'))
+            const catchSpy = vi.spyOn(rejection, 'catch')
+            play.mockReturnValue(rejection)
+            vi.mocked(webrtc.getRemoteStream).mockReturnValue({} as MediaStream)
+
+            render(<RemoteParticipantAudio userId="peer-1" volume={1} />)
+
+            expect(catchSpy).toHaveBeenCalledTimes(1)
+        })
+    })
 })

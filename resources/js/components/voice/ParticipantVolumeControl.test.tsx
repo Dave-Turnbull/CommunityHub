@@ -4,10 +4,6 @@ import userEvent from '@testing-library/user-event'
 import { ParticipantVolumeControl } from '@/components/voice/ParticipantVolumeControl'
 import { useVoiceVolume } from '@/stores'
 
-vi.mock('@/services/webrtc', () => ({
-    getRemoteStream: vi.fn(),
-}))
-
 const participant = { userId: 'peer-1', displayName: 'Bob', avatarUrl: null, muted: false }
 
 describe('ParticipantVolumeControl', () => {
@@ -48,10 +44,10 @@ describe('ParticipantVolumeControl', () => {
         expect(screen.getByLabelText(/Bob's volume/)).toHaveValue('60')
     })
 
-    it('renders an audio element for actual playback regardless of popover state', () => {
+    it('does not render an audio element itself — playback belongs to VoiceAudioHost', () => {
         const { container } = render(<ParticipantVolumeControl participant={participant} size="sm" />)
 
-        expect(container.querySelector('audio')).toBeInTheDocument()
+        expect(container.querySelector('audio')).not.toBeInTheDocument()
     })
 
     it('shows a gray dot for unknown connection quality by default', () => {

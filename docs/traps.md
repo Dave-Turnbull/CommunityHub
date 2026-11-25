@@ -503,6 +503,15 @@ old references/commit messages still resolve.
     a module-level `analysisStream` of `track.clone()`s whose `enabled` is never touched
     (stopped in `leaveVoice()`). Any new consumer that analyses the local mic must use
     that stream, not `localStream`.
+55. **(#56) Remote audio playback must not be mounted by a page-level component.**
+    `RemoteParticipantAudio` was rendered by `ParticipantVolumeControl`, which only
+    `VoiceChannelPanel` (the voice channel's own page) and `VoiceBar` (the DM page)
+    mount. Joining from the sidebar while on a text channel, or navigating away after
+    joining, left the call connected with nothing playing it: peers could hear you and
+    you heard nothing, with no error. `VoiceAudioHost` (mounted once in `app.tsx`)
+    now owns every remote `<audio>` element for the active call. Don't render
+    `RemoteParticipantAudio` from a page or a call-UI component again — it ties
+    playback to whichever page happens to be showing.
 
 ## Status — see [status.md](status.md)
 

@@ -366,7 +366,9 @@ resources/
   js/
     app.tsx                   Inertia bootstrap + QueryClientProvider; also owns the
                                one global presence subscription (see trap #38) —
-                               keyed off router's 'navigate' event, not any page
+                               keyed off router's 'navigate' event, not any page;
+                               mounts VoiceAudioHost beside <App> so call playback is
+                               page-independent (see docs/voice.md)
     pages/                    one file per Inertia page (Auth — Login, Register,
                                ForgotPassword, ResetPassword, ..., Channels, DM, Rooms,
                                Settings, Invite — the invite-accept landing page).
@@ -522,8 +524,11 @@ resources/
       voice/                  VoiceChannelPanel, VoiceBar — a channel/conversation's
                                main-pane voice UI. Both render ParticipantVolumeControl
                                per remote participant (speaking-ring Avatar + volume
-                               Popover) which itself renders RemoteParticipantAudio (the
-                               actual hidden <audio> playback element — see docs/voice.md).
+                               Popover only — no audio). VoiceAudioHost, mounted once in
+                               app.tsx beside the Inertia <App>, renders the actual hidden
+                               <audio> playback element (RemoteParticipantAudio) for every
+                               remote participant of the active call, so playback never
+                               depends on which page is showing — see docs/voice.md.
                                VoiceChannelSidebarItem lives in
                                sidebar/, not here — see below
       sidebar/                Components that render *inside* ChannelSidebar's per-
@@ -877,7 +882,7 @@ of proving a change works and needs nothing installed:
 
 ## Traps already hit — do NOT reintroduce
 
-Full write-ups (54 of them) live in [docs/traps.md](docs/traps.md), grouped by
+Full write-ups (55 of them) live in [docs/traps.md](docs/traps.md), grouped by
 subsystem, with the original numbering preserved for old references. The
 short version, by group — read the full entry before touching adjacent code:
 
@@ -913,7 +918,8 @@ short version, by group — read the full entry before touching adjacent code:
   hooks and unmount-triggered side effects, the roster teardown grace
   period, live vs. captured-at-join settings, peak-hold metering, `null` as
   a meaningful stored value, the activation gate analysing a clone of the mic
-  track rather than the track it disables.
+  track rather than the track it disables, remote audio playback living at app
+  level (`VoiceAudioHost`) rather than in a page's component tree.
 - **Status** (see also [docs/status.md](docs/status.md)) — presence events
   firing once per connection, the status/custom-status data-model history.
 - **Messages & pagination** (see also
@@ -1061,7 +1067,9 @@ short version, by group — read the full entry before touching adjacent code:
   join/leave/display a given scope's call (`VoiceChannelPanel`, `VoiceBar`,
   `VoiceChannelSidebarItem`) — don't add an unmount-triggered `leaveVoice()` to it or
   a new consumer, `webrtc.ts`'s `joinVoice()` already leaves any previous call itself
-  (see trap #37).
+  (see trap #37). Anything that has to keep working across navigation (remote audio
+  playback is the existing case) mounts from `app.tsx`, not from a page or a call-UI
+  component — see `VoiceAudioHost`.
 
 ## Planned work
 
