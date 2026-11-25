@@ -75,6 +75,23 @@ describe('VoiceBar', () => {
         expect(screen.getByAltText('Bob').parentElement?.className).not.toMatch(/ring-2/)
     })
 
+    it('rings the current user\'s own avatar while selfSpeaking', () => {
+        useVoice.setState({ scopeId: 'conv-1' })
+        useSpeaking.getState().setSpeaking('user-1', true)
+
+        render(<VoiceBar conversation={conversation} currentUser={{ ...currentUser, avatar_url: 'https://example.test/alice.png' }} />)
+
+        expect(screen.getByAltText('Alice').parentElement?.className).toMatch(/ring-2 ring-success/)
+    })
+
+    it('does not ring the current user\'s own avatar while silent', () => {
+        useVoice.setState({ scopeId: 'conv-1' })
+
+        render(<VoiceBar conversation={conversation} currentUser={{ ...currentUser, avatar_url: 'https://example.test/alice.png' }} />)
+
+        expect(screen.getByAltText('Alice').parentElement?.className).not.toMatch(/ring-2/)
+    })
+
     it('clicking Deafen toggles the deafened store state and label', async () => {
         useVoice.setState({ scopeId: 'conv-1', deafened: false })
         const user = userEvent.setup()

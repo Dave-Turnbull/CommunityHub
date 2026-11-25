@@ -44,10 +44,19 @@ let currentTransportPolicy: RTCIceTransportPolicy = 'all'
 let unsubscribeCallGuard: (() => void) | null = null
 let voiceActivation: VoiceActivationHandle | null = null
 let analysisStream: MediaStream | null = null
+let selfSpeakingActivation: VoiceActivationHandle | null = null
+let selfLevelAboveSpeaking = false
 // Whether the voice-activation gate currently considers the mic "loud
 // enough to send" — independent of the user's own explicit mute, which
 // always wins (see applyTrackState).
 let gateOpen = true
+
+// The ring reflects what is actually transmitted: real level, gate open, not muted.
+function publishSelfSpeaking(): void {
+    if (!currentUserId) return
+    const speaking = selfLevelAboveSpeaking && gateOpen && !useVoice.getState().selfMuted
+    useSpeaking.getState().setSpeaking(currentUserId, speaking)
+}
 
 function applyTrackState(): void {
     const muted = useVoice.getState().selfMuted
@@ -269,8 +278,18 @@ export async function joinVoice(
         (open) => {
             gateOpen = open
             applyTrackState()
+            publishSelfSpeaking()
         },
         () => useMicSensitivity.getState().timeoutMs
+    )
+    selfLevelAboveSpeaking = false
+    selfSpeakingActivation = startVoiceActivation(
+        analysisStream,
+        () => ({ open: SPEAKING_THRESHOLD, close: SPEAKING_THRESHOLD }),
+        (aboveThreshold) => {
+            selfLevelAboveSpeaking = aboveThreshold
+            publishSelfSpeaking()
+        }
     )
 
     const { channel, leave } = subscribeVoiceRoster(scopeType, scopeId)
@@ -302,6 +321,10 @@ export function leaveVoice(): void {
     Array.from(peers.keys()).forEach(teardownPeer)
     voiceActivation?.stop()
     voiceActivation = null
+    selfSpeakingActivation?.stop()
+    selfSpeakingActivation = null
+    selfLevelAboveSpeaking = false
+    if (currentUserId) useSpeaking.getState().setSpeaking(currentUserId, false)
     gateOpen = true
     analysisStream?.getTracks().forEach((track) => track.stop())
     analysisStream = null
@@ -328,6 +351,7 @@ export function leaveVoice(): void {
 export function setMuted(muted: boolean): void {
     useVoice.getState().setSelfMuted(muted)
     applyTrackState()
+    publishSelfSpeaking()
 
     if (currentUserId && currentKey) {
         // Whisper reaches every other subscriber but never the sender — update

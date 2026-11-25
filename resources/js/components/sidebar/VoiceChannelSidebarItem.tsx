@@ -17,7 +17,7 @@ interface Props {
  * only — see the onDoubleClick handler below for why it never leaves).
  */
 export function VoiceChannelSidebarItem({ channel, active, currentUser }: Props) {
-    const { participants, selfMuted, isActive, connectionState, join, leave } = useVoiceChannel(
+    const { participants, selfMuted, selfSpeaking, isActive, connectionState, join, leave } = useVoiceChannel(
         'channel', channel.id, currentUser, channel.voice_mode
     )
 
@@ -31,6 +31,7 @@ export function VoiceChannelSidebarItem({ channel, active, currentUser }: Props)
                 displayName: `${currentUser.display_name} (you)`,
                 avatarUrl: currentUser.avatar_url,
                 muted: selfMuted,
+                speaking: selfSpeaking,
             },
             ...participants,
         ]

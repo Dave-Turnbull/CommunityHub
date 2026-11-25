@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { forwardRef } from 'react'
 import type { ReactNode } from 'react'
 import { VoiceChannelSidebarItem } from '@/components/sidebar/VoiceChannelSidebarItem'
-import { useVoice, useVoiceRoster } from '@/stores'
+import { useVoice, useVoiceRoster, useSpeaking } from '@/stores'
 import * as api from '@/services/api'
 import * as webrtc from '@/services/webrtc'
 import type { Channel, User } from '@/types'
@@ -61,6 +61,7 @@ describe('VoiceChannelSidebarItem', () => {
     beforeEach(() => {
         useVoice.getState().reset()
         useVoiceRoster.setState({ rosters: {} })
+        useSpeaking.setState({ speaking: {} })
         vi.mocked(api.fetchVoiceDevicePreference).mockResolvedValue({
             client_id: 'client-1', input_device_id: 'mic-1', output_device_id: null, send_threshold: 0, close_threshold_gap: 0, close_threshold_timeout_ms: 2000, echo_cancellation: true, noise_suppression: true, auto_gain_control: false,
         })
@@ -153,5 +154,27 @@ describe('VoiceChannelSidebarItem', () => {
         render(<VoiceChannelSidebarItem channel={channel} active={false} currentUser={currentUser} />)
 
         expect(screen.queryByText('Alice (you)')).not.toBeInTheDocument()
+    })
+
+    it('rings a remote participant\'s avatar while they are speaking', () => {
+        useVoiceRoster.getState().setRoster('channel.chan-1', [
+            { userId: 'user-2', displayName: 'Bob', avatarUrl: 'https://example.test/bob.png', muted: false },
+            { userId: 'user-3', displayName: 'Carol', avatarUrl: 'https://example.test/carol.png', muted: false },
+        ])
+        useSpeaking.getState().setSpeaking('user-2', true)
+
+        render(<VoiceChannelSidebarItem channel={channel} active={false} currentUser={currentUser} />)
+
+        expect(screen.getByAltText('Bob').parentElement?.className).toMatch(/ring-2 ring-success/)
+        expect(screen.getByAltText('Carol').parentElement?.className).not.toMatch(/ring-2/)
+    })
+
+    it('rings the current user\'s own row while selfSpeaking', () => {
+        useVoice.setState({ scopeId: 'chan-1' })
+        useSpeaking.getState().setSpeaking('user-1', true)
+
+        render(<VoiceChannelSidebarItem channel={channel} active={false} currentUser={{ ...currentUser, avatar_url: 'https://example.test/alice.png' }} />)
+
+        expect(screen.getByAltText('Alice (you)').parentElement?.className).toMatch(/ring-2 ring-success/)
     })
 })
