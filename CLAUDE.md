@@ -1220,8 +1220,13 @@ Compose prefers `compose.yaml`, so dev relies on `COMPOSE_FILE=docker-compose.ym
   while the internal `REVERB_PORT` stays `8080` — same REVERB_HOST-vs-
   VITE_REVERB_HOST split as the general guidance below, just automated via env
   vars instead of hand-set per environment. Authentik's `AUTHENTIK_*` vars are
-  wired the same way, off by default (`AUTHENTIK_ENABLED=false`). See the
-  comment block at the top of `compose.yaml` for the full rationale.
+  wired the same way, off by default (`AUTHENTIK_ENABLED=false`). `coturn`
+  runs on the bridge network with `--external-ip` set (auto-detected, or
+  `TURN_EXTERNAL_IP`) so relay candidates carry the public IP, not the
+  container's private one — voice relay also needs a DNS-only record for
+  `TURN_PUBLIC_HOST` and the TURN ports open to the internet (docs/voice.md's
+  "Production relay"). See the comment block at the top of `compose.yaml` for
+  the full rationale.
 
 The general rule either file's production-facing services must follow:
 `app`/`postgres`/`redis`/`reverb`/`mailpit`/`vite` ports stay bound to
@@ -1295,7 +1300,11 @@ from the R2 `AWS_*` vars — see trap #19) + `MAIL_FROM_ADDRESS`/`MAIL_FROM_NAME
 `coturn` docker-compose service's `command:` args, via compose's own `.env`
 substitution, separate from Laravel's dotenv reading the same file) +
 `TURN_PUBLIC_HOST` (the browser-facing value, `localhost` in dev, read by PHP to
-build the ICE servers JSON response — **no** `VITE_TURN_*` pair exists, see trap #31),
+build the ICE servers JSON response — **no** `VITE_TURN_*` pair exists, see trap #31) +
+`TURN_EXTERNAL_IP` (production `compose.yaml` only, optional — the public IP coturn's
+`--external-ip` advertises in relay candidates; defaults to the coturn image's own
+`detect-external-ip`, set it explicitly when that fails or picks the wrong address — see
+docs/voice.md's "Production relay"),
 `COMPOSE_FILE` (`docker-compose.yml` in `.env`/`.env.example` — read by Docker Compose
 itself, not Laravel; makes bare `docker compose` use the dev file instead of the
 production `compose.yaml`, see trap #54).
