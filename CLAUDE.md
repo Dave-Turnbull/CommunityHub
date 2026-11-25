@@ -877,7 +877,7 @@ of proving a change works and needs nothing installed:
 
 ## Traps already hit — do NOT reintroduce
 
-Full write-ups (53 of them) live in [docs/traps.md](docs/traps.md), grouped by
+Full write-ups (54 of them) live in [docs/traps.md](docs/traps.md), grouped by
 subsystem, with the original numbering preserved for old references. The
 short version, by group — read the full entry before touching adjacent code:
 
@@ -912,7 +912,8 @@ short version, by group — read the full entry before touching adjacent code:
   `.here()` firing once, presence subscription ≠ call membership, shared
   hooks and unmount-triggered side effects, the roster teardown grace
   period, live vs. captured-at-join settings, peak-hold metering, `null` as
-  a meaningful stored value.
+  a meaningful stored value, the activation gate analysing a clone of the mic
+  track rather than the track it disables.
 - **Status** (see also [docs/status.md](docs/status.md)) — presence events
   firing once per connection, the status/custom-status data-model history.
 - **Messages & pagination** (see also
