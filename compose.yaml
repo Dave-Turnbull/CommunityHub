@@ -47,7 +47,23 @@
 # Commonly overridden:
 #   AUTHENTIK_ENABLED + its AUTHENTIK_* siblings, MAIL_*, AWS_*
 #   (only if FILESYSTEM_DISK=r2), TURN_PUBLIC_HOST (the directly-reachable
-#   coturn hostname — see the note on it below).
+#   coturn hostname — see the note on it below), TURN_EXTERNAL_IP (see below).
+#
+# Voice (coturn) needs three things outside this file:
+#   - A DNS-only (not Cloudflare-proxied) record for TURN_PUBLIC_HOST pointing
+#     at this host's real public IP — the proxy only carries HTTP(S), never
+#     TURN's UDP/TCP.
+#   - TURN_PORT (default 3478) udp+tcp and 49160-49200/udp reachable from the
+#     internet: open them in the firewall, and port-forward them at the router
+#     if the host is behind NAT.
+#   - The public IP coturn advertises in relay candidates. coturn runs on a
+#     bridge network and only sees its container address, which clients can't
+#     reach, so --external-ip maps relays to the public IP. By default it is
+#     detected at startup (the image's detect-external-ip, via DNS lookups
+#     against public resolvers); coturn exits at startup if detection fails.
+#     Set TURN_EXTERNAL_IP explicitly when detection fails or picks the wrong
+#     address (e.g. the host's outbound IP differs from the one clients reach
+#     it on, or DNS lookups to public resolvers are blocked).
 
 # Passed as Docker build args (not `environment:`) to every service below
 # that builds docker/app/Dockerfile — Vite needs these at `npm run build`
@@ -294,6 +310,9 @@ services:
     # pairs and connects via the public ones. Keep the image pinned — the
     # deny rules' robustness (e.g. against IPv4-mapped-IPv6 bypasses) is
     # version-dependent, so bump deliberately, not via :latest.
+    # --external-ip: the image's entrypoint evaluates $(...) in each arg, so
+    # the default is resolved at container start; `$$` is compose's escape for
+    # that literal `$`. See the voice note at the top of this file.
     command: >
       -n --log-file=stdout --fingerprint
       --listening-port=${TURN_PORT:-3478}
@@ -301,6 +320,7 @@ services:
       --use-auth-secret
       --static-auth-secret=${TURN_SECRET:?set TURN_SECRET}
       --min-port=49160 --max-port=49200
+      --external-ip=${TURN_EXTERNAL_IP:-$$(detect-external-ip)}
       --no-cli
       --no-multicast-peers
       --denied-peer-ip=0.0.0.0-0.255.255.255

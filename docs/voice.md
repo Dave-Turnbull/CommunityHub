@@ -625,3 +625,30 @@ their own (`config('turn.credential_ttl')`).
 `TURN_PUBLIC_HOST` is the browser-facing value even though it is read by PHP, not Vite
 — the browser learns the TURN host from the JSON response at runtime, not a
 `VITE_TURN_*` build-time env var (which does not exist).
+
+## Production relay
+
+A TURN allocation hands the client a relay address, and the client passes that address to
+its peer as an ICE relay candidate. coturn only knows the addresses on its own interfaces,
+so on the production Docker bridge network it would advertise the container's private
+address — unreachable from the internet, and inside the `--denied-peer-ip` ranges. Relay
+candidates are then useless and calls only connect when a direct path exists.
+`compose.yaml` therefore starts coturn with `--external-ip`, which maps the relay address
+to the host's public IP. The value is `TURN_EXTERNAL_IP` when set; otherwise the coturn
+image's `detect-external-ip` resolves it at container start (DNS lookups against public
+resolvers, IPv4). If detection fails, coturn exits at startup rather than running with a
+private relay address; set `TURN_EXTERNAL_IP` in that case, or whenever detection returns
+an address other than the one clients reach the host on.
+
+Relay also depends on the network path to the host, none of which `compose.yaml` can
+provide:
+
+- `TURN_PUBLIC_HOST` (the host the browser is told to use) resolves through a DNS-only
+  record, not a Cloudflare-proxied one, to the host's real public IP. The proxy only
+  carries HTTP(S).
+- `TURN_PORT` (default 3478) over UDP and TCP, plus `49160-49200/udp` (the relay port
+  range), are reachable from the internet — open in the host firewall, and port-forwarded
+  at the router when the host sits behind NAT.
+
+Relay allocations can be checked from another machine with `turnutils_uclient`, which
+prints the `Received relay addr` coturn assigned; it should be the public IP.
