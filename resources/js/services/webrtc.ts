@@ -43,6 +43,7 @@ let currentIceServers: RTCIceServer[] = []
 let currentTransportPolicy: RTCIceTransportPolicy = 'all'
 let unsubscribeCallGuard: (() => void) | null = null
 let voiceActivation: VoiceActivationHandle | null = null
+let analysisStream: MediaStream | null = null
 // Whether the voice-activation gate currently considers the mic "loud
 // enough to send" — independent of the user's own explicit mute, which
 // always wins (see applyTrackState).
@@ -259,8 +260,11 @@ export async function joinVoice(
     })
 
     gateOpen = true
+    // Analysed on clones because applyTrackState() disables the sent tracks; a
+    // disabled track reads as silence, so a gate analysing it could never reopen.
+    analysisStream = new MediaStream(localStream.getAudioTracks().map((track) => track.clone()))
     voiceActivation = startVoiceActivation(
-        localStream,
+        analysisStream,
         () => computeThresholds(useMicSensitivity.getState()),
         (open) => {
             gateOpen = open
@@ -299,6 +303,8 @@ export function leaveVoice(): void {
     voiceActivation?.stop()
     voiceActivation = null
     gateOpen = true
+    analysisStream?.getTracks().forEach((track) => track.stop())
+    analysisStream = null
     localStream?.getTracks().forEach((track) => track.stop())
     localStream = null
     unsubscribeRoster?.()

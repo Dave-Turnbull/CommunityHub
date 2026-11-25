@@ -494,6 +494,15 @@ old references/commit messages still resolve.
     hang-time force-close is off). If a future nullable preference field is added,
     check whether `null` is a real state or genuinely means "unset" before reaching
     for `??`.
+54. **(#55) The voice-activation gate must analyse a clone of the mic track, not the track it
+    disables.** `joinVoice()` once passed `localStream` to `startVoiceActivation`, and
+    `applyTrackState()` closes the gate with `track.enabled = false` on that same
+    stream. A disabled track feeds silence to the analyser, so with a send threshold
+    above 0 (and AGC off) the gate closed on the first tick and could never see level
+    again — the user was permanently silent until they rejoined. The detector now reads
+    a module-level `analysisStream` of `track.clone()`s whose `enabled` is never touched
+    (stopped in `leaveVoice()`). Any new consumer that analyses the local mic must use
+    that stream, not `localStream`.
 
 ## Status — see [status.md](status.md)
 

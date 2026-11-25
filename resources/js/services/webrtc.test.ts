@@ -38,16 +38,16 @@ vi.mock('@/services/voiceCallGuard', () => ({
 // onGateChange callback directly and assert on how webrtc.ts reacts,
 // without needing to fake AudioContext/requestAnimationFrame too.
 const voiceActivationStop = vi.fn()
-const voiceActivationCalls: { getThreshold: () => unknown; onGateChange: (open: boolean) => void; getTimeoutMs?: () => number | null }[] = []
+const voiceActivationCalls: { stream: unknown; getThreshold: () => unknown; onGateChange: (open: boolean) => void; getTimeoutMs?: () => number | null }[] = []
 
 vi.mock('@/services/voiceActivation', () => ({
     startVoiceActivation: vi.fn((
-        _stream: unknown,
+        stream: unknown,
         getThreshold: () => unknown,
         onGateChange: (open: boolean) => void,
         getTimeoutMs?: () => number | null
     ) => {
-        voiceActivationCalls.push({ getThreshold, onGateChange, getTimeoutMs })
+        voiceActivationCalls.push({ stream, getThreshold, onGateChange, getTimeoutMs })
         return { stop: voiceActivationStop }
     }),
     // A trimmed-down stand-in for the real (thoroughly unit-tested elsewhere,
@@ -104,8 +104,26 @@ class FakePeerConnection {
     async addIceCandidate() {}
 }
 
+class FakeMediaStream {
+    constructor(private tracks: unknown[]) {}
+    getTracks() { return this.tracks }
+    getAudioTracks() { return this.tracks }
+}
+
+const clonedTracks: { stop: ReturnType<typeof vi.fn>; enabled: boolean }[] = []
+
 function mockGetUserMedia() {
-    const track = { stop: vi.fn(), enabled: true }
+    clonedTracks.length = 0
+    vi.stubGlobal('MediaStream', FakeMediaStream)
+    const track = {
+        stop: vi.fn(),
+        enabled: true,
+        clone: vi.fn(() => {
+            const clone = { stop: vi.fn(), enabled: true }
+            clonedTracks.push(clone)
+            return clone
+        }),
+    }
     const stream = {
         getTracks: () => [track],
         getAudioTracks: () => [track],
@@ -569,6 +587,50 @@ describe('webrtc service', () => {
             setMuted(false)
 
             expect(track.enabled).toBe(true)
+        })
+
+        it('analyses clones of the sent tracks, not the sent stream', async () => {
+            const track = mockGetUserMedia()
+            const { joinVoice } = await import('@/services/webrtc')
+
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            const analysed = (voiceActivationCalls[0].stream as FakeMediaStream).getTracks()
+            expect(track.clone).toHaveBeenCalledTimes(1)
+            expect(analysed).toEqual(clonedTracks)
+            expect(analysed).not.toContain(track)
+        })
+
+        it('closing the gate disables only the sent track, never the analysed clone', async () => {
+            const track = mockGetUserMedia()
+            const { joinVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            voiceActivationCalls[0].onGateChange(false)
+
+            expect(track.enabled).toBe(false)
+            expect(clonedTracks[0].enabled).toBe(true)
+        })
+
+        it('muting disables only the sent track, never the analysed clone', async () => {
+            const track = mockGetUserMedia()
+            const { joinVoice, setMuted } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            setMuted(true)
+
+            expect(track.enabled).toBe(false)
+            expect(clonedTracks[0].enabled).toBe(true)
+        })
+
+        it('stops the analysed clones on leave', async () => {
+            mockGetUserMedia()
+            const { joinVoice, leaveVoice } = await import('@/services/webrtc')
+            await joinVoice('channel', 'chan-1', selfInfo, { connectionMode: 'auto' })
+
+            leaveVoice()
+
+            expect(clonedTracks[0].stop).toHaveBeenCalled()
         })
 
         it('stops voice activation on leave', async () => {

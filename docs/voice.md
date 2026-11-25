@@ -390,6 +390,15 @@ version could never react to a later Settings change without leaving and
 rejoining the call, which was a real bug, not just a documentation gap. Don't
 reintroduce a plain non-getter parameter here.
 
+**The gate analyses a clone of the mic track, never the sent track.** `webrtc.ts`'s
+`joinVoice()` builds a module-level `analysisStream` from `track.clone()` of each
+sent audio track and hands that to `startVoiceActivation`. `applyTrackState()`
+closes the gate by setting `track.enabled = false` on the *sent* tracks, and a
+disabled track delivers silence to an analyser; a gate fed from the sent stream
+would read level 0 the moment it closed and could never reopen. The clones are
+never enabled/disabled by the app and are stopped in `leaveVoice()` alongside the
+sent tracks.
+
 The `AudioSettings.tsx` "Test Microphone" loopback now also actually gates on
 the live thresholds (muting the loopback `<audio>` element when below the
 open threshold, per the hysteresis rules below), reading `useMicSensitivity`
